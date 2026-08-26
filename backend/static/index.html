@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Escritório Virtual</title>
+<link rel="stylesheet" href="/static/estilo.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏢</text></svg>">
+</head>
+<body>
+
+<!-- ---------- tela de entrada ---------- -->
+<div id="entrada" class="entrada">
+  <div class="cartao">
+    <h1>🏢 Escritório Virtual</h1>
+    <p class="sub">Ande pelo escritório. Chegou perto de alguém, a conversa abre sozinha.</p>
+
+    <label>Seu nome
+      <input id="campo-nome" maxlength="24" placeholder="Como te chamam" autocomplete="off">
+    </label>
+
+    <label hidden>Senha da sala
+      <input id="campo-senha" type="password" autocomplete="current-password">
+    </label>
+
+    <div class="editor">
+      <div class="previa">
+        <canvas id="previa" width="132" height="172"></canvas>
+        <button id="btn-sortear" type="button" class="mini">🎲 Sortear</button>
+      </div>
+      <div id="opcoes" class="opcoes"></div>
+    </div>
+
+    <button id="btn-entrar" class="principal">Entrar com câmera e microfone</button>
+    <button id="btn-entrar-mudo" class="secundario">Entrar só olhando</button>
+    <p id="aviso-entrada" class="aviso"></p>
+  </div>
+</div>
+
+<!-- ---------- aplicação ---------- -->
+<div id="app" class="app oculto">
+  <header class="barra">
+    <div class="barra-esq">
+      <strong>🏢 Escritório</strong>
+      <span id="zona-atual" class="chip">Recepção</span>
+      <span id="contagem" class="chip fraco">1 na sala</span>
+    </div>
+    <div class="barra-dir">
+      <button id="btn-mic" class="icone" title="Microfone (M)">🎤</button>
+      <button id="btn-cam" class="icone" title="Câmera (V)">📹</button>
+      <button id="btn-tela" class="icone" title="Compartilhar tela (T)">🖥️</button>
+      <button id="btn-boneco" class="icone" title="Editar meu boneco (B)">🧑‍🎨</button>
+      <button id="btn-editor" class="icone" title="Editar o escritório (E)">🏗️</button>
+      <button id="btn-reacao" class="icone" title="Reagir (R)">👋</button>
+      <button id="btn-sair" class="icone perigo" title="Sair">🚪</button>
+    </div>
+  </header>
+
+  <main class="palco">
+    <canvas id="tela"></canvas>
+    <div id="dica" class="dica">Use <kbd>W A S D</kbd> ou as setas para andar · <kbd>Enter</kbd> para o chat</div>
+    <div id="videos" class="videos"></div>
+  </main>
+
+  <aside class="lateral">
+    <section class="pessoas">
+      <h2>Na sala <span id="pessoas-total">1</span></h2>
+      <ul id="lista-pessoas"></ul>
+    </section>
+    <section class="chat">
+      <h2>Chat</h2>
+      <div id="mensagens" class="mensagens"></div>
+      <form id="form-chat">
+        <select id="escopo-chat" title="Quem recebe">
+          <option value="perto">Perto</option>
+          <option value="todos">Todos</option>
+        </select>
+        <input id="campo-chat" placeholder="Escreva…" maxlength="500" autocomplete="off">
+        <button type="submit">↵</button>
+      </form>
+    </section>
+  </aside>
+</div>
+
+<!-- ---------- editor do boneco, já dentro da sala ---------- -->
+<div id="modal-boneco" class="modal oculto">
+  <div class="cartao">
+    <h2>Seu boneco</h2>
+    <label>Nome
+      <input id="campo-nome-editar" maxlength="24" autocomplete="off">
+    </label>
+    <div class="editor">
+      <div class="previa">
+        <canvas id="previa-editar" width="132" height="172"></canvas>
+        <button id="btn-sortear-editar" type="button" class="mini">🎲 Sortear</button>
+      </div>
+      <div id="opcoes-editar" class="opcoes"></div>
+    </div>
+    <button id="btn-salvar-boneco" class="principal">Salvar</button>
+    <button id="btn-fechar-boneco" class="secundario">Cancelar</button>
+  </div>
+</div>
+
+<script src="/static/boneco.js"></script>
+<script src="/static/objetos.js"></script>
+<script src="/static/editor.js"></script>
+<script src="/static/midia.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

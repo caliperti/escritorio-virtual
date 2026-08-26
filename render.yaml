@@ -1,0 +1,14 @@
+# Deploy no plano gratuito do Render: https://render.com
+#   1. suba esta pasta para um repositório no GitHub
+#   2. no Render: New → Blueprint → aponte para o repositório
+# O plano gratuito dorme depois de 15 min sem ninguém — a primeira visita
+# depois disso demora ~30 s para acordar.
+services:
+  - type: web
+    name: escritorio-virtual
+    runtime: docker
+    plan: free
+    healthCheckPath: /saude
+    envVars:
+      - key: SENHA          # deixe em branco para sala aberta
+        sync: false
