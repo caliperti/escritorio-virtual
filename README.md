@@ -127,6 +127,26 @@ que libera câmera e microfone fora do localhost):
 
 O link vale enquanto o processo estiver de pé e a máquina ligada.
 
+### Deixar de pé sozinho
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.escritorio.servidor.plist
+launchctl load ~/Library/LaunchAgents/com.escritorio.tunel.plist
+./endereco.sh          # mostra o endereço de agora e se responde
+```
+
+Os dois agentes sobem no login e são reiniciados se caírem. O `tunel.sh` não é
+só "rodar o cloudflared": ele confere o endereço de fora em fora e, se parar de
+responder três vezes seguidas, se mata para o launchd subir outro — foi
+exatamente esse o caso que tirou o sistema do ar (o processo continuou vivo
+tentando reconectar para sempre, então nada percebia a queda).
+
+**O endereço muda a cada reinício do túnel** — é a limitação do túnel rápido, e o
+motivo de valer a pena o deploy fixo. `endereco.txt` guarda o atual e
+`endereco.log`, o histórico.
+
+Para desligar: `launchctl unload ~/Library/LaunchAgents/com.escritorio.*.plist`
+
 ### Senha da sala
 
 A senha fica no arquivo **`.env`** (fora do git), e o `iniciar.sh` a carrega

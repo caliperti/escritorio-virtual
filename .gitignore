@@ -3,3 +3,5 @@ backend/.venv/
 __pycache__/
 *.pyc
 .DS_Store
+endereco.txt
+endereco.log
