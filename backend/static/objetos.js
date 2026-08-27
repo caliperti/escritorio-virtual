@@ -297,6 +297,43 @@ const Objetos = {
       this.elipse(c, cx - 2, y + h * 0.16, 2, 1.8, '#e08a4a');
     },
 
+    /* ================= área externa ================= */
+    arvore(c, x, y, w, h) {
+      const tronco = '#8a6446', v = '#4f9b63';
+      this.ret(c, x + w / 2 - 5, y + h - 20, 10, 17, 3, this.traco(tronco));
+      this.ret(c, x + w / 2 - 4, y + h - 19, 8, 15, 3, tronco);
+      for (const [dx, dy, r] of [[0, 0.32, 20], [-11, 0.42, 13], [11, 0.42, 13], [0, 0.2, 14]]) {
+        this.elipse(c, x + w / 2 + dx, y + h * dy, r, r * 0.92, this.traco(v));
+        this.elipse(c, x + w / 2 + dx, y + h * dy - 1, r - 1.5, r * 0.86,
+                    dy < 0.3 ? this.luz(v, 0.18) : this.VERDE_ESC);
+      }
+      this.elipse(c, x + w / 2 - 6, y + h * 0.22, 7, 6, this.luz(v, 0.32));
+    },
+    arbusto(c, x, y, w, h) {
+      const v = this.VERDE_ESC;
+      this.elipse(c, x + w / 2, y + h * 0.58, w * 0.4, h * 0.3, this.traco(v));
+      this.elipse(c, x + w / 2, y + h * 0.55, w * 0.37, h * 0.27, v);
+      this.elipse(c, x + w / 2 - 5, y + h * 0.46, 6, 5, this.luz(v, 0.25));
+      this.elipse(c, x + w / 2 + 5, y + h * 0.52, 5, 4, this.luz(v, 0.12));
+    },
+    banco(c, x, y, w, h) {
+      const cor = this.MADEIRA;
+      this.ret(c, x + 6, y + h - 10, 4, 7, 1, this.PE);
+      this.ret(c, x + w - 10, y + h - 10, 4, 7, 1, this.PE);
+      this.ret(c, x + 2, y + 4, w - 4, h - 14, 3, this.traco(cor));
+      this.ret(c, x + 3, y + 5, w - 6, 5, 2, cor);                    // encosto
+      this.ret(c, x + 3, y + 11, w - 6, h - 21, 2, this.luz(cor, 0.18));
+    },
+    janela(c, x, y, w, h) {
+      const cor = '#bcd6e8';
+      this.ret(c, x + 2, y + 6, w - 4, h - 14, 2, '#e7e2d8');          // moldura
+      this.ret(c, x + 4, y + 8, w - 8, h - 18, 1, cor);
+      c.save(); c.globalAlpha = 0.55;
+      this.ret(c, x + 5, y + 9, (w - 10) * 0.4, h - 20, 1, this.luz(cor, 0.7));
+      c.restore();
+      this.ret(c, x + w / 2 - 1, y + 8, 2, h - 18, 1, '#e7e2d8');      // caixilho
+    },
+
     /* ================= café ================= */
     cafeteira(c, x, y, w, h) {
       this.ret(c, x + 6, y + 4, w - 12, h - 10, 3, this.traco(this.ESCURO));

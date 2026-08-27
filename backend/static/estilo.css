@@ -286,6 +286,11 @@ button.secundario:hover { color: var(--texto); }
   border-radius: 7px; padding: 6px 8px; font-size: 13px; width: 100%;
 }
 .editor-painel .sala-form label { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--fraco); }
+.editor-painel .sala-form .linha-campos { display: flex; gap: 5px; }
+.editor-painel .sala-form select {
+  flex: 1; min-width: 0; background: var(--painel); border: 1px solid var(--borda);
+  color: var(--texto); border-radius: 7px; padding: 5px; font-size: 12px;
+}
 .editor-painel .sala-form .cores { display: flex; gap: 5px; flex-wrap: wrap; }
 .editor-painel .sala-form .cores button {
   width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;

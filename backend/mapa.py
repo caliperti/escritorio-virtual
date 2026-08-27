@@ -71,6 +71,11 @@ _item("tapete", "Sala", "Tapete", 3, 2, False, "piso")
 _item("tapete_redondo", "Sala", "Tapete redondo", 2, 2, False, "piso")
 _item("luminaria", "Sala", "Luminária", 1, 1, True)
 _item("narguile", "Sala", "Narguilé", 1, 2, True)      # alto: ocupa dois tiles
+_item("arvore", "Externo", "Árvore", 2, 2, True)
+_item("arbusto", "Externo", "Arbusto", 1, 1, True)
+_item("banco", "Externo", "Banco de praça", 2, 1, True)
+# janela vai na camada de cima para poder ficar em cima da parede
+_item("janela", "Sala", "Janela", 2, 1, False, "mesa")
 _item("relogio", "Sala", "Relógio", 1, 1, True)
 _item("palco", "Sala", "Palco", 6, 2, True)
 _item("pebolim", "Sala", "Pebolim", 3, 2, True)
@@ -271,6 +276,44 @@ class Escritorio:
                 for x, y in acao.get("tiles", []):
                     if 0 <= x < self.largura and 0 <= y < self.altura:
                         self.piso[y][x] = novo
+
+            elif tipo == "montar_sala":
+                # Uma sala pronta: parede em volta, porta, piso e a zona. É o
+                # que transforma "desenhar um retângulo" em sala de verdade.
+                x1, y1 = max(0, int(acao["x1"])), max(0, int(acao["y1"]))
+                x2 = min(self.largura - 1, int(acao["x2"]))
+                y2 = min(self.altura - 1, int(acao["y2"]))
+                if x2 - x1 < 2 or y2 - y1 < 2:
+                    self._historico.pop()
+                    return False
+                piso = acao.get("piso") if acao.get("piso") in PISOS else "c"
+                for y in range(y1, y2 + 1):
+                    for x in range(x1, x2 + 1):
+                        borda = x in (x1, x2) or y in (y1, y2)
+                        self.paredes[y][x] = 1 if borda else 0
+                        if not borda:
+                            self.piso[y][x] = piso
+                # porta de 2 tiles no meio do lado escolhido
+                lado = acao.get("porta", "baixo")
+                meio_x, meio_y = (x1 + x2) // 2, (y1 + y2) // 2
+                portas = {
+                    "baixo": [(meio_x, y2), (meio_x + 1, y2)],
+                    "cima": [(meio_x, y1), (meio_x + 1, y1)],
+                    "esquerda": [(x1, meio_y), (x1, meio_y + 1)],
+                    "direita": [(x2, meio_y), (x2, meio_y + 1)],
+                }.get(lado, [])
+                for px, py in portas:
+                    if 0 <= px < self.largura and 0 <= py < self.altura:
+                        self.paredes[py][px] = 0
+                        self.piso[py][px] = piso
+                if acao.get("nome"):
+                    self.zonas.append({
+                        "id": f"z{self.proximo_id}", "nome": acao["nome"][:28],
+                        "x1": x1 + 1, "y1": y1 + 1, "x2": x2 - 1, "y2": y2 - 1,
+                        "privada": bool(acao.get("privada")),
+                        "cor": acao.get("cor") if isinstance(acao.get("cor"), str) else "#8b7fd0",
+                    })
+                    self.proximo_id += 1
 
             elif tipo == "zona":
                 if len(self.zonas) >= MAX_ZONAS:

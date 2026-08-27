@@ -124,7 +124,7 @@ const Editor = {
       }
 
     } else if (fer === 'piso') {
-      ajuda.textContent = 'Arraste no mapa para pintar o chão.';
+      ajuda.textContent = 'Arraste para pintar o chão. Segure Shift para preencher um retângulo.';
       const grade = document.createElement('div');
       grade.className = 'paleta pisos';
       for (const [id, nome] of Object.entries(this.jogo.mapa.pisos)) {
@@ -141,10 +141,11 @@ const Editor = {
       alvo.appendChild(grade);
 
     } else if (fer === 'parede') {
-      ajuda.textContent = 'Arraste para levantar parede. Segure Alt (ou botão direito) para derrubar.';
+      ajuda.textContent = 'Arraste para levantar parede. Alt (ou botão direito) derruba. '
+        + 'Segure Shift para preencher um retângulo inteiro.';
 
     } else if (fer === 'sala') {
-      ajuda.textContent = 'Arraste no mapa para marcar uma sala nova.';
+      ajuda.textContent = 'Arraste no mapa para desenhar a sala. Ela vem com parede, porta e piso.';
       this.listarSalas(alvo);
 
     } else if (fer === 'inicio') {
@@ -194,6 +195,18 @@ const Editor = {
       <input id="sala-nome" placeholder="Nome da sala" maxlength="28" value="${existente ? existente.nome : 'Sala'}">
       <label><input type="checkbox" id="sala-privada" ${!existente || existente.privada ? 'checked' : ''}>
         🔒 Áudio fechado (só quem está dentro)</label>
+      ${existente ? '' : `<label><input type="checkbox" id="sala-paredes" checked>
+        🧱 Levantar parede em volta, com porta</label>
+      <div class="linha-campos">
+        <select id="sala-piso">${Object.entries(this.jogo.mapa.pisos)
+          .map(([id, nome]) => `<option value="${id}">${nome}</option>`).join('')}</select>
+        <select id="sala-porta">
+          <option value="baixo">Porta embaixo</option>
+          <option value="cima">Porta em cima</option>
+          <option value="esquerda">Porta à esquerda</option>
+          <option value="direita">Porta à direita</option>
+        </select>
+      </div>`}
       <div class="cores">${cores.map((c) => `<button data-cor="${c}" style="background:${c}"
         aria-pressed="${c === cor}"></button>`).join('')}</div>
       <div class="botoes"><button id="sala-ok" class="ok">Criar</button>
@@ -209,12 +222,19 @@ const Editor = {
     const fechar = () => { caixa.remove(); this.retangulo = null; };
     caixa.querySelector('#sala-cancelar').onclick = fechar;
     caixa.querySelector('#sala-ok').onclick = () => {
-      this.acao({
-        acao: 'zona', id: existente ? existente.id : undefined,
+      const comum = {
         nome: document.getElementById('sala-nome').value.trim() || 'Sala',
         privada: document.getElementById('sala-privada').checked, cor: corSel,
         x1: ret.x1, y1: ret.y1, x2: ret.x2, y2: ret.y2,
-      });
+      };
+      const paredes = document.getElementById('sala-paredes');
+      if (!existente && paredes && paredes.checked) {
+        this.acao({ acao: 'montar_sala', ...comum,
+                    piso: document.getElementById('sala-piso').value,
+                    porta: document.getElementById('sala-porta').value });
+      } else {
+        this.acao({ acao: 'zona', id: existente ? existente.id : undefined, ...comum });
+      }
       fechar();
     };
     document.getElementById('sala-nome').select();
@@ -259,9 +279,11 @@ const Editor = {
       const alvo = this.objetoEm(t.x, t.y);
       if (alvo) this.acao({ acao: 'remover', id: alvo.id });
     } else if (this.ferramenta === 'parede') {
-      this.pincel = { tipo: 'parede', valor: !apagando, tiles: [[t.x, t.y]] };
+      this.pincel = { tipo: 'parede', valor: !apagando, tiles: [[t.x, t.y]],
+                      retangulo: e.shiftKey, inicio: t };
     } else if (this.ferramenta === 'piso') {
-      this.pincel = { tipo: 'piso', piso: this.pisoSel, tiles: [[t.x, t.y]] };
+      this.pincel = { tipo: 'piso', piso: this.pisoSel, tiles: [[t.x, t.y]],
+                      retangulo: e.shiftKey, inicio: t };
     } else if (this.ferramenta === 'sala') {
       this.retangulo = { x1: t.x, y1: t.y, x2: t.x, y2: t.y, arrastando: true };
     } else if (this.ferramenta === 'inicio') {
@@ -276,9 +298,18 @@ const Editor = {
       this.arrasto.x = t.x + this.arrasto.dx;
       this.arrasto.y = t.y + this.arrasto.dy;
     } else if (this.pincel) {
-      const ja = this.pincel.tiles;
-      const ultimo = ja[ja.length - 1];
-      if (ultimo[0] !== t.x || ultimo[1] !== t.y) ja.push([t.x, t.y]);
+      if (this.pincel.retangulo) {                 // Shift: preenche o retângulo
+        const i = this.pincel.inicio;
+        const tiles = [];
+        for (let y = Math.min(i.y, t.y); y <= Math.max(i.y, t.y); y++) {
+          for (let x = Math.min(i.x, t.x); x <= Math.max(i.x, t.x); x++) tiles.push([x, y]);
+        }
+        this.pincel.tiles = tiles;
+      } else {
+        const ja = this.pincel.tiles;
+        const ultimo = ja[ja.length - 1];
+        if (ultimo[0] !== t.x || ultimo[1] !== t.y) ja.push([t.x, t.y]);
+      }
     } else if (this.retangulo && this.retangulo.arrastando) {
       this.retangulo.x2 = t.x;
       this.retangulo.y2 = t.y;

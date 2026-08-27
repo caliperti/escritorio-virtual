@@ -85,9 +85,13 @@ continuam desenhados aqui (`objetos.js`), sem restrição.
 
 ## A planta do escritório
 
-O escritório vem com nove salas — Recepção, Sala de Reunião, Sala de Foco,
-Diretoria, Coworking, Café, Lounge, Auditório e Sala de Jogos — e ~236 móveis
-já posicionados.
+O escritório de fábrica segue o formato da referência do Gather: **jardim na
+entrada** (grama, árvores e bancos), o prédio com **salas fechadas em volta** e,
+no miolo, área aberta onde **cada time tem seu carpete**.
+
+São 12 áreas — Recepção, Time Produto, Time CX, Lounge, Sala de Reunião, Sala de
+Foco, Diretoria, Café, Auditório, Sala de Jogos, Copa e Descanso — em 60×36
+tiles, com 274 móveis já posicionados.
 
 | Sala | Áudio |
 |---|---|
@@ -106,9 +110,9 @@ hora para quem está na sala.
 | Ferramenta | O que faz |
 |---|---|
 | 🪑 **Móveis** | clique para colocar; arraste para mudar de lugar; botão direito remove. Tem mesa, mesa de reunião, balcão, cadeira, sofá, poltrona, estante, armário, quadro branco, TV, tapete, planta, luminária, palco, pebolim, narguilé, cafeteira, geladeira, pia — e o que vai **em cima da mesa**: monitor, notebook, caneca, papéis, telefone, livros, vasinho, bolo |
-| 🎨 **Piso** | pinta madeira, carpete, azulejo, concreto ou grama |
-| 🧱 **Parede** | arraste para levantar; `Alt` (ou botão direito) derruba — é assim que se abre uma porta ou se fecha um canto novo |
-| 🚪 **Salas** | arraste para criar; **📐 redesenha a área** de uma sala existente (é como se aumenta uma sala); clique no nome para renomear e trocar a cor; 🔒 liga/desliga o áudio fechado |
+| 🎨 **Piso** | madeira, carpete, azulejo, concreto, grama e os **carpetes de time** (lilás, azul, menta, rosa). `Shift` preenche um retângulo |
+| 🧱 **Parede** | arraste para levantar; `Alt` (ou botão direito) derruba. **`Shift` preenche um retângulo inteiro** — é assim que se fecha um bloco novo de uma vez |
+| 🚪 **Salas** | arraste para desenhar: sai uma **sala pronta** — parede em volta, porta de 2 tiles no lado que você escolher e o piso que escolher. Desmarque "levantar parede" para só marcar uma área. **📐 redesenha a área** de uma sala existente; clique no nome para renomear e trocar a cor; 🔒 liga/desliga o áudio fechado |
 | 📍 **Entrada** | onde quem chega aparece |
 | 🗑️ **Apagar** | remove móvel |
 

@@ -1,62 +1,22 @@
 """A planta que vem de fábrica — o escritório da primeira vez que sobe.
 
-Depois que alguém edita, quem manda é o `mapa.json`; isto aqui só existe para
-o primeiro boot (e para o botão "restaurar planta padrão").
+Desenhada no formato da referência do Gather: uma faixa de jardim na entrada,
+o prédio com salas fechadas em volta e, no miolo, área aberta onde cada time
+tem seu carpete. Depois que alguém edita, quem manda é o `mapa.json`; isto aqui
+só existe para o primeiro boot e para o botão "restaurar planta padrão".
 """
 
-from typing import List, Tuple
-
-# (x1, y1, x2, y2) de cada sala, em tiles
-SALAS = [
-    ("reuniao", "Sala de Reunião", 1, 1, 13, 9, True, "#8b7fd0", "l"),
-    ("recepcao", "Recepção", 15, 1, 25, 9, False, "#6f9fd8", "a"),
-    ("foco", "Sala de Foco", 27, 1, 37, 9, True, "#4fae91", "v"),
-    ("diretoria", "Diretoria", 39, 1, 50, 9, True, "#c99a4a", "m"),
-    ("coworking", "Coworking", 1, 11, 50, 20, False, "#8a8f9c", "c"),
-    ("cafe", "Café", 1, 22, 12, 30, True, "#d9776a", "a"),
-    ("lounge", "Lounge", 14, 22, 26, 30, False, "#a889cc", "m"),
-    ("auditorio", "Auditório", 28, 22, 38, 30, True, "#d9789e", "r"),
-    ("jogos", "Sala de Jogos", 40, 22, 50, 30, True, "#5aa86e", "v"),
-]
-
-# paredes internas: (x1, y1, x2, y2)
-PAREDES = [
-    (0, 10, 51, 10), (0, 21, 51, 21),          # os dois corredores
-    (14, 1, 14, 9), (26, 1, 26, 9), (38, 1, 38, 9),
-    (13, 22, 13, 30), (27, 22, 27, 30), (39, 22, 39, 30),
-]
-
-PORTAS = [(7, 10), (20, 10), (32, 10), (44, 10),
-          (6, 21), (20, 21), (33, 21), (45, 21)]
+LARGURA, ALTURA = 60, 36
+JARDIM = 8              # colunas de área externa antes da fachada
 
 
 def montar_padrao(esc) -> None:
-    esc.largura, esc.altura = 52, 32
-    esc.piso = [["c"] * esc.largura for _ in range(esc.altura)]
-    esc.paredes = [[0] * esc.largura for _ in range(esc.altura)]
+    esc.largura, esc.altura = LARGURA, ALTURA
+    esc.piso = [["c"] * LARGURA for _ in range(ALTURA)]
+    esc.paredes = [[0] * LARGURA for _ in range(ALTURA)]
     esc.objetos = []
     esc.zonas = []
     esc.proximo_id = 1
-
-    for x in range(esc.largura):                       # borda
-        esc.paredes[0][x] = esc.paredes[esc.altura - 1][x] = 1
-    for y in range(esc.altura):
-        esc.paredes[y][0] = esc.paredes[y][esc.largura - 1] = 1
-
-    for x1, y1, x2, y2 in PAREDES:
-        for y in range(y1, y2 + 1):
-            for x in range(x1, x2 + 1):
-                esc.paredes[y][x] = 1
-    for x, y in PORTAS:
-        esc.paredes[y][x] = 0
-        esc.paredes[y][x + 1] = 0                      # portas de 2 tiles
-
-    for id_, nome, x1, y1, x2, y2, privada, cor, piso in SALAS:
-        esc.zonas.append({"id": id_, "nome": nome, "x1": x1, "y1": y1, "x2": x2, "y2": y2,
-                          "privada": privada, "cor": cor})
-        for y in range(y1, y2 + 1):
-            for x in range(x1, x2 + 1):
-                esc.piso[y][x] = piso
 
     def por(tipo: str, x: int, y: int) -> None:
         esc.objetos.append({"id": esc.proximo_id, "tipo": tipo, "x": x, "y": y})
@@ -66,110 +26,159 @@ def montar_padrao(esc) -> None:
         for i in range(quantos):
             por(tipo, x + i * passo, y)
 
-    # ---------------- Sala de Reunião ----------------
-    por("quadro", 3, 1)
-    por("mesa_reuniao", 4, 4)
-    fileira("cadeira", 4, 3, 6)
-    fileira("cadeira", 4, 6, 6)
-    por("papeis", 5, 4); por("caneca", 7, 4); por("notebook", 8, 5)
-    por("planta_alta", 12, 7); por("planta", 1, 8)
-    por("tv", 6, 1); por("armario", 11, 1); por("caneca", 6, 4)
+    def piso(x1, y1, x2, y2, tipo):
+        for y in range(y1, y2 + 1):
+            for x in range(x1, x2 + 1):
+                if 0 <= y < ALTURA and 0 <= x < LARGURA:
+                    esc.piso[y][x] = tipo
 
-    # ---------------- Recepção ----------------
-    por("balcao", 19, 3); por("cadeira", 20, 4)
-    por("telefone", 19, 3); por("papeis", 21, 3)
-    por("tapete", 18, 6)
-    por("sofa", 16, 7); por("planta", 15, 1); por("planta", 25, 1)
-    por("relogio", 17, 1);   # longe da plaquinha da sala por("luminaria", 24, 7)
-    por("estante", 22, 1); por("planta_alta", 24, 3); por("livros", 21, 3)
+    def parede(x1, y1, x2, y2, valor=1):
+        for y in range(y1, y2 + 1):
+            for x in range(x1, x2 + 1):
+                if 0 <= y < ALTURA and 0 <= x < LARGURA:
+                    esc.paredes[y][x] = valor
 
-    # ---------------- Sala de Foco ----------------
-    for i, (x, y) in enumerate([(28, 2), (32, 2), (28, 6), (32, 6)]):
-        por("mesa", x, y); por("monitor", x, y); por("caneca", x + 1, y)
-        por("cadeira", x, y + 1)
-    por("armario", 36, 2); por("estante", 35, 8); por("planta", 36, 6)
-    for x, y in [(28, 2), (32, 2), (28, 6), (32, 6)]:
-        por("teclado", x + 1, y); por("divisoria", x + 2, y)
+    def zona(id_, nome, x1, y1, x2, y2, privada, cor):
+        esc.zonas.append({"id": id_, "nome": nome, "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                          "privada": privada, "cor": cor})
 
-    # ---------------- Diretoria ----------------
-    por("tapete", 43, 5)
-    por("mesa_grande", 42, 3); por("monitor", 43, 3); por("papeis", 45, 3)
-    por("poltrona", 44, 2); por("cadeira", 42, 5); por("cadeira", 45, 5)
-    por("estante", 48, 2); por("planta_alta", 49, 7); por("tv", 40, 1)
-    por("teclado", 44, 3); por("caneca", 42, 4); por("luminaria", 41, 7)
+    def sala(id_, nome, x1, y1, x2, y2, privada, cor, tipo_piso, porta):
+        """Sala fechada: parede em volta, porta de 2 tiles e piso próprio."""
+        parede(x1, y1, x2, y1); parede(x1, y2, x2, y2)
+        parede(x1, y1, x1, y2); parede(x2, y1, x2, y2)
+        piso(x1 + 1, y1 + 1, x2 - 1, y2 - 1, tipo_piso)
+        mx, my = (x1 + x2) // 2, (y1 + y2) // 2
+        vaos = {"baixo": [(mx, y2), (mx + 1, y2)], "cima": [(mx, y1), (mx + 1, y1)],
+                "esquerda": [(x1, my), (x1, my + 1)], "direita": [(x2, my), (x2, my + 1)]}[porta]
+        for px, py in vaos:
+            esc.paredes[py][px] = 0
+            esc.piso[py][px] = tipo_piso
+        zona(id_, nome, x1 + 1, y1 + 1, x2 - 1, y2 - 1, privada, cor)
 
-    # ---------------- Coworking: baias de trabalho ----------------
-    # Uma baia é um par de mesas geminadas com divisória no meio, monitor e
-    # teclado em cada lugar e cadeiras dos dois lados — é o desenho que dá a
-    # cara de escritório de verdade.
-    def baia(x: int, y: int) -> None:
+    # ---------------- jardim e fachada ----------------
+    piso(0, 0, JARDIM, ALTURA - 1, "g")
+    for x in range(LARGURA):
+        esc.paredes[0][x] = esc.paredes[ALTURA - 1][x] = 1
+    for y in range(ALTURA):
+        esc.paredes[y][0] = esc.paredes[y][LARGURA - 1] = 1
+    parede(JARDIM, 1, JARDIM, ALTURA - 2)                 # fachada
+    esc.paredes[17][JARDIM] = esc.paredes[18][JARDIM] = 0  # portaria
+    piso(JARDIM - 3, 16, JARDIM, 19, "p")                  # calçada até a porta
+
+    for x, y in [(2, 3), (5, 8), (2, 13), (5, 20), (2, 26), (5, 30)]:
+        por("arvore", x, y)
+    for x, y in [(4, 5), (1, 10), (6, 15), (3, 23), (6, 27), (1, 32)]:
+        por("arbusto", x, y)
+    por("banco", 4, 17); por("banco", 4, 12)
+
+    # ---------------- salas de cima ----------------
+    sala("reuniao", "Sala de Reunião", 9, 1, 21, 10, True, "#8b7fd0", "l", "baixo")
+    sala("foco", "Sala de Foco", 23, 1, 34, 10, True, "#4fae91", "v", "baixo")
+    sala("diretoria", "Diretoria", 36, 1, 47, 10, True, "#c99a4a", "m", "baixo")
+    sala("cafe", "Café", 49, 1, 58, 10, True, "#d9776a", "a", "baixo")
+
+    # ---------------- salas de baixo ----------------
+    sala("auditorio", "Auditório", 9, 25, 22, 34, True, "#d9789e", "r", "cima")
+    sala("jogos", "Sala de Jogos", 24, 25, 36, 34, True, "#5aa86e", "v", "cima")
+    sala("copa", "Copa", 38, 25, 47, 34, True, "#c98a5a", "a", "cima")
+    sala("descanso", "Descanso", 49, 25, 58, 34, True, "#7f9ec9", "m", "cima")
+
+    # ---------------- miolo aberto ----------------
+    piso(JARDIM + 1, 11, LARGURA - 2, 24, "c")
+    zona("recepcao", "Recepção", 9, 11, 20, 24, False, "#6f9fd8")
+    piso(9, 15, 20, 21, "a")
+    zona("produto", "Time Produto", 22, 11, 35, 19, False, "#8b7fd0")
+    piso(22, 11, 35, 19, "l")
+    zona("cx", "Time CX", 37, 11, 50, 19, False, "#4f7fd9")
+    piso(37, 11, 50, 19, "z")
+    zona("lounge", "Lounge", 22, 20, 50, 24, False, "#a889cc")
+    piso(22, 20, 50, 24, "m")
+
+    # ---------------- móveis: recepção ----------------
+    por("balcao", 12, 16); por("cadeira", 13, 17)
+    por("telefone", 12, 16); por("papeis", 14, 16)
+    por("tapete", 11, 19); por("sofa", 10, 13); por("poltrona", 14, 13)
+    por("planta_alta", 9, 11); por("planta_alta", 19, 11)
+    por("relogio", 16, 11); por("estante", 17, 13); por("planta", 19, 22)
+    por("bebedouro", 10, 22)
+
+    # ---------------- baias dos times ----------------
+    def baia(x, y):
         por("mesa_grande", x, y)
         for i in (0, 2):
-            por("monitor", x + i, y)
-            por("teclado", x + i, y + 1)
-        por("caneca", x + 1, y + 1)
-        por("papeis", x + 3, y)
-        # uma cadeira por posto de trabalho — fileiras cheias viravam um muro
-        por("cadeira", x, y + 2)
-        por("cadeira", x + 2, y + 2)
+            por("monitor", x + i, y); por("teclado", x + i, y + 1)
+        por("caneca", x + 1, y + 1); por("papeis", x + 3, y)
+        por("cadeira", x, y + 2); por("cadeira", x + 2, y + 2)
 
-    for y in (13, 17):
-        for x in (4, 14, 26, 38):
-            baia(x, y)
-    # carpete azul embaixo de cada bloco de baias, como no Gather
-    for y in range(12, 20):
-        for x in list(range(3, 9)) + list(range(25, 31)):
-            esc.piso[y][x] = "z"
-    for y in range(12, 20):
-        for x in list(range(13, 19)) + list(range(37, 43)):
-            esc.piso[y][x] = "l"
-
-    # divisórias em pé separando os blocos de baias, como na referência
+    for x in (23, 30):
+        baia(x, 13); baia(x, 17)
+    for x in (38, 45):
+        baia(x, 13); baia(x, 17)
     for y in (13, 14, 17, 18):
-        for x in (10, 22, 34):
-            por("divisoria", x, y)
-    por("bebedouro", 22, 12); por("planta_alta", 23, 18)
-    por("planta", 1, 11); por("planta", 50, 11); por("planta", 1, 20); por("planta", 50, 20)
-    por("planta_alta", 11, 15); por("planta_alta", 35, 15)
-    por("quadro", 9, 11); por("estante", 34, 11); por("armario", 21, 20)
+        por("divisoria", 28, y); por("divisoria", 43, y)
+    por("planta_alta", 35, 12); por("planta_alta", 50, 12)
+    por("quadro", 24, 11); por("quadro", 39, 11)
+    por("armario", 35, 18); por("armario", 50, 18)
 
-    # ---------------- Café ----------------
-    por("pia", 2, 23); por("cafeteira", 4, 23); por("geladeira", 6, 23)
-    for x, y in [(2, 26), (7, 26), (2, 29), (7, 29)]:
+    # ---------------- lounge central ----------------
+    por("tapete", 26, 21); por("sofa", 25, 20); por("sofa", 25, 23)
+    por("mesa_centro", 26, 22); por("livros", 26, 22)
+    por("tv", 31, 20); por("poltrona", 31, 23); por("planta_alta", 23, 23)
+    por("tapete_redondo", 40, 21); por("banqueta", 40, 22); por("banqueta", 41, 21)
+    por("planta", 45, 20); por("luminaria", 48, 23); por("narguile", 44, 22)
+
+    # ---------------- sala de reunião ----------------
+    por("quadro", 12, 2); por("janela", 16, 1)
+    por("mesa_reuniao", 12, 5)
+    fileira("cadeira", 12, 4, 6); fileira("cadeira", 12, 7, 6)
+    por("papeis", 13, 5); por("caneca", 15, 5); por("notebook", 16, 6)
+    por("planta_alta", 20, 8); por("planta", 10, 8); por("tv", 18, 2)
+
+    # ---------------- sala de foco ----------------
+    for i, (x, y) in enumerate([(24, 3), (28, 3), (24, 7), (28, 7)]):
+        por("mesa", x, y); por("monitor", x, y); por("teclado", x + 1, y)
+        por("cadeira", x, y + 1)
+    por("armario", 33, 2); por("estante", 32, 9); por("planta", 33, 7)
+    por("janela", 27, 1); por("bebedouro", 23, 2)
+
+    # ---------------- diretoria ----------------
+    por("tapete", 40, 5); por("mesa_grande", 39, 3)
+    por("monitor", 40, 3); por("teclado", 40, 4); por("papeis", 42, 3)
+    por("poltrona", 38, 6); por("cadeira", 39, 5); por("cadeira", 42, 5)   # fora do vão de cima
+    por("estante", 45, 2); por("planta_alta", 46, 8); por("tv", 37, 2)
+    por("janela", 43, 1); por("luminaria", 37, 8)
+
+    # ---------------- café ----------------
+    por("pia", 50, 2); por("cafeteira", 52, 2); por("geladeira", 54, 2)
+    for x, y in [(50, 5), (55, 5), (50, 8), (55, 8)]:
+        por("mesa_redonda", x, y)
+        por("cadeira", x - 1, y); por("cadeira", x + 2, y); por("caneca", x, y)
+    por("bolo", 55, 5); por("planta", 57, 2); por("janela", 52, 1)
+
+    # ---------------- auditório ----------------
+    por("palco", 13, 31); por("tv", 15, 34); por("quadro", 17, 26)
+    for y in (28, 29, 30):
+        fileira("cadeira", 11, y, 9)
+    por("planta_alta", 10, 33); por("planta_alta", 20, 33); por("luminaria", 10, 26)
+
+    # ---------------- sala de jogos ----------------
+    por("pebolim", 26, 27); por("tapete_redondo", 32, 27)
+    por("sofa", 25, 32); por("poltrona", 31, 32); por("poltrona", 33, 32)
+    por("tv", 31, 26); por("planta", 25, 26); por("luminaria", 35, 30)
+    por("mesa_centro", 32, 31); por("bolo", 32, 31)
+
+    # ---------------- copa ----------------
+    por("pia", 39, 26); por("cafeteira", 41, 26); por("geladeira", 43, 26)
+    for x, y in [(39, 29), (44, 29), (39, 32), (44, 32)]:
         por("mesa_redonda", x, y)
         por("cadeira", x - 1, y); por("cadeira", x + 2, y)
-        por("caneca", x, y)
-    por("bolo", 7, 26); por("planta", 11, 23)
-    por("bebedouro", 9, 23); por("estante", 9, 29); por("planta_alta", 11, 26)
+    por("caneca", 39, 29); por("bolo", 44, 32); por("planta", 46, 26)
 
-    # ---------------- Lounge ----------------
-    por("tapete", 18, 25)
-    por("sofa", 17, 24); por("sofa", 17, 28)
-    por("mesa_centro", 18, 26); por("livros", 18, 26)
-    por("tv", 24, 24); por("poltrona", 24, 27)
-    por("planta_alta", 15, 29); por("luminaria", 25, 29)
-    por("tapete_redondo", 21, 26); por("banqueta", 22, 24); por("planta", 26, 22)
-    por("estante", 15, 22); por("livros", 18, 26)
-    por("narguile", 21, 28)
+    # ---------------- descanso ----------------
+    por("tapete", 51, 28); por("sofa", 50, 27); por("sofa", 50, 31)
+    por("mesa_centro", 51, 29); por("livros", 51, 29)
+    por("planta_alta", 57, 26); por("luminaria", 57, 32); por("narguile", 55, 30)
+    por("estante", 53, 33)
 
-    # ---------------- Auditório ----------------
-    # Palco no fundo e plateia voltada para ele; a entrada (y=21) fica livre,
-    # senão a porta abre num beco sem saída.
-    por("palco", 30, 27)
-    por("tv", 32, 30)
-    por("quadro", 35, 22)
-    for y in (24, 25, 26):
-        fileira("cadeira", 29, y, 8)
-    por("planta_alta", 28, 29); por("planta_alta", 37, 29)
-    por("luminaria", 28, 22); por("planta", 37, 22)
-
-    # ---------------- Sala de Jogos ----------------
-    por("pebolim", 42, 24)
-    por("tapete_redondo", 47, 24)
-    por("sofa", 41, 28); por("poltrona", 46, 28); por("poltrona", 48, 28)
-    por("tv", 46, 22); por("planta", 40, 22); por("luminaria", 49, 26)
-    por("mesa_centro", 46, 26); por("bolo", 46, 26); por("planta_alta", 40, 29)
-    por("narguile", 44, 27)
-
-    esc.nascimento = (20, 6)
+    esc.nascimento = (14, 20)
     esc._recalcular()
