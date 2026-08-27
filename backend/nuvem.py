@@ -24,6 +24,7 @@ log = logging.getLogger("escritorio.nuvem")
 TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
 REPO = os.environ.get("GITHUB_REPO", "").strip()          # ex.: caliperti/escritorio-virtual
 PASTA = os.environ.get("ESTADO_PASTA", "estado").strip()   # onde ficam no repositório
+RAMO = os.environ.get("ESTADO_RAMO", "estado").strip()     # branch só do estado
 CHAVE = os.environ.get("ESTADO_CHAVE", "").strip()         # cifra o conteúdo
 ESPERA = 20                                                # segundos de agrupamento
 
@@ -54,9 +55,13 @@ _pendentes: set = set()
 _tarefa: Optional[asyncio.Task] = None
 
 
-def _requisitar(metodo: str, caminho: str, corpo: Optional[dict] = None):
+def _requisitar(metodo: str, caminho: str, corpo: Optional[dict] = None, cru: str = ""):
+    """Chamada à API do GitHub. `cru` permite falar com endpoints fora de /contents."""
+    url = (f"https://api.github.com/repos/{REPO}/{cru}" if cru
+           else f"https://api.github.com/repos/{REPO}/contents/{caminho}?ref={RAMO}"
+           if metodo == "GET" else f"https://api.github.com/repos/{REPO}/contents/{caminho}")
     req = urllib.request.Request(
-        f"https://api.github.com/repos/{REPO}/contents/{caminho}",
+        url,
         method=metodo,
         data=json.dumps(corpo).encode() if corpo else None,
         headers={"Authorization": f"Bearer {TOKEN}", "Accept": "application/vnd.github+json",
@@ -82,9 +87,23 @@ def restaurar(arquivos: List[Path]) -> None:
             log.info("sem cópia de %s no repositório (%s)", arq.name, e.__class__.__name__)
 
 
+def _garantir_ramo() -> None:
+    """O estado vive num branch só dele — assim o `main` fica só com código."""
+    try:
+        _requisitar("GET", "", cru=f"git/ref/heads/{RAMO}")
+        return
+    except Exception:
+        pass
+    base = _requisitar("GET", "", cru="git/ref/heads/main")
+    _requisitar("POST", "", {"ref": f"refs/heads/{RAMO}", "sha": base["object"]["sha"]},
+                cru="git/refs")
+    log.info("branch %s criado para o estado", RAMO)
+
+
 def _enviar(arq: Path) -> None:
     if not arq.exists() or (_sigiloso(arq) and not _cofre):
         return
+    _garantir_ramo()
     caminho = f"{PASTA}/{arq.name}"
     sha = None
     try:
@@ -93,6 +112,7 @@ def _enviar(arq: Path) -> None:
         pass                                   # ainda não existe lá
     _requisitar("PUT", caminho, {
         "message": f"estado: {arq.name}",
+        "branch": RAMO,
         "content": base64.b64encode(_cifrar(arq.read_bytes())).decode(),
         **({"sha": sha} if sha else {}),
     })
