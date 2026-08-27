@@ -42,6 +42,22 @@ com nomes diferentes.
 Clique em qualquer miniatura de vídeo para abrir em tela cheia — é assim que se
 assiste à apresentação de alguém.
 
+## O visual
+
+O cenário segue a linguagem do Gather, que resolvi copiar em três decisões:
+
+- **paredes claras com profundidade** — topo iluminado, rodapé e sombra caindo
+  no chão, em vez do bloco escuro chapado de antes;
+- **a área do time é o carpete**, não um retângulo tingido por cima de tudo: cada
+  sala tem seu piso (lilás, azul, menta, rosa, madeira) e se anuncia por uma
+  plaquinha flutuante com o pontinho da cor;
+- **baias densas**: mesa geminada com monitor e teclado por posto, caneca,
+  papéis, divisória de vidro fosco entre blocos e uma cadeira por lugar.
+
+A paleta é clara e fixa (bege/branco no mobiliário, cor forte só nos carpetes e
+nas telas), e toda peça é desenhada em 3/4 — tampo mais uma faixa da frente —
+com luz no topo e contorno tingido pela própria cor.
+
 ## Os bonequinhos e os móveis
 
 A arte vem de dois pacotes do **Kenney** em **domínio público (CC0)** — sem

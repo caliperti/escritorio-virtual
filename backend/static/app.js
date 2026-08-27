@@ -601,12 +601,20 @@ function ajustarTela() {
 }
 window.addEventListener('resize', () => { if (Jogo.eu) ajustarTela(); });
 
+// Paleta clara, tirada da referência: o chão é neutro e quem colore o ambiente
+// são os carpetes das áreas de time.
 const CORES_PISO = {
-  m: ['#c99a6b', '#c08f5f'],   // madeira
-  c: ['#dcd7cd', '#d5cfc4'],   // carpete
-  a: ['#e6ebf1', '#dfe5ec'],   // azulejo
-  p: ['#c9ccd1', '#c2c5cb'],   // concreto
-  g: ['#8fbd72', '#86b568'],   // grama
+  // Os dois tons de cada piso são quase iguais de propósito: o xadrez forte
+  // competia com os móveis. A variação existe só para o chão não ficar chapado.
+  m: ['#dcc19c', '#d9bd97'],   // madeira clara
+  c: ['#e9e3d9', '#e7e0d5'],   // carpete neutro
+  a: ['#ebedf0', '#e8eaee'],   // azulejo
+  p: ['#e2dfda', '#dfdcd7'],   // concreto
+  g: ['#a3cb84', '#9fc880'],   // grama
+  l: ['#cdc2e6', '#c9bde3'],   // carpete lilás
+  z: ['#c3d5f1', '#bdd0ee'],   // carpete azul
+  v: ['#c2e2d3', '#bcded0'],   // carpete menta
+  r: ['#eed2da', '#eaccd5'],   // carpete rosa
 };
 
 function desenhar() {
@@ -651,38 +659,57 @@ function desenhar() {
   }
 
   // ---------- salas ----------
-  // Quem dá identidade à sala é o piso; a cor da zona entra só como moldura e
-  // etiqueta. Pintar o retângulo inteiro deixava o chão embarrado.
+  // O que marca a área é o carpete no chão; a sala se anuncia por uma plaquinha
+  // flutuante no topo, como no Gather. Retângulo tingido deixava tudo embarrado.
   for (const z of mapa.zonas) {
     const zx = z.x1 * t, zy = z.y1 * t;
-    const zw = (z.x2 - z.x1 + 1) * t, zh = (z.y2 - z.y1 + 1) * t;
-    if (z.privada) {
-      ctx.fillStyle = z.cor + '12';
-      ctx.fillRect(zx, zy, zw, zh);
-    }
-    ctx.strokeStyle = z.cor + (z.privada ? '66' : '3a');
-    ctx.lineWidth = 2;
-    if (!z.privada) ctx.setLineDash([10, 6]);
-    ctx.strokeRect(zx + 1, zy + 1, zw - 2, zh - 2);
-    ctx.setLineDash([]);
+    const zw = (z.x2 - z.x1 + 1) * t;
+    const texto = (z.privada ? '🔒 ' : '') + z.nome;
+    ctx.font = '600 12px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const larg = ctx.measureText(texto).width + 20;
+    const px = zx + zw / 2 - larg / 2, py = zy + 6;
+    ctx.fillStyle = 'rgba(38,34,52,.72)';
+    arredondado(px, py, larg, 20, 10);
+    ctx.fill();
     ctx.fillStyle = z.cor;
-    ctx.font = '600 13px -apple-system, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText((z.privada ? '🔒 ' : '') + z.nome, zx + 8, zy + 18);
+    ctx.beginPath();
+    ctx.arc(px + 9, py + 10, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#f6f4ef';
+    ctx.fillText(texto, px + larg / 2 + 4, py + 10);
   }
 
   // ---------- paredes ----------
+  // Parede clara com topo iluminado, rodapé e sombra caindo no chão: é o que
+  // dá a sensação de altura sem sair da vista de cima.
+  const ehParede = (x, y) => y >= 0 && y < mapa.altura && x >= 0 && x < mapa.largura
+    && mapa.paredes[y][x] === '1';
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
-      if (mapa.paredes[y][x] !== '1') continue;
-      ctx.fillStyle = '#2c3854';
-      ctx.fillRect(x * t, y * t, t, t);
-      // relevo só na primeira fileira: senão a parede vira um monte de listras
-      if (y === 0 || mapa.paredes[y - 1][x] !== '1') {
-        ctx.fillStyle = '#465878';
-        ctx.fillRect(x * t, y * t, t, 7);
+      if (!ehParede(x, y)) continue;
+      const px = x * t, py = y * t;
+      if (!ehParede(x, y + 1)) {                       // sombra projetada no piso
+        ctx.fillStyle = 'rgba(90,80,110,.16)';
+        ctx.fillRect(px, py + t, t, 6);
       }
+      ctx.fillStyle = '#efebe3';
+      ctx.fillRect(px, py, t, t);
+      if (!ehParede(x, y - 1)) {                       // topo da parede
+        ctx.fillStyle = '#fbf9f4';
+        ctx.fillRect(px, py, t, 6);
+        ctx.fillStyle = '#d9d2c4';
+        ctx.fillRect(px, py + 6, t, 2);
+      }
+      if (!ehParede(x, y + 1)) {                       // rodapé
+        ctx.fillStyle = '#cfc7b7';
+        ctx.fillRect(px, py + t - 5, t, 5);
+        ctx.fillStyle = '#b3a998';
+        ctx.fillRect(px, py + t - 2, t, 2);
+      }
+      if (!ehParede(x - 1, y)) { ctx.fillStyle = 'rgba(180,170,150,.5)'; ctx.fillRect(px, py, 2, t); }
+      if (!ehParede(x + 1, y)) { ctx.fillStyle = 'rgba(150,140,120,.35)'; ctx.fillRect(px + t - 2, py, 2, t); }
     }
   }
 
@@ -705,9 +732,9 @@ function desenhar() {
   if (!(zonaEu && zonaEu.privada)) {
     ctx.beginPath();
     ctx.arc(eu.x, eu.y, Jogo.config.raio_conversa, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(56,189,248,.5)';
-    ctx.setLineDash([6, 6]);
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(120,140,200,.28)';
+    ctx.setLineDash([5, 9]);
+    ctx.lineWidth = 1.5;
     ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -781,12 +808,16 @@ function desenharAvatar(p, souEu) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.font = '600 11px -apple-system, sans-serif';
-  const largura = ctx.measureText(p.nome).width + 14;
-  ctx.fillStyle = 'rgba(11,17,32,.78)';
-  arredondado(p.xr - largura / 2, pes + 4, largura, 16, 8);
+  const largura = ctx.measureText(p.nome).width + 24;
+  ctx.fillStyle = 'rgba(38,34,52,.8)';
+  arredondado(p.xr - largura / 2, pes + 4, largura, 17, 8);
   ctx.fill();
-  ctx.fillStyle = '#fff';
-  ctx.fillText(p.nome, p.xr, pes + 12);
+  ctx.fillStyle = p.cor;
+  ctx.beginPath();
+  ctx.arc(p.xr - largura / 2 + 9, pes + 12, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#f6f4ef';
+  ctx.fillText(p.nome, p.xr + 4, pes + 12);
 
   ctx.font = '11px -apple-system, sans-serif';
   if (mudo) ctx.fillText('🔇', p.xr + largura / 2 + 6, pes + 12);

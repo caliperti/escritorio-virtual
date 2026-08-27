@@ -35,6 +35,7 @@ HISTORICO = 40                      # quantos passos de desfazer guardamos
 
 PISOS = {
     "m": "Madeira", "c": "Carpete", "a": "Azulejo", "p": "Concreto", "g": "Grama",
+    "l": "Carpete lilás", "z": "Carpete azul", "v": "Carpete menta", "r": "Carpete rosa",
 }
 
 # grupo, nome, largura, altura, bloqueia, camada
@@ -63,6 +64,7 @@ _item("planta", "Sala", "Planta", 1, 1, True)
 _item("planta_alta", "Sala", "Planta alta", 1, 2, True)
 _item("estante", "Sala", "Estante", 2, 1, True)
 _item("armario", "Sala", "Armário", 1, 1, True)
+_item("divisoria", "Sala", "Divisória", 1, 1, True)   # separa as baias
 _item("quadro", "Sala", "Quadro branco", 3, 1, True)
 _item("tv", "Sala", "TV", 2, 1, True)
 _item("tapete", "Sala", "Tapete", 3, 2, False, "piso")
@@ -79,6 +81,7 @@ _item("bebedouro", "Café", "Bebedouro", 1, 1, True)
 _item("pia", "Café", "Pia", 2, 1, True)
 # ---- em cima da mesa (não bloqueiam) ----
 _item("monitor", "Na mesa", "Monitor", 1, 1, False, "mesa")
+_item("teclado", "Na mesa", "Teclado", 1, 1, False, "mesa")
 _item("notebook", "Na mesa", "Notebook", 1, 1, False, "mesa")
 _item("caneca", "Na mesa", "Caneca", 1, 1, False, "mesa")
 _item("papeis", "Na mesa", "Papéis", 1, 1, False, "mesa")
