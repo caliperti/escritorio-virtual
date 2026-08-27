@@ -109,22 +109,25 @@ continuam desenhados aqui (`objetos.js`), sem restrição.
 
 ## A planta do escritório
 
-O escritório de fábrica segue o formato da referência do Gather: **jardim na
-entrada** (grama, árvores e bancos), o prédio com **salas fechadas em volta** e,
-no miolo, área aberta onde **cada time tem seu carpete**.
+O formato é **uma sala por pessoa**, não open space:
 
-São 12 áreas — Recepção, Time Produto, Time CX, Lounge, Sala de Reunião, Sala de
-Foco, Diretoria, Café, Auditório, Sala de Jogos, Copa e Descanso — em 60×36
-tiles, com 274 móveis já posicionados.
+- **10 salas individuais** em volta (Recepção, Diretoria, Comercial, Marketing,
+  Financeiro, Tráfego, Design, Suporte, TI e Conteúdo), cada uma com porta,
+  piso próprio, mesa, um setup de computador diferente e enfeites variados;
+- **uma sala de reunião grande** no meio à direita, com mesa comprida, 48
+  lugares, quadro, TV e um canto de espera;
+- **circulação** ligando tudo, com **café** e **convivência** (sofás, pebolim,
+  TV) — áreas abertas, onde a conversa é por proximidade;
+- **jardim** na entrada, com árvores, arbustos e bancos.
+
+São 64×36 tiles e 14 áreas. Os nomes são só o ponto de partida: clique na
+plaquinha de qualquer sala para renomear (o nome da pessoa, por exemplo), trocar
+a cor, ligar o áudio fechado ou redesenhar a área.
 
 | Sala | Áudio |
 |---|---|
-| Recepção, Coworking, Lounge | aberto — você ouve quem está no raio de ~5 tiles |
-| 🔒 Reunião, Foco, Diretoria, Café, Auditório, Jogos | fechado — só quem está dentro |
-
-Quando duas salas se sobrepõem, **vence a menor**: dá para desenhar uma salinha
-fechada no meio do coworking que ela passa a valer ali dentro. (A regra está em
-`mapa.py:zona_de` e em `app.js:zonaDe` — mudou uma, mude a outra.)
+| 🔒 as 10 individuais e a de reunião | fechado — só quem está dentro se ouve |
+| Circulação, Café, Convivência | aberto — vale o raio de proximidade |
 
 ## Editar o escritório (o "Mapmaker")
 
