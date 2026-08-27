@@ -70,6 +70,18 @@ A paleta é clara e fixa (bege/branco no mobiliário, cor forte só nos carpetes
 nas telas), e toda peça é desenhada em 3/4 — tampo mais uma faixa da frente —
 com luz no topo e contorno tingido pela própria cor.
 
+## Sentar e computadores
+
+**Pisar numa cadeira senta a pessoa** — cadeira, poltrona, banqueta ou sofá. O LPC
+tem folha própria de sentado (3 poses × 4 direções), então é a pose de verdade, não
+o boneco em pé em cima do assento. Quem decide é o cliente, olhando o que existe no
+tile: não precisou de nada no protocolo.
+
+A categoria **Computadores** tem 11 peças para montar o posto de cada um: monitor,
+dois monitores, ultrawide curvo, setup gamer com gabinete, all-in-one, notebook,
+tablet, headset, teclado e mouse. Cada tela desenha um conteúdo diferente (código,
+planilha, gráfico, jogo, vídeo), que é o que faz o computador parecer ligado.
+
 ## Os personagens
 
 Sprites do **LPC (Universal LPC Spritesheet)**: 64×64 por quadro, 4 direções e

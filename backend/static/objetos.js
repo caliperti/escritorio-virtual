@@ -449,13 +449,79 @@ const Objetos = {
     },
 
     /* ================= em cima da mesa ================= */
-    monitor(c, x, y, w, h) {
-      this.ret(c, x + w / 2 - 6, y + h - 12, 12, 4, 2, this.mix(this.ESCURO, this.METAL, 0.3));
-      this.ret(c, x + 3, y + 4, w - 6, h - 16, 3, this.ESCURO);
-      this.ret(c, x + 5, y + 6, w - 10, h - 20, 2, this.TELA);
-      c.save(); c.globalAlpha = 0.45;
-      this.ret(c, x + 6, y + 7, (w - 12) * 0.4, h - 22, 1, this.luz(this.TELA, 0.6));
+    monitor(c, x, y, w, h) { this._monitor(c, x + 2, y + 3, w - 4, h - 9, 'codigo'); },
+
+    monitor_duplo(c, x, y, w, h) {
+      const l = (w - 6) / 2;
+      this._monitor(c, x + 2, y + 4, l, h - 11, 'planilha');
+      this._monitor(c, x + w / 2 + 1, y + 4, l, h - 11, 'grafico');
+    },
+
+    monitor_curvo(c, x, y, w, h) {
+      const cor = this.ESCURO;
+      this.ret(c, x + w / 2 - 9, y + h - 11, 18, 5, 2, this.mix(cor, this.METAL, 0.35));
+      this.ret(c, x + w / 2 - 4, y + h - 16, 8, 6, 2, this.mix(cor, this.METAL, 0.2));
+      // a curvatura vem de a moldura ser mais alta nas pontas
+      this.ret(c, x + 2, y + 5, w - 4, h - 20, 4, this.traco(cor));
+      this.ret(c, x + 3, y + 6, w - 6, h - 22, 3, cor);
+      this.ret(c, x + 1, y + 7, 4, h - 24, 2, cor);
+      this.ret(c, x + w - 5, y + 7, 4, h - 24, 2, cor);
+      this._tela(c, x + 5, y + 8, w - 10, h - 26, 'video');
+    },
+
+    monitor_gamer(c, x, y, w, h) {
+      c.save(); c.globalAlpha = 0.28;                       // brilho RGB atrás
+      this.ret(c, x + 1, y + 2, w - 2, h - 8, 6, '#9d5cff');
       c.restore();
+      this._monitor(c, x + 2, y + 3, w - 4, h - 9, 'jogo');
+      this.ret(c, x + 4, y + h - 12, w - 8, 2, 1, '#ff4fd8');   // fita de LED
+    },
+
+    imac(c, x, y, w, h) {
+      const cor = '#dfe2e8';
+      this.ret(c, x + w / 2 - 7, y + h - 11, 14, 4, 2, cor);
+      this.ret(c, x + w / 2 - 3, y + h - 15, 6, 5, 1, cor);
+      this.ret(c, x + 3, y + 4, w - 6, h - 18, 3, this.traco(cor));
+      this.ret(c, x + 4, y + 5, w - 8, h - 20, 2, cor);
+      this._tela(c, x + 6, y + 7, w - 12, h - 26, 'desktop');
+    },
+
+    torre(c, x, y, w, h) {
+      const cor = '#2f333d';
+      this.ret(c, x + 8, y + 5, w - 16, h - 12, 3, this.traco(cor));
+      this.ret(c, x + 9, y + 6, w - 18, h - 14, 2, cor);
+      c.save(); c.globalAlpha = 0.75;
+      this.ret(c, x + 11, y + 9, w - 22, h - 22, 1, '#4fd8ff');   // painel iluminado
+      c.restore();
+      this.ret(c, x + 11, y + h - 12, w - 22, 2, 1, '#9d5cff');
+    },
+
+    tablet(c, x, y, w, h) {
+      c.save();
+      c.translate(x + w / 2, y + h / 2); c.rotate(-0.12);
+      this.ret(c, -9, -11, 18, 22, 3, this.traco(this.ESCURO));
+      this.ret(c, -8, -10, 16, 20, 3, this.ESCURO);
+      this.ret(c, -6, -8, 12, 16, 2, this.TELA);
+      c.restore();
+      this.ret(c, x + w / 2 - 7, y + h - 9, 14, 3, 2, this.METAL);   // suporte
+    },
+
+    fone_mesa(c, x, y, w, h) {
+      const cor = '#33383f';
+      c.strokeStyle = this.traco(cor); c.lineWidth = 5; c.lineCap = 'round';
+      c.beginPath(); c.arc(x + w / 2, y + h / 2 + 2, 8, Math.PI, 0); c.stroke();
+      c.strokeStyle = cor; c.lineWidth = 3;
+      c.beginPath(); c.arc(x + w / 2, y + h / 2 + 2, 8, Math.PI, 0); c.stroke();
+      this.ret(c, x + w / 2 - 12, y + h / 2, 5, 9, 2, cor);
+      this.ret(c, x + w / 2 + 7, y + h / 2, 5, 9, 2, cor);
+      this.ret(c, x + w / 2 - 11, y + h / 2 + 2, 2, 4, 1, '#4fd8ff');
+    },
+
+    mouse(c, x, y, w, h) {
+      const cor = '#d5d2cb';
+      this.ret(c, x + w / 2 - 5, y + h / 2 - 6, 10, 13, 5, this.traco(cor));
+      this.ret(c, x + w / 2 - 4, y + h / 2 - 5, 8, 11, 4, cor);
+      this.ret(c, x + w / 2 - 1, y + h / 2 - 4, 2, 4, 1, this.sombra(cor, 0.3));
     },
     teclado(c, x, y, w, h) {
       this.ret(c, x + 4, y + h / 2 - 3, w - 8, 10, 2, this.traco('#d5d2cb'));
@@ -513,6 +579,56 @@ const Objetos = {
   },
 
   /* ---------- peças auxiliares ---------- */
+
+  /** Monitor com pé, moldura e tela — a base de quase todo computador. */
+  _monitor(c, x, y, w, h, assunto) {
+    const cor = this.ESCURO;
+    this.ret(c, x + w / 2 - 6, y + h - 3, 12, 4, 2, this.mix(cor, this.METAL, 0.35));  // base
+    this.ret(c, x + w / 2 - 2.5, y + h - 7, 5, 5, 1, this.mix(cor, this.METAL, 0.2)); // pescoço
+    this.ret(c, x, y, w, h - 6, 3, this.traco(cor));
+    this.ret(c, x + 1, y + 1, w - 2, h - 8, 2, cor);
+    this._tela(c, x + 3, y + 3, w - 6, h - 12, assunto);
+  },
+
+  /** Conteúdo da tela: é o que faz o computador parecer ligado. */
+  _tela(c, x, y, w, h, assunto) {
+    const fundo = { codigo: '#1e2b3d', planilha: '#f2f4f7', grafico: '#22304a',
+                    jogo: '#1a1230', video: '#101826', desktop: '#2b4a6f' }[assunto] || '#1e2b3d';
+    this.ret(c, x, y, w, h, 1, fundo);
+    const px = (dx, dy, dw, dh, cor) => this.ret(c, x + dx, y + dy, dw, dh, 0.5, cor);
+    if (assunto === 'codigo') {
+      px(2, 2, w - 4, 2, '#3d5a80');
+      const cores = ['#7ee0a0', '#ffd479', '#7fb8ff', '#ff9ec4'];
+      for (let i = 0; i < Math.floor((h - 8) / 3); i++) {
+        px(3, 6 + i * 3, (w - 8) * (0.35 + (i % 3) * 0.22), 1.5, cores[i % 4]);
+      }
+    } else if (assunto === 'planilha') {
+      px(0, 0, w, 2.5, '#4f8de0');
+      for (let i = 1; i < Math.floor(h / 3); i++) px(1, i * 3, w - 2, 1, '#c9d4e2');
+      for (let i = 1; i < Math.floor(w / 4); i++) px(i * 4, 3, 1, h - 4, '#c9d4e2');
+    } else if (assunto === 'grafico') {
+      const alturas = [0.35, 0.6, 0.45, 0.8, 0.55];
+      alturas.forEach((a, i) => px(2 + i * ((w - 4) / 5), h - 2 - (h - 5) * a,
+                                   (w - 4) / 5 - 1.5, (h - 5) * a, ['#4fd8ff', '#7ee0a0', '#ffd479'][i % 3]));
+    } else if (assunto === 'jogo') {
+      px(0, 0, w, h, '#1a1230');
+      px(1, h * 0.55, w - 2, h * 0.45, '#3b2a6b');
+      px(w * 0.2, h * 0.2, 3, 3, '#ff4fd8');
+      px(w * 0.6, h * 0.35, 4, 4, '#4fd8ff');
+      px(w * 0.4, h * 0.62, 5, 3, '#ffd479');
+    } else if (assunto === 'video') {
+      px(1, 1, w - 2, h * 0.62, '#1c3a5e');
+      px(w * 0.42, h * 0.22, 4, 4, '#e8f2ff');
+      px(1, h - 3, w - 2, 2, '#33455f');
+      px(1, h - 3, (w - 2) * 0.4, 2, '#4fd8ff');
+    } else {
+      px(1, 1, 4, 4, '#e8f2ff'); px(6, 1, 4, 4, '#ffd479');
+      px(1, 6, 4, 4, '#7ee0a0'); px(1, h - 3, w - 2, 2, '#1b3350');
+    }
+    c.save(); c.globalAlpha = 0.16;                       // reflexo do vidro
+    this.ret(c, x, y, w * 0.42, h, 1, '#ffffff');
+    c.restore();
+  },
 
   _mesa(c, x, y, w, h, dupla) {
     this.bloco(c, x + 1, y + 2, w - 2, h - 4, this.TAMPO, 3);

@@ -691,6 +691,21 @@ function atualizar() {
   }
 }
 
+/** Assentos: pisar em cima de um deles senta a pessoa (como no Gather). */
+const ASSENTOS = new Set(['cadeira', 'poltrona', 'banqueta', 'sofa']);
+
+function assentoEm(px, py) {
+  if (!Jogo.mapa) return null;
+  const t = Jogo.tile;
+  const tx = Math.floor(px / t), ty = Math.floor(py / t);
+  for (const o of Jogo.mapa.objetos) {
+    if (!ASSENTOS.has(o.tipo)) continue;
+    const info = Jogo.mapa.catalogo[o.tipo];
+    if (tx >= o.x && tx < o.x + info.l && ty >= o.y && ty < o.y + info.a) return o;
+  }
+  return null;
+}
+
 /* ==================== quem ouve quem ==================== */
 
 function podemConversar(a, b, jaConectados) {
@@ -939,7 +954,8 @@ function desenharAvatar(p, souEu) {
     ctx.stroke();
   }
 
-  Boneco.desenhar(ctx, p.aparencia, p.xr, p.yr, p.direcao, Math.floor(p.passo || 0), 2);
+  const sentado = !!assentoEm(p.xr, p.yr);
+  Boneco.desenhar(ctx, p.aparencia, p.xr, p.yr, p.direcao, Math.floor(p.passo || 0), 2, sentado);
 
   // placa com o nome, logo abaixo dos pés
   ctx.textAlign = 'center';

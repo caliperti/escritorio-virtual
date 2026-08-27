@@ -103,12 +103,26 @@ def montar_padrao(esc) -> None:
     por("bebedouro", 10, 22)
 
     # ---------------- baias dos times ----------------
+    # Cada posto ganha um setup diferente — é o que faz a baia parecer de gente
+    # de verdade, e não a mesma mesa copiada oito vezes.
+    SETUPS = [
+        [("monitor", 0, 0), ("teclado", 0, 1), ("mouse", 1, 1)],
+        [("monitor_duplo", 0, 0), ("teclado", 0, 1), ("caneca", 1, 1)],
+        [("monitor_curvo", 0, 0), ("teclado", 0, 1), ("fone_mesa", 1, 1)],
+        [("monitor_gamer", 0, 0), ("torre", 1, 0), ("teclado", 0, 1)],
+        [("imac", 0, 0), ("tablet", 1, 0), ("teclado", 0, 1)],
+        [("notebook", 0, 0), ("papeis", 1, 0), ("caneca", 0, 1)],
+    ]
+    contador = {"n": 0}
+
     def baia(x, y):
         por("mesa_grande", x, y)
-        for i in (0, 2):
-            por("monitor", x + i, y); por("teclado", x + i, y + 1)
-        por("caneca", x + 1, y + 1); por("papeis", x + 3, y)
-        por("cadeira", x, y + 2); por("cadeira", x + 2, y + 2)
+        for lado in (0, 2):                       # dois postos por baia
+            setup = SETUPS[contador["n"] % len(SETUPS)]
+            contador["n"] += 1
+            for tipo, dx, dy in setup:
+                por(tipo, x + lado + dx, y + dy)
+            por("cadeira", x + lado, y + 2)
 
     for x in (23, 30):
         baia(x, 13); baia(x, 17)

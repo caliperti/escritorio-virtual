@@ -17,6 +17,8 @@ const Boneco = {
   QUADRO: 64,
   QUADROS: 9,
   LINHA: { cima: 0, esquerda: 1, baixo: 2, direita: 3 },
+  // A folha de sentado tem 3 poses por direção; usamos a primeira (cadeira).
+  QUADROS_SENTADO: 3,
 
   CATALOGO: {
     corpo: ['m', 'f'],
@@ -50,10 +52,12 @@ const Boneco = {
   _aoCarregar: [],
 
   iniciar() {
-    const arquivos = ['corpo_m', 'corpo_f', 'camisa_m', 'camisa_f', 'calca_m', 'calca_f',
-                      'sapato_m', 'sapato_f', 'cabeca_m', 'cabeca_f', 'olhos', 'sobrancelha',
-                      ...this.CATALOGO.cabelo.map((e) => 'cabelo_' + e),
-                      ...this.CATALOGO.barba.filter((b) => b !== 'nenhuma').map((b) => 'barba_' + b)];
+    const camadas = ['corpo_m', 'corpo_f', 'camisa_m', 'camisa_f', 'calca_m', 'calca_f',
+                     'sapato_m', 'sapato_f', 'cabeca_m', 'cabeca_f', 'olhos', 'sobrancelha',
+                     ...this.CATALOGO.cabelo.map((e) => 'cabelo_' + e),
+                     ...this.CATALOGO.barba.filter((b) => b !== 'nenhuma').map((b) => 'barba_' + b)];
+    // duas folhas por camada: andando e sentado
+    const arquivos = [...camadas, ...camadas.map((c) => 'sit_' + c)];
     this._faltam = arquivos.length;
     for (const nome of arquivos) {
       const img = new Image();
@@ -142,11 +146,12 @@ const Boneco = {
 
   _cache: new Map(),
 
-  _folha(ap) {
-    const chave = Object.values(ap).join('|');
+  _folha(ap, sentado) {
+    const chave = Object.values(ap).join('|') + (sentado ? '|s' : '');
     if (this._cache.has(chave)) return this._cache.get(chave);
 
-    const L = this.QUADRO * this.QUADROS, A = this.QUADRO * 4;
+    const prefixo = sentado ? 'sit_' : '';
+    const L = this.QUADRO * (sentado ? this.QUADROS_SENTADO : this.QUADROS), A = this.QUADRO * 4;
     const alvo = document.createElement('canvas');
     alvo.width = L; alvo.height = A;
     const cx = alvo.getContext('2d');
@@ -165,7 +170,7 @@ const Boneco = {
     ];
     if (ap.barba !== 'nenhuma') camadas.push(['barba_' + ap.barba, ap.corCabelo, false]);
     for (const [nome, cor, preserva] of camadas) {
-      const img = this._imgs[nome];
+      const img = this._imgs[prefixo + nome];
       if (!img || !img.complete || !img.naturalWidth) continue;
       const temp = document.createElement('canvas');
       temp.width = L; temp.height = A;
@@ -182,8 +187,10 @@ const Boneco = {
 
   /* ---------- desenho ---------- */
 
-  /** Desenha com os pés em (x, y + 13) e o corpo centrado em x. */
-  desenhar(ctx, aparencia, x, y, direcao, quadro, escala) {
+  /** Desenha com os pés em (x, y + 13) e o corpo centrado em x.
+   *  `sentado` troca para a folha de sentado — é o que faz o boneco se acomodar
+   *  na cadeira em vez de ficar plantado em cima dela. */
+  desenhar(ctx, aparencia, x, y, direcao, quadro, escala, sentado) {
     const ap = this.normalizar(aparencia);
     const S = (escala || 2) * 0.46;                 // 64px de quadro no tamanho do mundo
     if (!this._pronto) {
@@ -193,15 +200,17 @@ const Boneco = {
       ctx.fill();
       return;
     }
-    const folha = this._folha(ap);
+    const folha = this._folha(ap, sentado);
     const Q = this.QUADRO;
     const linha = this.LINHA[direcao] === undefined ? this.LINHA.baixo : this.LINHA[direcao];
-    // quadro 0 é a pose parada; 1..8 é a passada
-    const col = quadro > 0 ? 1 + (quadro % 8) : 0;
+    // quadro 0 é a pose parada; 1..8 é a passada. Sentado tem pose única.
+    const col = sentado ? 0 : (quadro > 0 ? 1 + (quadro % 8) : 0);
     const lado = Q * S;
     ctx.imageSmoothingEnabled = false;
+    // sentado o corpo sobe um pouco, para o quadril encostar no assento
+    const base = sentado ? lado * 0.9 : lado * 0.955;
     ctx.drawImage(folha, col * Q, linha * Q, Q, Q,
-                  Math.round(x - lado / 2), Math.round(y + 13 - lado * 0.955), lado, lado);
+                  Math.round(x - lado / 2), Math.round(y + 13 - base), lado, lado);
   },
 
   /* ---------- retrato ---------- */
