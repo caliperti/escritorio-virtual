@@ -68,8 +68,10 @@ antes, que era de onde vinha o aspecto quadriculado.
 Cada camada vem numa cor só, então a personalização é feita **recolorindo em
 tempo de execução**: as cores de cada camada são ordenadas por luminância e
 mapeadas numa rampa criada a partir da cor escolhida. Assim o sombreado original
-é preservado e só o matiz muda — e sobra: 2 corpos × 6 peles × 5 cabelos × 8
-cores de cabelo × 10 camisas × 5 calças. O resultado fica em cache por
+é preservado e só o matiz muda — e sobra: 2 corpos × 6 peles × **10 cortes de
+cabelo** (bagunçado, repartido, militar, espetado, raspado, franjão, chanel,
+black power, longo, tranças) × 8 cores de cabelo × **5 barbas** × 10 camisas ×
+5 calças. O resultado fica em cache por
 combinação.
 
 Uma pegadinha do formato, que custou tempo: no LPC o **corpo vem sem cabeça** e

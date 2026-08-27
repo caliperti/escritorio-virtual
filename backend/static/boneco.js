@@ -21,20 +21,25 @@ const Boneco = {
   CATALOGO: {
     corpo: ['m', 'f'],
     pele: ['#f2cfa8', '#e5b487', '#c98d5f', '#a06b40', '#6f4726', '#432c19'],
-    cabelo: ['bob', 'buzzcut', 'afro', 'bangslong', 'cornrows'],
+    cabelo: ['messy1', 'parted', 'high_and_tight', 'spiked', 'buzzcut', 'curtains',
+             'bob', 'afro', 'bangslong', 'cornrows'],
     corCabelo: ['#241a12', '#4a2f1b', '#8a5a2b', '#d8b164', '#a8452c',
                 '#7c4fa8', '#e2e2e2', '#2f5fa8'],
     corCamisa: ['#d94f5c', '#e8843c', '#e0b93f', '#4fa86a', '#3fa8a0',
                 '#4f7fd9', '#7c6fd0', '#b06fc0', '#e8e6e0', '#4a5060'],
     corCalca: ['#3d4457', '#2f3a52', '#6b5340', '#8a8f9c', '#40506b'],
+    barba: ['nenhuma', '5oclock_shadow', 'bigode', 'basic', 'medium'],
   },
 
   ROTULOS: {
-    corpo: 'Tipo de corpo', pele: 'Pele', cabelo: 'Cabelo',
+    corpo: 'Tipo de corpo', pele: 'Pele', cabelo: 'Cabelo', barba: 'Barba',
     corCabelo: 'Cor do cabelo', corCamisa: 'Cor da camisa', corCalca: 'Cor da calça',
     m: 'Largo', f: 'Esguio',
-    bob: 'Chanel', buzzcut: 'Raspado', afro: 'Black power',
-    bangslong: 'Longo', cornrows: 'Tranças',
+    messy1: 'Bagunçado', parted: 'Repartido', high_and_tight: 'Militar',
+    spiked: 'Espetado', buzzcut: 'Raspado', curtains: 'Franjão',
+    bob: 'Chanel', afro: 'Black power', bangslong: 'Longo', cornrows: 'Tranças',
+    nenhuma: 'Nenhuma', '5oclock_shadow': 'Por fazer', bigode: 'Bigode',
+    basic: 'Curta', medium: 'Cheia',
   },
 
   /* ---------- carga das camadas ---------- */
@@ -47,7 +52,8 @@ const Boneco = {
   iniciar() {
     const arquivos = ['corpo_m', 'corpo_f', 'camisa_m', 'camisa_f', 'calca_m', 'calca_f',
                       'sapato_m', 'sapato_f', 'cabeca_m', 'cabeca_f', 'olhos', 'sobrancelha',
-                      ...this.CATALOGO.cabelo.map((e) => 'cabelo_' + e)];
+                      ...this.CATALOGO.cabelo.map((e) => 'cabelo_' + e),
+                      ...this.CATALOGO.barba.filter((b) => b !== 'nenhuma').map((b) => 'barba_' + b)];
     this._faltam = arquivos.length;
     for (const nome of arquivos) {
       const img = new Image();
@@ -157,6 +163,7 @@ const Boneco = {
       ['camisa_' + ap.corpo, ap.corCamisa, false],
       ['cabelo_' + ap.cabelo, ap.corCabelo, false],
     ];
+    if (ap.barba !== 'nenhuma') camadas.push(['barba_' + ap.barba, ap.corCabelo, false]);
     for (const [nome, cor, preserva] of camadas) {
       const img = this._imgs[nome];
       if (!img || !img.complete || !img.naturalWidth) continue;
@@ -219,14 +226,12 @@ const Boneco = {
 
   miniaturaOpcao(chave, valor) {
     if (!this._pronto) return null;
-    if (chave === 'cabelo') {
-      return this.retrato({ corpo: 'm', pele: this.CATALOGO.pele[0], cabelo: valor,
-                            corCabelo: '#4a2f1b', corCamisa: '#4f7fd9', corCalca: '#3d4457' });
-    }
-    if (chave === 'corpo') {
-      return this.retrato({ corpo: valor, pele: this.CATALOGO.pele[0], cabelo: 'bob',
-                            corCabelo: '#4a2f1b', corCamisa: '#4f7fd9', corCalca: '#3d4457' });
-    }
+    const base = { corpo: 'm', pele: this.CATALOGO.pele[0], cabelo: 'messy1',
+                   corCabelo: '#4a2f1b', corCamisa: '#4f7fd9', corCalca: '#3d4457',
+                   barba: 'nenhuma' };
+    if (chave === 'cabelo') return this.retrato({ ...base, cabelo: valor });
+    if (chave === 'corpo') return this.retrato({ ...base, corpo: valor });
+    if (chave === 'barba') return this.retrato({ ...base, barba: valor });
     return null;
   },
 };

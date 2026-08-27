@@ -32,7 +32,7 @@ const Jogo = {
  *  de entrada e no modal de editar dentro da sala. */
 const ABAS = [
   ['Corpo', ['corpo', 'pele']],
-  ['Cabelo', ['cabelo', 'corCabelo']],
+  ['Cabelo', ['cabelo', 'corCabelo', 'barba']],
   ['Roupa', ['corCamisa', 'corCalca']],
 ];
 
