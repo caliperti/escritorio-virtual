@@ -472,7 +472,8 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     encolherTiles();
     fecharEditor();
-    if (Editor.ativo) { Editor.movendo = null; Editor.fecharMenu(); }
+    Editor.movendo = null;
+    Editor.fecharMenu();          // vale com o editor aberto ou fechado
   }
   if (digitando) return;
 
@@ -503,12 +504,20 @@ window.addEventListener('blur', () => Jogo.teclas.clear());
 tela.addEventListener('pointerdown', (e) => {
   tela.setPointerCapture(e.pointerId);
   if (Editor.ativo) { Editor.aoApontar(e, pontoNoMapa(e)); return; }
+  if (Editor.movendo) {                       // móvel “na mão”, editor fechado
+    const t = Editor._tile(pontoNoMapa(e));
+    const m = Editor.movendo;
+    Editor.movendo = null;
+    enviar({ tipo: 'editar', acao: { acao: 'mover', id: m.id, x: t.x + m.dx, y: t.y + m.dy } });
+    return;
+  }
   Jogo.caminho = null;
   Jogo.clique = { ponto: pontoNoMapa(e), tela: { x: e.clientX, y: e.clientY }, quando: Date.now() };
   tela.dataset.alvo = JSON.stringify(Jogo.clique.ponto);
 });
 tela.addEventListener('pointermove', (e) => {
   if (Editor.ativo) { Editor.aoMover(pontoNoMapa(e)); return; }
+  if (Editor.movendo) Editor.cursor = Editor._tile(pontoNoMapa(e));
   if (tela.dataset.alvo) tela.dataset.alvo = JSON.stringify(pontoNoMapa(e));
 });
 tela.addEventListener('pointerup', (e) => {
@@ -520,6 +529,22 @@ tela.addEventListener('pointerup', (e) => {
   if (!c) return;
   const arrastou = Math.hypot(e.clientX - c.tela.x, e.clientY - c.tela.y) > 8;
   if (arrastou || Date.now() - c.quando > 450) return;
+
+  // Clique na plaquinha da sala abre o menu dela (nome, cor, área, áudio).
+  const etiqueta = (Jogo.etiquetas || []).find((e) =>
+    c.ponto.x >= e.x && c.ponto.x <= e.x + e.w && c.ponto.y >= e.y && c.ponto.y <= e.y + e.h);
+  if (etiqueta) { Editor.abrirMenuSala(etiqueta.id); return; }
+
+  // Clique em cima de um móvel abre o menu dele (mover, trocar, remover) —
+  // tapete e afins ficam de fora, senão não dava para andar em cima deles.
+  const t = Editor._tile(c.ponto);
+  const alvo = Editor.objetoEm(t.x, t.y);
+  const info = alvo && Jogo.mapa.catalogo[alvo.tipo];
+  if (alvo && info && info.camada !== 'piso') {
+    Editor.abrirMenu(alvo.id);
+    return;
+  }
+  Editor.fecharMenu();
   Jogo.caminho = tracarCaminho(Jogo.eu.x, Jogo.eu.y, c.ponto.x, c.ponto.y);
 });
 tela.addEventListener('pointercancel', () => { Editor.aoSoltar(); delete tela.dataset.alvo; });
@@ -532,6 +557,11 @@ tela.addEventListener('wheel', (e) => {
   ajustarZoom(e.deltaY < 0 ? 1.12 : 1 / 1.12);
 }, { passive: false });
 tela.addEventListener('pointerleave', () => { Editor.cursor = null; });
+
+// clicar em qualquer outro lugar fecha o menu que estiver aberto
+document.addEventListener('pointerdown', (e) => {
+  if (Editor.menu && !Editor.menu.contains(e.target) && e.target !== tela) Editor.fecharMenu();
+}, true);
 
 function pontoNoMapa(e) {
   const r = tela.getBoundingClientRect();
@@ -763,6 +793,7 @@ function desenhar() {
   // ---------- salas ----------
   // O que marca a área é o carpete no chão; a sala se anuncia por uma plaquinha
   // flutuante no topo, como no Gather. Retângulo tingido deixava tudo embarrado.
+  Jogo.etiquetas = [];
   for (const z of mapa.zonas) {
     const zx = z.x1 * t, zy = z.y1 * t;
     const zw = (z.x2 - z.x1 + 1) * t;
@@ -781,6 +812,7 @@ function desenhar() {
     ctx.fill();
     ctx.fillStyle = '#f6f4ef';
     ctx.fillText(texto, px + larg / 2 + 4, py + 10);
+    Jogo.etiquetas.push({ id: z.id, x: px, y: py, w: larg, h: 20 });
   }
 
   // ---------- paredes ----------
@@ -866,7 +898,10 @@ function desenhar() {
 
   for (const pes of gente) desenharBolha(pes);
 
-  if (typeof Editor !== 'undefined' && Editor.ativo) Editor.desenhar(ctx, x0, y0, x1, y1);
+  if (typeof Editor !== 'undefined') {
+    if (Editor.ativo) Editor.desenhar(ctx, x0, y0, x1, y1);
+    else if (Editor.movendo && Editor.cursor) Editor.desenharNaMao(ctx);
+  }
 }
 
 function arredondado(x, y, w, h, r) {

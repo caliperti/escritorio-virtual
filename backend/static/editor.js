@@ -378,6 +378,22 @@ const Editor = {
     }
   },
 
+  /** Prévia do móvel que está sendo carregado, com ou sem o editor aberto. */
+  desenharNaMao(ctx) {
+    if (!this.movendo || !this.cursor) return;
+    const mapa = this.jogo.mapa;
+    const t = this.jogo.tile;
+    const alvo = mapa.objetos.find((o) => o.id === this.movendo.id);
+    if (!alvo) return;
+    const info = mapa.catalogo[alvo.tipo];
+    ctx.globalAlpha = 0.6;
+    Objetos.desenhar(ctx, alvo.tipo, this.cursor.x * t, this.cursor.y * t, info.l * t, info.a * t);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(this.cursor.x * t, this.cursor.y * t, info.l * t, info.a * t);
+  },
+
   /* ==================== menu do móvel ==================== */
 
   fecharMenu() {
@@ -424,8 +440,8 @@ const Editor = {
     caixa.querySelector('[data-fazer="mover"]').onclick = () => {
       this.movendo = { id: o.id, dx: 0, dy: 0 };
       this.fecharMenu();
-      document.getElementById('editor-ajuda').textContent =
-        'Clique onde o móvel deve ficar (Esc cancela).';
+      const ajuda = document.getElementById('editor-ajuda');
+      if (ajuda) ajuda.textContent = 'Clique onde o móvel deve ficar (Esc cancela).';
     };
     caixa.querySelector('[data-fazer="remover"]').onclick = () => {
       this.acao({ acao: 'remover', id: o.id });
@@ -451,6 +467,73 @@ const Editor = {
         alvo.innerHTML = '<p class="vazio">Nenhum outro móvel desse tamanho.</p>';
       }
     };
+  },
+
+  /* ==================== menu da sala ==================== */
+
+  abrirMenuSala(id) {
+    this.fecharMenu();
+    const mapa = this.jogo.mapa;
+    const z = mapa.zonas.find((x) => x.id === id);
+    if (!z) return;
+    const pos = this._naTela((z.x1 + z.x2 + 1) / 2, z.y1);
+
+    const cores = ['#8b7fd0', '#6f9fd8', '#4fae91', '#c99a4a', '#d9776a',
+                   '#a889cc', '#d9789e', '#5aa86e', '#8a8f9c'];
+    let corSel = z.cor;
+    const caixa = document.createElement('div');
+    caixa.className = 'menu-movel menu-sala';
+    caixa.innerHTML = `
+      <div class="cabeca">
+        <span class="ponto-sala" style="background:${z.cor}"></span>
+        <div><strong>Sala</strong><span>${z.x2 - z.x1 + 1}×${z.y2 - z.y1 + 1} tiles</span></div>
+      </div>
+      <input id="sala-menu-nome" maxlength="28" value="${z.nome.replace(/"/g, '&quot;')}">
+      <label><input type="checkbox" id="sala-menu-privada" ${z.privada ? 'checked' : ''}>
+        🔒 Áudio fechado</label>
+      <div class="cores">${cores.map((c) => `<button data-cor="${c}" style="background:${c}"
+        aria-pressed="${c === z.cor}"></button>`).join('')}</div>
+      <div class="acoes">
+        <button data-fazer="salvar" class="ok">Salvar</button>
+        <button data-fazer="area">📐 Área</button>
+        <button data-fazer="remover" class="perigo">🗑️</button>
+      </div>
+      <p class="dica">📐 redesenha o espaço da sala. Para mudar as <b>paredes</b>,
+        use 🧱 no editor (Shift preenche um retângulo).</p>`;
+    document.querySelector('.palco').appendChild(caixa);
+    this.menu = caixa;
+    caixa.style.left = Math.max(8, Math.min(pos.x - 110, window.innerWidth - 520)) + 'px';
+    caixa.style.top = Math.max(8, pos.y + 26) + 'px';
+
+    caixa.querySelectorAll('[data-cor]').forEach((b) => {
+      b.onclick = () => {
+        corSel = b.dataset.cor;
+        caixa.querySelectorAll('[data-cor]').forEach((o) => o.setAttribute('aria-pressed', o === b));
+      };
+    });
+    const nome = caixa.querySelector('#sala-menu-nome');
+    const salvar = () => {
+      this.acao({ acao: 'zona', ...z, nome: nome.value.trim() || z.nome, cor: corSel,
+                  privada: caixa.querySelector('#sala-menu-privada').checked });
+      this.fecharMenu();
+    };
+    caixa.querySelector('[data-fazer="salvar"]').onclick = salvar;
+    nome.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') salvar(); });
+    caixa.querySelector('[data-fazer="remover"]').onclick = () => {
+      this.acao({ acao: 'zona_remover', id: z.id });
+      this.fecharMenu();
+    };
+    caixa.querySelector('[data-fazer="area"]').onclick = () => {
+      // redesenhar exige as ferramentas: abre o editor já na hora certa
+      this.fecharMenu();
+      if (!this.ativo) this.alternar();
+      this.redesenhando = z.id;
+      this.usarFerramenta('sala');
+      document.getElementById('editor-ajuda').textContent =
+        `Arraste no mapa a área nova de "${z.nome}".`;
+    };
+    nome.focus();
+    nome.select();
   },
 
   /* ==================== o que aparece por cima do mapa ==================== */
@@ -493,17 +576,8 @@ const Editor = {
       ctx.strokeStyle = '#38bdf8';
       ctx.lineWidth = 2;
       ctx.strokeRect(this.arrasto.x * t, this.arrasto.y * t, info.l * t, info.a * t);
-    } else if (this.movendo && this.cursor) {          // móvel “na mão”
-      const alvo = mapa.objetos.find((o) => o.id === this.movendo.id);
-      if (alvo) {
-        const info = mapa.catalogo[alvo.tipo];
-        ctx.globalAlpha = 0.6;
-        Objetos.desenhar(ctx, alvo.tipo, this.cursor.x * t, this.cursor.y * t, info.l * t, info.a * t);
-        ctx.globalAlpha = 1;
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(this.cursor.x * t, this.cursor.y * t, info.l * t, info.a * t);
-      }
+    } else if (this.movendo && this.cursor) {
+      this.desenharNaMao(ctx);
     } else if (this.cursor && this.ferramenta === 'mobilia') {
       const info = mapa.catalogo[this.tipoSel];       // prévia do que vai ser colocado
       if (info) {

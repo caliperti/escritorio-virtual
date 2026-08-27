@@ -40,6 +40,11 @@ com nomes diferentes.
 | `E` | abrir o editor do escritório · `Delete` remove o móvel selecionado |
 | `+` `−` `0` | aproximar, afastar e voltar ao zoom padrão (a roda do mouse também) |
 
+**Clique num móvel** (mesmo sem abrir o editor) e abre o menu dele: ✋ mover,
+🔁 trocar por outra peça que caiba, 🗑️ remover. **Clique na plaquinha da sala**
+e abre o menu dela: renomear, trocar a cor, ligar o áudio fechado, redesenhar a
+área ou remover. Tapete não abre menu — senão não daria para andar em cima.
+
 Clique em qualquer miniatura de vídeo para abrir em tela cheia — é assim que se
 assiste à apresentação de alguém.
 
@@ -119,7 +124,7 @@ hora para quem está na sala.
 | 🪑 **Móveis** | clique num espaço vazio para colocar. **Clique num móvel e abre o menu dele**: ✋ Mover (ele fica na mão até você clicar no destino), 🔁 Trocar (por qualquer peça que caiba no mesmo espaço, mantendo o lugar) e 🗑️ Remover. Arrastar continua movendo direto, e botão direito remove. Tem mesa, mesa de reunião, balcão, cadeira, sofá, poltrona, estante, armário, quadro branco, TV, tapete, planta, luminária, palco, pebolim, narguilé, cafeteira, geladeira, pia — e o que vai **em cima da mesa**: monitor, notebook, caneca, papéis, telefone, livros, vasinho, bolo |
 | 🎨 **Piso** | madeira, carpete, azulejo, concreto, grama e os **carpetes de time** (lilás, azul, menta, rosa). `Shift` preenche um retângulo |
 | 🧱 **Parede** | arraste para levantar; `Alt` (ou botão direito) derruba. **`Shift` preenche um retângulo inteiro** — é assim que se fecha um bloco novo de uma vez |
-| 🚪 **Salas** | arraste para desenhar: sai uma **sala pronta** — parede em volta, porta de 2 tiles no lado que você escolher e o piso que escolher. Desmarque "levantar parede" para só marcar uma área. **📐 redesenha a área** de uma sala existente; clique no nome para renomear e trocar a cor; 🔒 liga/desliga o áudio fechado |
+| 🚪 **Salas** | o jeito rápido é clicar na plaquinha da sala no mapa. Aqui, arraste para desenhar: sai uma **sala pronta** — parede em volta, porta de 2 tiles no lado que você escolher e o piso que escolher. Desmarque "levantar parede" para só marcar uma área. **📐 redesenha a área** de uma sala existente; clique no nome para renomear e trocar a cor; 🔒 liga/desliga o áudio fechado |
 | 📍 **Entrada** | onde quem chega aparece |
 | 🗑️ **Apagar** | remove móvel |
 
