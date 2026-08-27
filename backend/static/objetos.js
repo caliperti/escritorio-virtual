@@ -282,56 +282,104 @@ const Objetos = {
       }
     },
     narguile(c, x, y, w, h) {
-      const cx = x + w / 2, base = y + h - 6;
-      c.strokeStyle = '#8a5468'; c.lineWidth = Math.max(3, w * 0.1); c.lineCap = 'round';
-      c.beginPath();
-      c.moveTo(cx + 1, y + h * 0.52);
-      c.bezierCurveTo(cx + w * 0.55, y + h * 0.55, cx + w * 0.5, y + h * 0.82, cx + w * 0.2, base - 3);
-      c.stroke();
-      this.ret(c, cx - w * 0.28, y + h * 0.58, w * 0.56, h * 0.3, w * 0.26, this.traco('#c98159'));
-      this.ret(c, cx - w * 0.26, y + h * 0.59, w * 0.52, h * 0.28, w * 0.24, '#d8955f');
-      this.ret(c, cx - w * 0.26, y + h * 0.72, w * 0.52, h * 0.15, w * 0.2, '#a8623a');
-      this.ret(c, cx - 2, y + h * 0.24, 4, h * 0.34, 2, this.METAL);
-      this.ret(c, cx - w * 0.18, y + h * 0.5, w * 0.36, 3, 2, this.luz(this.METAL, 0.4));
-      this.ret(c, cx - w * 0.15, y + h * 0.16, w * 0.3, h * 0.1, 3, '#5c5a63');
-      this.elipse(c, cx - 2, y + h * 0.16, 2, 1.8, '#e08a4a');
-    },
+      // Peça alta: vaso de vidro, haste com losango, prato largo, fornilho de
+      // barro, brasas e a mangueira enrolando até a piteira.
+      const cx = x + w / 2;
+      const ouro = '#d9a441', ouroEsc = '#a97c22', preto = '#26262e';
+      const vidro = '#3d4250', barro = '#b06a44';
 
-    /* ================= área externa ================= */
-    arvore(c, x, y, w, h) {
-      const tronco = '#8a6446', v = '#4f9b63';
-      this.ret(c, x + w / 2 - 5, y + h - 20, 10, 17, 3, this.traco(tronco));
-      this.ret(c, x + w / 2 - 4, y + h - 19, 8, 15, 3, tronco);
-      for (const [dx, dy, r] of [[0, 0.32, 20], [-11, 0.42, 13], [11, 0.42, 13], [0, 0.2, 14]]) {
-        this.elipse(c, x + w / 2 + dx, y + h * dy, r, r * 0.92, this.traco(v));
-        this.elipse(c, x + w / 2 + dx, y + h * dy - 1, r - 1.5, r * 0.86,
-                    dy < 0.3 ? this.luz(v, 0.18) : this.VERDE_ESC);
-      }
-      this.elipse(c, x + w / 2 - 6, y + h * 0.22, 7, 6, this.luz(v, 0.32));
-    },
-    arbusto(c, x, y, w, h) {
-      const v = this.VERDE_ESC;
-      this.elipse(c, x + w / 2, y + h * 0.58, w * 0.4, h * 0.3, this.traco(v));
-      this.elipse(c, x + w / 2, y + h * 0.55, w * 0.37, h * 0.27, v);
-      this.elipse(c, x + w / 2 - 5, y + h * 0.46, 6, 5, this.luz(v, 0.25));
-      this.elipse(c, x + w / 2 + 5, y + h * 0.52, 5, 4, this.luz(v, 0.12));
-    },
-    banco(c, x, y, w, h) {
-      const cor = this.MADEIRA;
-      this.ret(c, x + 6, y + h - 10, 4, 7, 1, this.PE);
-      this.ret(c, x + w - 10, y + h - 10, 4, 7, 1, this.PE);
-      this.ret(c, x + 2, y + 4, w - 4, h - 14, 3, this.traco(cor));
-      this.ret(c, x + 3, y + 5, w - 6, 5, 2, cor);                    // encosto
-      this.ret(c, x + 3, y + 11, w - 6, h - 21, 2, this.luz(cor, 0.18));
-    },
-    janela(c, x, y, w, h) {
-      const cor = '#bcd6e8';
-      this.ret(c, x + 2, y + 6, w - 4, h - 14, 2, '#e7e2d8');          // moldura
-      this.ret(c, x + 4, y + 8, w - 8, h - 18, 1, cor);
-      c.save(); c.globalAlpha = 0.55;
-      this.ret(c, x + 5, y + 9, (w - 10) * 0.4, h - 20, 1, this.luz(cor, 0.7));
+      // --- mangueira, atrás de tudo ---
+      c.strokeStyle = preto;
+      c.lineWidth = Math.max(3, w * 0.095);
+      c.lineCap = 'round';
+      c.beginPath();
+      c.moveTo(cx + w * 0.22, y + h * 0.55);
+      c.bezierCurveTo(cx + w * 0.75, y + h * 0.53, cx + w * 0.68, y + h * 0.84,
+                      cx + w * 0.12, y + h * 0.9);
+      c.stroke();
+      c.strokeStyle = 'rgba(255,255,255,.14)';
+      c.lineWidth = Math.max(1, w * 0.03);
+      c.stroke();
+      this.ret(c, cx - w * 0.02, y + h * 0.885, w * 0.22, h * 0.032, 2, ouro);   // piteira
+
+      // --- vaso de vidro: alto, translúcido, com água e faixa dourada ---
+      const vy = y + h * 0.79, vr = w * 0.31;
+      this.elipse(c, cx, y + h * 0.955, vr * 0.95, h * 0.022, 'rgba(60,50,80,.22)');
+      this.elipse(c, cx, vy, vr, h * 0.155, this.traco(vidro));
+      this.elipse(c, cx, vy - h * 0.004, vr - 1.5, h * 0.15, vidro);
+      this.elipse(c, cx, vy + h * 0.045, vr - 2.5, h * 0.1, this.sombra(vidro, 0.4));  // água
+      this.ret(c, cx - vr + 2.5, vy + h * 0.075, (vr - 2.5) * 2, h * 0.014, 1, ouroEsc);
+      this.elipse(c, cx, vy + h * 0.125, vr * 0.75, h * 0.03, ouroEsc);         // pé
+      c.save(); c.globalAlpha = 0.3;
+      this.ret(c, cx - vr * 0.62, vy - h * 0.09, w * 0.075, h * 0.12, 4, '#ffffff');
       c.restore();
-      this.ret(c, x + w / 2 - 1, y + 8, 2, h - 18, 1, '#e7e2d8');      // caixilho
+      this.ret(c, cx - w * 0.045, vy - h * 0.2, w * 0.09, h * 0.13, 2,
+               'rgba(210,215,230,.45)');                                        // tubo interno
+      this.ret(c, cx - w * 0.11, vy - h * 0.185, w * 0.22, h * 0.03, 2, ouro);  // gargalo
+
+      // --- corpo preto entre o vaso e a haste ---
+      this.elipse(c, cx, vy - h * 0.235, w * 0.19, h * 0.055, this.traco(preto));
+      this.elipse(c, cx, vy - h * 0.24, w * 0.18, h * 0.05, preto);
+      this.ret(c, cx - w * 0.035, vy - h * 0.255, w * 0.07, h * 0.022, 1, ouro);   // coroa
+      this.ret(c, cx + w * 0.15, vy - h * 0.27, w * 0.18, h * 0.028, 2, ouro);     // bocal da mangueira
+      this.ret(c, cx - w * 0.28, vy - h * 0.27, w * 0.1, h * 0.022, 2, ouroEsc);   // válvula
+
+      // --- haste com losango ---
+      this.ret(c, cx - w * 0.05, y + h * 0.3, w * 0.1, h * 0.26, 2, ouroEsc);
+      this.ret(c, cx - w * 0.032, y + h * 0.3, w * 0.05, h * 0.26, 1, ouro);
+      c.fillStyle = preto;                                                      // losango
+      c.beginPath();
+      c.moveTo(cx, y + h * 0.38); c.lineTo(cx + w * 0.11, y + h * 0.435);
+      c.lineTo(cx, y + h * 0.49); c.lineTo(cx - w * 0.11, y + h * 0.435);
+      c.closePath(); c.fill();
+      c.fillStyle = 'rgba(255,255,255,.2)';
+      c.beginPath();
+      c.moveTo(cx, y + h * 0.39); c.lineTo(cx + w * 0.055, y + h * 0.435);
+      c.lineTo(cx, y + h * 0.47); c.closePath(); c.fill();
+
+      // --- prato ---
+      const py = y + h * 0.3;
+      this.elipse(c, cx, py, w * 0.44, h * 0.055, ouroEsc);
+      this.elipse(c, cx, py - h * 0.008, w * 0.42, h * 0.05, preto);
+      this.elipse(c, cx, py - h * 0.008, w * 0.3, h * 0.032, this.luz(preto, 0.14));
+      this.elipse(c, cx - w * 0.16, py - h * 0.018, w * 0.1, h * 0.012, 'rgba(255,255,255,.2)');
+
+      // --- fornilho de barro ---
+      this.ret(c, cx - w * 0.05, py - h * 0.07, w * 0.1, h * 0.07, 2, ouro);       // pescoço
+      this.elipse(c, cx, y + h * 0.205, w * 0.17, h * 0.06, this.traco(barro));
+      this.elipse(c, cx, y + h * 0.202, w * 0.16, h * 0.055, barro);
+      this.elipse(c, cx, y + h * 0.178, w * 0.15, h * 0.03, this.luz(barro, 0.18));
+      this.elipse(c, cx - w * 0.06, y + h * 0.19, w * 0.05, h * 0.016, this.luz(barro, 0.4));
+
+      // --- controlador de calor e brasas ---
+      this.elipse(c, cx, y + h * 0.165, w * 0.17, h * 0.035, '#9aa0ad');
+      this.elipse(c, cx, y + h * 0.158, w * 0.15, h * 0.028, '#c8ccd4');
+      for (const [dx, dy, r] of [[-0.06, 0.152, 0.045], [0.055, 0.15, 0.042], [0, 0.138, 0.04]]) {
+        this.ret(c, cx + w * dx - w * r, y + h * dy - h * 0.018, w * r * 2, h * 0.036, 2, '#d94a1e');
+        this.ret(c, cx + w * dx - w * r * 0.6, y + h * dy - h * 0.012, w * r * 1.2, h * 0.022, 1, '#ffb03a');
+      }
+      c.save(); c.globalAlpha = 0.3;
+      this.elipse(c, cx, y + h * 0.15, w * 0.26, h * 0.05, '#ff8a3c');          // brilho da brasa
+      c.restore();
+
+      // --- fumaça ---
+      c.save();
+      c.globalAlpha = 0.62;
+      c.strokeStyle = '#dcdee3';
+      c.lineWidth = Math.max(1.8, w * 0.055);
+      c.lineCap = 'round';
+      c.beginPath();
+      c.moveTo(cx - w * 0.03, y + h * 0.115);
+      c.bezierCurveTo(cx - w * 0.16, y + h * 0.08, cx + w * 0.12, y + h * 0.06,
+                      cx - w * 0.02, y + h * 0.02);
+      c.stroke();
+      c.globalAlpha = 0.3;
+      c.beginPath();
+      c.moveTo(cx + w * 0.06, y + h * 0.12);
+      c.bezierCurveTo(cx + w * 0.2, y + h * 0.09, cx - w * 0.02, y + h * 0.055,
+                      cx + w * 0.1, y + h * 0.015);
+      c.stroke();
+      c.restore();
     },
 
     /* ================= café ================= */
