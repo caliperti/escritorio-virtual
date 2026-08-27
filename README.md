@@ -170,8 +170,16 @@ Sem `.env`, ou com `SENHA` em branco, a sala fica aberta para quem tiver o link.
 **https://escritorio-virtual-3al4.onrender.com** — plano gratuito do Render,
 a partir do repositório <https://github.com/caliperti/escritorio-virtual>.
 
-Para publicar mudanças: `git push github main` — o Render reconstrói sozinho
-(`autoDeploy`). Para recriar o serviço do zero em outra conta:
+Para publicar mudanças: `git push github main` **e disparar o deploy** —
+serviço criado a partir de repositório público não tem webhook do GitHub, então
+o Render não fica sabendo do push sozinho:
+
+```bash
+curl -X POST -H "Authorization: Bearer $RENDER_KEY" \
+  https://api.render.com/v1/services/srv-da87vhajnfac73d383u0/deploys -d '{}'
+```
+
+(ou *Manual Deploy → Deploy latest commit* no painel do Render). Para recriar o serviço do zero em outra conta:
 `RENDER_KEY=rnd_xxx SENHA=xxx REPO=https://github.com/... ./deploy-render.sh`.
 
 O que esperar do plano gratuito:
