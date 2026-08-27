@@ -1,0 +1,12 @@
+Sprites dos personagens: Universal LPC Spritesheet Character Generator
+https://github.com/LiberatedPixelCup/Universal-LPC-Spritesheet-Character-Generator
+
+Licença: CC-BY-SA 3.0 e GPL 3.0 (as duas valem; escolha a que servir).
+Exige crédito aos autores e que modificações da ARTE sejam compartilhadas sob a
+mesma licença. Não afeta o código deste projeto.
+
+Autores das camadas usadas aqui (corpo, cabelo, camisa, calça, sapato), conforme
+o CREDITS.csv do projeto: Stephen Challener (Redshrike), Johannes Sjölund (wulax),
+Matthew Krohn (makrohn), Marcel van de Steeg (MadMarcel), Manuel Riecke (MrBeast),
+Joe White, Thane Brimhall (pennomi), bluecarrot16, Nila122, David Conway Jr. (JaidynReiman)
+e demais colaboradores do LPC.

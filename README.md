@@ -58,27 +58,28 @@ A paleta é clara e fixa (bege/branco no mobiliário, cor forte só nos carpetes
 nas telas), e toda peça é desenhada em 3/4 — tampo mais uma faixa da frente —
 com luz no topo e contorno tingido pela própria cor.
 
-## Os bonequinhos e os móveis
+## Os personagens
 
-A arte vem de dois pacotes do **Kenney** em **domínio público (CC0)** — sem
-obrigação de licença, uso comercial liberado (`backend/static/assets/LICENCA-*.txt`):
+Sprites do **LPC (Universal LPC Spritesheet)**: 64×64 por quadro, 4 direções e
+9 quadros de caminhada, em **camadas separadas** — corpo, cabeça, olhos,
+sobrancelha, calça, sapato, camisa e cabelo. São 4× mais pixels que os 16×16 de
+antes, que era de onde vinha o aspecto quadriculado.
 
-- **RPG Urban Pack** — os personagens: 6 pessoas, cada uma com **4 direções e 3
-  quadros de caminhada**;
-- **Roguelike Indoors** — mesas, cadeiras, sofás, balcões, tapetes, plantas,
-  quadros e afins.
+Cada camada vem numa cor só, então a personalização é feita **recolorindo em
+tempo de execução**: as cores de cada camada são ordenadas por luminância e
+mapeadas numa rampa criada a partir da cor escolhida. Assim o sombreado original
+é preservado e só o matiz muda — e sobra: 2 corpos × 6 peles × 5 cabelos × 8
+cores de cabelo × 10 camisas × 5 calças. O resultado fica em cache por
+combinação.
 
-Para não perder a personalização com sprites prontos, `boneco.js` **recolore a
-camisa e o cabelo em tempo de execução**: as cores originais de cada personagem
-estão mapeadas e são trocadas pixel a pixel por tons da cor escolhida, com o
-resultado em cache. São 6 personagens × 10 cores de camisa × 8 de cabelo.
+Uma pegadinha do formato, que custou tempo: no LPC o **corpo vem sem cabeça** e
+sem rosto — cabeça, olhos e sobrancelha são camadas próprias. Sem elas o
+personagem fica com o pescoço para cima vazio.
 
-Alguns itens não existem num pacote medieval — monitor, notebook, TV, quadro
-branco, narguilé, pebolim — e continuam desenhados em `objetos.js`, na paleta
-dos tiles e com as coordenadas presas à grade de 2px para não destoar.
-
-De qual tile sai cada móvel está em `objetos.js:MAPA`; o que ele ocupa e bloqueia,
-em `mapa.py:CATALOGO`.
+**Licença da arte** (`backend/static/assets/LICENCA-lpc.txt`): CC-BY-SA 3.0 /
+GPL 3.0 — exige crédito aos autores do LPC e que modificações da arte sejam
+compartilhadas sob a mesma licença. Não afeta o código do projeto. Os móveis
+continuam desenhados aqui (`objetos.js`), sem restrição.
 
 ## A planta do escritório
 

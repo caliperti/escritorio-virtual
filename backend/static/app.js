@@ -31,8 +31,9 @@ const Jogo = {
 /** Monta os botões de aparência e a prévia andando. Usado duas vezes: na tela
  *  de entrada e no modal de editar dentro da sala. */
 const ABAS = [
-  ['Personagem', ['personagem']],
-  ['Cores', ['corCamisa', 'corCabelo']],
+  ['Corpo', ['corpo', 'pele']],
+  ['Cabelo', ['cabelo', 'corCabelo']],
+  ['Roupa', ['corCamisa', 'corCalca']],
 ];
 
 function criarEditor(canvas, container, aparenciaInicial) {
@@ -76,7 +77,7 @@ function criarEditor(canvas, container, aparenciaInicial) {
         b.style.background = valor;
       } else if (mini) {
         b.className = 'retrato';
-        b.innerHTML = `<img src="${mini}" alt=""><span>${Boneco.PERSONAGENS[Number(valor)].nome}</span>`;
+        b.innerHTML = `<img src="${mini}" alt=""><span>${Boneco.ROTULOS[valor] || valor}</span>`;
       } else {
         b.textContent = Boneco.ROTULOS[valor] || valor;
       }
@@ -114,7 +115,7 @@ function criarEditor(canvas, container, aparenciaInicial) {
     quadro++;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     Boneco.desenhar(ctx, ap, canvas.width / 2, canvas.height - 26,
-                    direcoes[Math.floor(quadro / 14) % 4], quadro, 6);
+                    direcoes[Math.floor(quadro / 14) % 4], quadro, 4.2);
   }, 120);
 
   return {

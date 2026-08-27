@@ -1,81 +1,82 @@
-/* Os bonequinhos.
+/* Os personagens.
  *
- * O desenho não é mais feito no braço: usamos os sprites do pacote "RPG Urban"
- * do Kenney (domínio público, CC0 — ver assets/LICENCA-kenney-urban.txt). São
- * 6 personagens, cada um com 4 direções e 3 quadros de caminhada, na folha
- * `assets/urbano.png` (tiles de 16px).
+ * Agora são sprites do **LPC (Universal LPC Spritesheet)**: 64×64 por quadro,
+ * 4 direções × 9 quadros de caminhada, em camadas separadas — corpo, calça,
+ * sapato, camisa e cabelo. É o que tira o aspecto quadriculado dos 16×16
+ * anteriores: são 4× mais pixels no mesmo espaço de tela.
  *
- * Para não perder a personalização, a camisa e o cabelo são **recoloridos em
- * tempo de execução**: cada personagem tem as cores originais dessas duas peças
- * mapeadas abaixo, e trocamos pixel a pixel por tons da cor escolhida. O
- * resultado fica em cache por combinação.                                    */
+ * Cada camada vem numa cor só, então a personalização é feita **recolorindo**:
+ * as cores da camada são ordenadas por luminância e mapeadas numa rampa criada
+ * a partir da cor escolhida (do tom escuro ao claro). Assim o sombreado
+ * original é preservado — só o matiz muda. O resultado fica em cache.
+ *
+ * Licença da arte em assets/LICENCA-lpc.txt (CC-BY-SA 3.0 / GPL 3.0).        */
 
 const Boneco = {
-  FOLHA: '/static/assets/urbano.png',
-  TILE: 16,
-  COL_DIRECAO: { esquerda: 23, baixo: 24, cima: 25, direita: 26 },
-
-  // cores originais de cada personagem (do mais claro para o mais escuro)
-  PERSONAGENS: [
-    { nome: 'Alex', cabelo: ['#dc8652', '#c57652'], camisa: ['#42a379', '#369069'] },
-    { nome: 'Bia', cabelo: ['#dc8652', '#c57652'], camisa: ['#c2504d', '#a54240'] },
-    { nome: 'Caio', cabelo: ['#a09cca', '#7a77a4', '#5c6278'], camisa: ['#42a379', '#369069'] },
-    { nome: 'Duda', cabelo: ['#f5a94c', '#da923e', '#bc7d36'], camisa: ['#918eb9', '#7a77a4'] },
-    { nome: 'Edu', cabelo: [], camisa: ['#aaa8bd', '#898ca6'] },
-    { nome: 'Fê', cabelo: ['#60605a', '#50504a', '#373733'], camisa: ['#c77b47', '#a9673b'] },
-  ],
+  BASE: '/static/assets/lpc/',
+  QUADRO: 64,
+  QUADROS: 9,
+  LINHA: { cima: 0, esquerda: 1, baixo: 2, direita: 3 },
 
   CATALOGO: {
-    personagem: ['0', '1', '2', '3', '4', '5'],
-    corCamisa: ['#e11d48', '#f97316', '#eab308', '#22c55e', '#14b8a6',
-                '#3b82f6', '#6366f1', '#a855f7', '#e2e8f0', '#475569'],
-    corCabelo: ['#1c1410', '#432a18', '#8a5a2b', '#d9a441', '#b4462f',
-                '#8b5cf6', '#e8e8e8', '#2563eb'],
+    corpo: ['m', 'f'],
+    pele: ['#f2cfa8', '#e5b487', '#c98d5f', '#a06b40', '#6f4726', '#432c19'],
+    cabelo: ['bob', 'buzzcut', 'afro', 'bangslong', 'cornrows'],
+    corCabelo: ['#241a12', '#4a2f1b', '#8a5a2b', '#d8b164', '#a8452c',
+                '#7c4fa8', '#e2e2e2', '#2f5fa8'],
+    corCamisa: ['#d94f5c', '#e8843c', '#e0b93f', '#4fa86a', '#3fa8a0',
+                '#4f7fd9', '#7c6fd0', '#b06fc0', '#e8e6e0', '#4a5060'],
+    corCalca: ['#3d4457', '#2f3a52', '#6b5340', '#8a8f9c', '#40506b'],
   },
 
   ROTULOS: {
-    personagem: 'Personagem', corCamisa: 'Cor da camisa', corCabelo: 'Cor do cabelo',
+    corpo: 'Tipo de corpo', pele: 'Pele', cabelo: 'Cabelo',
+    corCabelo: 'Cor do cabelo', corCamisa: 'Cor da camisa', corCalca: 'Cor da calça',
+    m: 'Largo', f: 'Esguio',
+    bob: 'Chanel', buzzcut: 'Raspado', afro: 'Black power',
+    bangslong: 'Longo', cornrows: 'Tranças',
   },
 
-  /* ---------- carga da folha ---------- */
+  /* ---------- carga das camadas ---------- */
 
-  _folha: null,
+  _imgs: {},
+  _faltam: 0,
   _pronto: false,
-
-  quandoCarregar(f) {
-    this._aoCarregar = this._aoCarregar || [];
-    if (this._pronto) f();
-    else this._aoCarregar.push(f);
-  },
+  _aoCarregar: [],
 
   iniciar() {
-    if (this._img) return;
-    this._img = new Image();
-    this._img.onload = () => {
-      const c = document.createElement('canvas');
-      c.width = this._img.width;
-      c.height = this._img.height;
-      c.getContext('2d').drawImage(this._img, 0, 0);
-      this._folha = c;
-      this._pronto = true;
-      this._cache.clear();
-      this._retratos.clear();
-      // a folha chega depois da tela montada: quem desenhou botão com retrato
-      // precisa refazer, senão fica o texto cru "0, 1, 2…"
-      (this._aoCarregar || []).forEach((f) => f());
-    };
-    this._img.src = this.FOLHA;
+    const arquivos = ['corpo_m', 'corpo_f', 'camisa_m', 'camisa_f', 'calca_m', 'calca_f',
+                      'sapato_m', 'sapato_f', 'cabeca_m', 'cabeca_f', 'olhos', 'sobrancelha',
+                      ...this.CATALOGO.cabelo.map((e) => 'cabelo_' + e)];
+    this._faltam = arquivos.length;
+    for (const nome of arquivos) {
+      const img = new Image();
+      img.onload = () => {
+        if (--this._faltam === 0) {
+          this._pronto = true;
+          this._cache.clear();
+          this._retratos.clear();
+          this._aoCarregar.forEach((f) => f());
+        }
+      };
+      img.onerror = () => { this._faltam--; };
+      img.src = this.BASE + nome + '.png';
+      this._imgs[nome] = img;
+    }
+  },
+
+  quandoCarregar(f) {
+    if (this._pronto) f();
+    else this._aoCarregar.push(f);
   },
 
   /* ---------- aparência ---------- */
 
   aleatoria() {
     const sorteio = (l) => l[Math.floor(Math.random() * l.length)];
-    return {
-      personagem: sorteio(this.CATALOGO.personagem),
-      corCamisa: sorteio(this.CATALOGO.corCamisa),
-      corCabelo: sorteio(this.CATALOGO.corCabelo),
-    };
+    const ap = {};
+    for (const c of Object.keys(this.CATALOGO)) ap[c] = sorteio(this.CATALOGO[c]);
+    return ap;
   },
 
   normalizar(ap) {
@@ -89,68 +90,87 @@ const Boneco = {
 
   /* ---------- cor ---------- */
 
-  _rgb(cor) {
-    const n = parseInt(cor.slice(1), 16);
-    return [n >> 16, (n >> 8) & 255, n & 255];
-  },
-  _hex(r, g, b) {
-    return '#' + [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v)))
-      .toString(16).padStart(2, '0')).join('');
-  },
-  /** Tom mais escuro da mesma cor, para as sombras da peça recolorida. */
-  _tom(cor, i) {
-    const [r, g, b] = this._rgb(cor);
-    const f = 1 - i * 0.22;
-    return this._hex(r * f, g * f, b * f);
+  _rgb(c) { const n = parseInt(c.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; },
+  _lum(r, g, b) { return (0.299 * r + 0.587 * g + 0.114 * b) / 255; },
+  _mix(a, b, t) { return a.map((v, i) => Math.round(v + (b[i] - v) * t)); },
+
+  /** Rampa de tons a partir de uma cor, do escuro ao claro. */
+  _rampa(cor, n) {
+    const base = this._rgb(cor);
+    const escuro = this._mix(base, [26, 18, 34], 0.62);
+    const claro = this._mix(base, [255, 250, 235], 0.45);
+    const saida = [];
+    for (let i = 0; i < n; i++) {
+      const t = n === 1 ? 0.5 : i / (n - 1);
+      saida.push(t < 0.5 ? this._mix(escuro, base, t * 2) : this._mix(base, claro, (t - 0.5) * 2));
+    }
+    return saida;
   },
 
-  /* ---------- sprite recolorido, em cache ---------- */
+  /** Troca o matiz de uma camada mantendo o sombreado original. */
+  _recolorir(ctx, w, h, cor, preservarEscuros) {
+    const dados = ctx.getImageData(0, 0, w, h);
+    const d = dados.data;
+    const vistos = new Map();
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 24) continue;
+      const chave = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+      if (!vistos.has(chave)) vistos.set(chave, this._lum(d[i], d[i + 1], d[i + 2]));
+    }
+    // olhos e contorno ficam de fora: recolorir tudo apagava o rosto
+    const cores = [...vistos.entries()]
+      .filter(([, l]) => !preservarEscuros || l > 0.22)
+      .sort((a, b) => a[1] - b[1]);
+    if (!cores.length) return;
+    const rampa = this._rampa(cor, cores.length);
+    const mapa = new Map(cores.map(([k], i) => [k, rampa[i]]));
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 24) continue;
+      const nova = mapa.get((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]);
+      if (nova) { d[i] = nova[0]; d[i + 1] = nova[1]; d[i + 2] = nova[2]; }
+    }
+    ctx.putImageData(dados, 0, 0);
+  },
+
+  /* ---------- montagem em cache ---------- */
 
   _cache: new Map(),
 
-  _bloco(ap) {
-    const chave = ap.personagem + '|' + ap.corCamisa + '|' + ap.corCabelo;
+  _folha(ap) {
+    const chave = Object.values(ap).join('|');
     if (this._cache.has(chave)) return this._cache.get(chave);
 
-    const T = this.TILE;
-    const p = Number(ap.personagem);
-    const info = this.PERSONAGENS[p];
-    const c = document.createElement('canvas');
-    c.width = 4 * T;                     // 4 direções
-    c.height = 3 * T;                    // 3 quadros
-    const cx = c.getContext('2d');
-    cx.imageSmoothingEnabled = false;
+    const L = this.QUADRO * this.QUADROS, A = this.QUADRO * 4;
+    const alvo = document.createElement('canvas');
+    alvo.width = L; alvo.height = A;
+    const cx = alvo.getContext('2d');
 
-    const ordem = ['esquerda', 'baixo', 'cima', 'direita'];
-    ordem.forEach((dir, i) => {
-      for (let q = 0; q < 3; q++) {
-        cx.drawImage(this._folha, this.COL_DIRECAO[dir] * T, (p * 3 + q) * T, T, T,
-                     i * T, q * T, T, T);
-      }
-    });
-
-    // troca de cores: camisa e cabelo viram tons da cor escolhida
-    const troca = new Map();
-    info.camisa.forEach((orig, i) => troca.set(orig.toLowerCase(), this._tom(ap.corCamisa, i)));
-    info.cabelo.forEach((orig, i) => troca.set(orig.toLowerCase(), this._tom(ap.corCabelo, i)));
-    if (troca.size) {
-      const dados = cx.getImageData(0, 0, c.width, c.height);
-      const d = dados.data;
-      for (let i = 0; i < d.length; i += 4) {
-        if (d[i + 3] < 128) continue;
-        const hex = this._hex(d[i], d[i + 1], d[i + 2]);
-        const nova = troca.get(hex);
-        if (nova) {
-          const [r, g, b] = this._rgb(nova);
-          d[i] = r; d[i + 1] = g; d[i + 2] = b;
-        }
-      }
-      cx.putImageData(dados, 0, 0);
+    // Ordem de empilhamento. Nesta versão do LPC o corpo vem sem rosto: olhos e
+    // sobrancelha são camadas próprias — sem elas o personagem fica sem cara.
+    const camadas = [
+      ['corpo_' + ap.corpo, ap.pele, true],
+      ['cabeca_' + ap.corpo, ap.pele, true],      // no LPC o corpo vem sem cabeça
+      ['olhos', null, false],
+      ['sobrancelha', ap.corCabelo, false],
+      ['calca_' + ap.corpo, ap.corCalca, false],
+      ['sapato_' + ap.corpo, '#3a3a42', false],
+      ['camisa_' + ap.corpo, ap.corCamisa, false],
+      ['cabelo_' + ap.cabelo, ap.corCabelo, false],
+    ];
+    for (const [nome, cor, preserva] of camadas) {
+      const img = this._imgs[nome];
+      if (!img || !img.complete || !img.naturalWidth) continue;
+      const temp = document.createElement('canvas');
+      temp.width = L; temp.height = A;
+      const tc = temp.getContext('2d');
+      tc.drawImage(img, 0, 0);
+      if (cor) this._recolorir(tc, L, A, cor, preserva);   // olhos ficam na cor original
+      cx.drawImage(temp, 0, 0);
     }
 
-    if (this._cache.size > 200) this._cache.clear();
-    this._cache.set(chave, c);
-    return c;
+    if (this._cache.size > 60) this._cache.clear();
+    this._cache.set(chave, alvo);
+    return alvo;
   },
 
   /* ---------- desenho ---------- */
@@ -158,27 +178,26 @@ const Boneco = {
   /** Desenha com os pés em (x, y + 13) e o corpo centrado em x. */
   desenhar(ctx, aparencia, x, y, direcao, quadro, escala) {
     const ap = this.normalizar(aparencia);
-    const S = (escala || 2) * (this.TILE / 16);
-    if (!this._pronto) {                                   // enquanto a folha carrega
-      ctx.fillStyle = 'rgba(148,163,184,.6)';
+    const S = (escala || 2) * 0.46;                 // 64px de quadro no tamanho do mundo
+    if (!this._pronto) {
+      ctx.fillStyle = 'rgba(148,163,184,.55)';
       ctx.beginPath();
-      ctx.arc(x, y, 12 * (S / 2), 0, Math.PI * 2);
+      ctx.arc(x, y, 11, 0, Math.PI * 2);
       ctx.fill();
       return;
     }
-    const bloco = this._bloco(ap);
-    const T = this.TILE;
-    const dir = ['esquerda', 'baixo', 'cima', 'direita'].indexOf(
-      ['esquerda', 'baixo', 'cima', 'direita'].includes(direcao) ? direcao : 'baixo');
-    // 0-2-1-2: o passo alterna entre parado e as duas pernas
-    const passo = [0, 1, 0, 2][quadro % 4];
-    const larg = T * S, alt = T * S;
+    const folha = this._folha(ap);
+    const Q = this.QUADRO;
+    const linha = this.LINHA[direcao] === undefined ? this.LINHA.baixo : this.LINHA[direcao];
+    // quadro 0 é a pose parada; 1..8 é a passada
+    const col = quadro > 0 ? 1 + (quadro % 8) : 0;
+    const lado = Q * S;
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(bloco, dir * T, passo * T, T, T,
-                  Math.round(x - larg / 2), Math.round(y + 13 - alt), larg, alt);
+    ctx.drawImage(folha, col * Q, linha * Q, Q, Q,
+                  Math.round(x - lado / 2), Math.round(y + 13 - lado * 0.955), lado, lado);
   },
 
-  /* ---------- retrato (listas e vídeos sem câmera) ---------- */
+  /* ---------- retrato ---------- */
 
   _retratos: new Map(),
 
@@ -187,24 +206,28 @@ const Boneco = {
     const chave = Object.values(ap).join('|');
     if (this._retratos.has(chave)) return this._retratos.get(chave);
     if (!this._pronto) return '';
-    const T = this.TILE;
     const c = document.createElement('canvas');
     c.width = c.height = 48;
     const cx = c.getContext('2d');
     cx.imageSmoothingEnabled = false;
-    // recorta cabeça e ombros do quadro de frente
-    cx.drawImage(this._bloco(ap), T, 1, T, 11, -6, 0, T * 4, 11 * 4);
+    // cabeça e ombros do quadro parado, virado para a frente
+    cx.drawImage(this._folha(ap), 2 * this.QUADRO + 18, this.QUADRO * 2 + 8, 28, 28, 0, 0, 48, 48);
     const url = c.toDataURL();
     this._retratos.set(chave, url);
     return url;
   },
 
-  /** Miniatura de uma opção do editor (usada para escolher o personagem). */
   miniaturaOpcao(chave, valor) {
-    if (chave !== 'personagem' || !this._pronto) return null;
-    return this.retrato({ personagem: valor,
-                          corCamisa: this.PERSONAGENS[Number(valor)].camisa[0],
-                          corCabelo: this.PERSONAGENS[Number(valor)].cabelo[0] || '#1c1410' });
+    if (!this._pronto) return null;
+    if (chave === 'cabelo') {
+      return this.retrato({ corpo: 'm', pele: this.CATALOGO.pele[0], cabelo: valor,
+                            corCabelo: '#4a2f1b', corCamisa: '#4f7fd9', corCalca: '#3d4457' });
+    }
+    if (chave === 'corpo') {
+      return this.retrato({ corpo: valor, pele: this.CATALOGO.pele[0], cabelo: 'bob',
+                            corCabelo: '#4a2f1b', corCamisa: '#4f7fd9', corCalca: '#3d4457' });
+    }
+    return null;
   },
 };
 

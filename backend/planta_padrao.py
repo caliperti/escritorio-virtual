@@ -80,7 +80,7 @@ def montar_padrao(esc) -> None:
     por("telefone", 19, 3); por("papeis", 21, 3)
     por("tapete", 18, 6)
     por("sofa", 16, 7); por("planta", 15, 1); por("planta", 25, 1)
-    por("relogio", 20, 1); por("luminaria", 24, 7)
+    por("relogio", 17, 1);   # longe da plaquinha da sala por("luminaria", 24, 7)
     por("estante", 22, 1); por("planta_alta", 24, 3); por("livros", 21, 3)
 
     # ---------------- Sala de Foco ----------------
