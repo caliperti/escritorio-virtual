@@ -387,6 +387,9 @@ function iniciarSala(msg) {
     enviarSinal: (para, dados) => enviar({ tipo: 'sinal', para, dados }),
     aoMudarTiles: montarTiles,
     aoPararTela: () => { atualizarBotoesMidia(); avisarMidia(); },
+    aoNegar: (tipo, e) => escreverChat({ sistema: true, texto:
+      (tipo === 'audio' ? 'Microfone' : 'Câmera') + ' bloqueado pelo navegador ('
+      + e.name + '). Libere nas permissões do site e tente de novo.' }),
   });
   avisarMidia();
 
@@ -934,16 +937,20 @@ function avisarMidia() {
 }
 
 async function alternarMic() {
-  await Midia.alternar('audio');
-  atualizarBotoesMidia();
-  avisarMidia();
-}
-
-async function alternarCam() {
-  await Midia.alternar('video');
+  const ligou = await Midia.alternar('audio');
   atualizarBotoesMidia();
   montarTiles();
   avisarMidia();
+  escreverChat({ sistema: true, texto: ligou ? 'Microfone ligado.' : 'Microfone desligado.' });
+}
+
+async function alternarCam() {
+  const ligou = await Midia.alternar('video');
+  atualizarBotoesMidia();
+  montarTiles();
+  avisarMidia();
+  escreverChat({ sistema: true, texto: ligou
+    ? 'Câmera ligada.' : 'Câmera desligada — o aparelho foi liberado.' });
 }
 
 async function alternarTela() {
@@ -960,8 +967,14 @@ async function alternarTela() {
 }
 
 function atualizarBotoesMidia() {
-  document.getElementById('btn-mic').classList.toggle('desligado', !Midia.ligado('audio'));
-  document.getElementById('btn-cam').classList.toggle('desligado', !Midia.ligado('video'));
+  const mic = document.getElementById('btn-mic');
+  const cam = document.getElementById('btn-cam');
+  mic.classList.toggle('desligado', !Midia.ligado('audio'));
+  cam.classList.toggle('desligado', !Midia.ligado('video'));
+  mic.title = Midia.ligado('audio') ? 'Desligar o microfone (M)' : 'Ligar o microfone (M)';
+  cam.title = Midia.ligado('video') ? 'Desligar a câmera (V)' : 'Ligar a câmera (V)';
+  mic.textContent = Midia.ligado('audio') ? '🎤' : '🔇';
+  cam.textContent = Midia.ligado('video') ? '📹' : '🚫';
   const btn = document.getElementById('btn-tela');
   btn.classList.toggle('ligado', !!Midia.telaStream);
   btn.title = Midia.telaStream ? 'Parar de compartilhar (T)' : 'Compartilhar tela (T)';

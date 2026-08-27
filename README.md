@@ -34,13 +34,19 @@ com nomes diferentes.
 | `W A S D` / setas | andar |
 | clique no chão | caminha até lá contornando os móveis (segurar o botão anda na direção do cursor) |
 | `Enter` | escrever no chat · `Esc` sai do campo |
-| `M` | microfone · `V` câmera · `R` reagir |
+| `M` | liga/desliga o microfone · `V` a câmera · `R` reagir |
 | `T` | compartilhar a tela (ou o botão 🖥️) · `Esc` fecha o vídeo aberto |
 | `B` | editar seu boneco sem sair da sala |
 | `E` | abrir o editor do escritório · `Delete` remove o móvel selecionado |
 
 Clique em qualquer miniatura de vídeo para abrir em tela cheia — é assim que se
 assiste à apresentação de alguém.
+
+**Microfone e câmera ligam e desligam a qualquer momento**, sem sair da sala.
+Desligar não é só silenciar: a faixa é encerrada e o **equipamento é liberado**
+(a luz da câmera apaga). Ligar de novo devolve a imagem nas conversas que já
+estavam abertas, sem reconectar ninguém — e quem entrou em "só olhando" pode
+ligar **só o microfone**, sem acender a câmera junto.
 
 ## O visual
 

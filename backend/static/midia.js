@@ -14,31 +14,72 @@ const Midia = {
   audioCtx: null,
   niveis: new Map(),       // id -> 0..1 (quanto a pessoa está falando)
 
-  configurar({ meuId, enviarSinal, aoMudarTiles, aoPararTela }) {
+  configurar({ meuId, enviarSinal, aoMudarTiles, aoPararTela, aoNegar }) {
     this.meuId = meuId;
     this.enviarSinal = enviarSinal;
     this.aoMudarTiles = aoMudarTiles;
     this.aoPararTela = aoPararTela;
+    this.aoNegar = aoNegar;
   },
 
   /* ---------- mídia local ---------- */
 
-  async pedirMidia() {
-    if (this.streamLocal) return this.streamLocal;
-    this.streamLocal = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true },
-      video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } },
-    });
-    this._monitorarNivel('eu', this.streamLocal);
-    // Se já havia chamadas abertas (entrou sem mídia e ligou depois), injeta as
-    // faixas nelas — a renegociação acontece sozinha via onnegotiationneeded.
-    for (const par of this.pares.values()) {
-      for (const faixa of this.streamLocal.getTracks()) {
-        if (faixa.kind === 'video' && this.telaStream) continue;  // a tela tem a vez
-        par.pc.addTrack(faixa, this.streamLocal);
-      }
+  /** Pede só o que falta. Ligar o microfone não deve acender a câmera junto. */
+  async pedirMidia(quais) {
+    const querAudio = !quais || quais.audio !== false;
+    const querVideo = !quais || quais.video !== false;
+    const pedido = {};
+    if (querAudio && !this.temFaixa('audio')) {
+      pedido.audio = { echoCancellation: true, noiseSuppression: true };
     }
+    if (querVideo && !this.temFaixa('video')) {
+      pedido.video = { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } };
+    }
+    if (!Object.keys(pedido).length) return this.streamLocal;
+
+    const novo = await navigator.mediaDevices.getUserMedia(pedido);
+    if (!this.streamLocal) this.streamLocal = new MediaStream();
+    for (const faixa of novo.getTracks()) {
+      this.streamLocal.addTrack(faixa);
+      // Injeta nas chamadas já abertas: quem entrou só olhando e ligou depois
+      // não precisa reconectar com ninguém.
+      if (faixa.kind === 'video' && this.telaStream) continue;   // a tela tem a vez
+      for (const par of this.pares.values()) this._trocarFaixa(par, faixa);
+    }
+    if (novo.getAudioTracks().length) this._monitorarNivel('eu', this.streamLocal);
+    this.aoMudarTiles && this.aoMudarTiles();
     return this.streamLocal;
+  },
+
+  /** Põe uma faixa nova na conexão, reaproveitando o transceptor que existir. */
+  _trocarFaixa(par, faixa) {
+    const tr = par.pc.getTransceivers().find((t) =>
+      (t.sender.track && t.sender.track.kind === faixa.kind)
+      || (t.receiver.track && t.receiver.track.kind === faixa.kind));
+    if (!tr) {
+      par.pc.addTrack(faixa, this.streamLocal);
+      return;
+    }
+    tr.sender.replaceTrack(faixa).catch((e) => console.warn('troca de faixa', e));
+    if (tr.direction === 'recvonly') tr.direction = 'sendrecv';
+  },
+
+  /** Desliga de verdade: a faixa é encerrada e o equipamento liberado (a luz
+   *  da câmera apaga). Só desabilitar a faixa mantém o aparelho aberto. */
+  desligar(tipo) {
+    if (!this.streamLocal) return;
+    const faixa = tipo === 'audio' ? this.streamLocal.getAudioTracks()[0]
+                                   : this.streamLocal.getVideoTracks()[0];
+    if (!faixa) return;
+    faixa.stop();
+    this.streamLocal.removeTrack(faixa);
+    if (tipo === 'video' && this.telaStream) return;      // a tela continua no ar
+    for (const par of this.pares.values()) {
+      const tr = par.pc.getTransceivers().find((t) =>
+        t.sender.track && t.sender.track.kind === tipo);
+      if (tr) tr.sender.replaceTrack(null).catch(() => {});
+    }
+    this.aoMudarTiles && this.aoMudarTiles();
   },
 
   temFaixa(tipo) {
@@ -53,14 +94,19 @@ const Midia = {
     return !!f && f.enabled;
   },
 
+  /** Liga/desliga microfone ou câmera a qualquer momento, sem sair da sala. */
   async alternar(tipo) {
-    if (!this.streamLocal) {
-      try { await this.pedirMidia(); return true; } catch (e) { return false; }
+    if (this.ligado(tipo)) {
+      this.desligar(tipo);
+      return false;
     }
-    const f = tipo === 'audio' ? this.streamLocal.getAudioTracks()[0] : this.streamLocal.getVideoTracks()[0];
-    if (!f) return false;
-    f.enabled = !f.enabled;
-    return f.enabled;
+    try {
+      await this.pedirMidia({ audio: tipo === 'audio', video: tipo === 'video' });
+      return this.ligado(tipo);
+    } catch (e) {
+      this.aoNegar && this.aoNegar(tipo, e);
+      return false;
+    }
   },
 
   /* ---------- compartilhamento de tela ---------- */
