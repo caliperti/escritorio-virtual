@@ -54,6 +54,7 @@ class Participante:
     tela: bool = False
     reacao: str = ""
     aparencia: Dict[str, str] = field(default_factory=dict)
+    token: str = ""
     ws: Any = field(default=None, repr=False)
 
     def publico(self) -> Dict:
@@ -94,6 +95,7 @@ class Sala:
             id=secrets.token_hex(6),
             nome=nome,
             cor=dados.get("cor") if cor_valida(dados.get("cor")) else secrets.choice(CORES),
+            token=dados.get("token") or "",
             emoji=(dados.get("emoji") or "")[:4],
             aparencia=limpar_aparencia(dados.get("aparencia")),
             x=escritorio.ponto_de_nascimento()[0],

@@ -134,7 +134,7 @@ function aparenciaSalva() {
   }
 }
 
-/* ==================== tela de entrada ==================== */
+/* ==================== tela de entrada: conta e login ==================== */
 
 const editorEntrada = criarEditor(
   document.getElementById('previa'), document.getElementById('opcoes'),
@@ -143,25 +143,90 @@ const editorEntrada = criarEditor(
 document.getElementById('btn-sortear').onclick = () => editorEntrada.sortear();
 
 const campoNome = document.getElementById('campo-nome');
-campoNome.value = localStorage.getItem('escritorio:nome') || '';
-campoNome.focus();
+const campoSenha = document.getElementById('campo-senha');
+const aviso = document.getElementById('aviso-entrada');
+let modo = 'entrar';                       // 'entrar' | 'criar'
+let sessao = { token: localStorage.getItem('escritorio:token') || '', conta: null };
+
+function usarModo(novoModo) {
+  modo = novoModo;
+  document.getElementById('aba-entrar').setAttribute('aria-pressed', modo === 'entrar');
+  document.getElementById('aba-criar').setAttribute('aria-pressed', modo === 'criar');
+  document.getElementById('linha-convite').hidden = modo !== 'criar';
+  document.querySelector('.editor').hidden = modo !== 'criar';
+  campoSenha.setAttribute('autocomplete', modo === 'criar' ? 'new-password' : 'current-password');
+  aviso.textContent = modo === 'criar'
+    ? 'Escolha seu personagem: ele fica salvo na sua conta.'
+    : '';
+}
+document.getElementById('aba-entrar').onclick = () => usarModo('entrar');
+document.getElementById('aba-criar').onclick = () => usarModo('criar');
+
+/** Sessão guardada: entra direto, sem digitar nada. */
+async function conferirSessao() {
+  if (!sessao.token) return usarModo('entrar');
+  try {
+    const r = await fetch('/conta/eu?token=' + encodeURIComponent(sessao.token));
+    const d = await r.json();
+    if (d.conta) {
+      sessao.conta = d.conta;
+      campoNome.value = d.conta.nome;
+      editorEntrada.definir(d.conta.aparencia);
+      document.querySelector('.abas-conta').hidden = true;
+      document.querySelector('.editor').hidden = true;
+      campoSenha.parentElement.hidden = true;
+      document.getElementById('linha-convite').hidden = true;
+      document.getElementById('btn-sair-conta').classList.remove('oculto');
+      aviso.textContent = `Bem-vindo de volta, ${d.conta.nome.split(' ')[0]}.`;
+      return;
+    }
+  } catch (e) { /* offline: cai no login normal */ }
+  localStorage.removeItem('escritorio:token');
+  sessao = { token: '', conta: null };
+  usarModo('entrar');
+}
+conferirSessao();
+
+document.getElementById('btn-sair-conta').onclick = () => {
+  localStorage.removeItem('escritorio:token');
+  location.reload();
+};
 
 document.getElementById('btn-entrar').onclick = () => entrar(true);
 document.getElementById('btn-entrar-mudo').onclick = () => entrar(false);
-campoNome.addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar(true); });
+campoSenha.addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar(true); });
 
-// O servidor diz se a sala está protegida; o campo só aparece nesse caso.
-fetch('/config').then((r) => r.json()).then((c) => {
-  if (c.protegido) document.getElementById('campo-senha').parentElement.hidden = false;
-}).catch(() => {});
+/** Cria a conta ou faz login, e só então abre a sala. */
+async function autenticar() {
+  if (sessao.token && sessao.conta) return true;
+  const nome = campoNome.value.trim();
+  const senha = campoSenha.value;
+  if (!nome || !senha) { aviso.textContent = 'Preencha nome e senha.'; return false; }
+
+  const corpo = modo === 'criar'
+    ? { nome, senha, convite: document.getElementById('campo-convite').value,
+        aparencia: editorEntrada.ver(), cor: editorEntrada.ver().corCamisa }
+    : { nome, senha };
+  aviso.textContent = modo === 'criar' ? 'Criando sua conta…' : 'Entrando…';
+  try {
+    const r = await fetch(modo === 'criar' ? '/conta/registrar' : '/conta/entrar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(corpo),
+    });
+    const d = await r.json();
+    if (d.erro) { aviso.textContent = d.erro; return false; }
+    sessao = { token: d.token, conta: d.conta };
+    localStorage.setItem('escritorio:token', d.token);
+    localStorage.setItem('escritorio:aparencia', JSON.stringify(d.conta.aparencia));
+    return true;
+  } catch (e) {
+    aviso.textContent = 'Não consegui falar com o servidor.';
+    return false;
+  }
+}
 
 async function entrar(comMidia) {
-  const nome = campoNome.value.trim() || 'Convidado';
-  const aparencia = editorEntrada.ver();
-  const aviso = document.getElementById('aviso-entrada');
-  localStorage.setItem('escritorio:nome', nome);
-  localStorage.setItem('escritorio:aparencia', JSON.stringify(aparencia));
-
+  if (!await autenticar()) return;
   if (comMidia) {
     aviso.textContent = 'Pedindo acesso à câmera e ao microfone…';
     try {
@@ -171,8 +236,7 @@ async function entrar(comMidia) {
     }
   }
   aviso.textContent = 'Conectando…';
-  conectar({ nome, cor: aparencia.corCamisa, emoji: '', aparencia,
-             senha: document.getElementById('campo-senha').value });
+  conectar({ token: sessao.token });
 }
 
 /* ==================== conexão ==================== */
@@ -946,7 +1010,6 @@ function fecharEditor() {
 function salvarBoneco() {
   const aparencia = editorSala.ver();
   const nome = document.getElementById('campo-nome-editar').value.trim() || Jogo.eu.nome;
-  localStorage.setItem('escritorio:nome', nome);
   localStorage.setItem('escritorio:aparencia', JSON.stringify(aparencia));
   enviar({ tipo: 'perfil', nome, cor: aparencia.corCamisa, aparencia });
   fecharEditor();

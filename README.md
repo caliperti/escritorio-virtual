@@ -171,7 +171,32 @@ motivo de valer a pena o deploy fixo. `endereco.txt` guarda o atual e
 
 Para desligar: `launchctl unload ~/Library/LaunchAgents/com.escritorio.*.plist`
 
-### Senha da sala
+### Contas
+
+Cada pessoa **se cadastra uma vez** com o **código de convite** (a variável
+`SENHA`), escolhe o personagem e pronto: nas próximas vezes entra com nome e
+senha, e o boneco volta como ficou. A sessão fica guardada no navegador, então
+na prática é só abrir o link.
+
+- senha nunca é guardada: só o hash PBKDF2 com sal por conta (`contas.py`);
+- trocar o personagem dentro da sala (tecla `B`) salva na conta;
+- `contas.json` fica fora do git.
+
+### Onde o estado sobrevive
+
+O disco do Render gratuito é apagado toda vez que o serviço hiberna — o que
+apagaria contas e escritório editado. Então, quando existem as variáveis
+`GITHUB_TOKEN` e `GITHUB_REPO`, `nuvem.py` **espelha o estado no próprio
+repositório**: baixa na subida e sobe as mudanças agrupadas a cada 20s.
+
+Como o repositório é público, `contas.json` vai **cifrado** (Fernet, chave em
+`ESTADO_CHAVE`) — hash de senha e token de sessão não podem ficar legíveis. O
+`mapa.json` sobe em claro, que não tem nada sigiloso.
+
+Sem essas variáveis nada disso acontece e valem os arquivos locais, que é o
+certo para rodar na sua máquina.
+
+### Senha da sala (código de convite)
 
 A senha fica no arquivo **`.env`** (fora do git), e o `iniciar.sh` a carrega
 sozinho — sem isso, cada reinício subiria a sala aberta de novo:

@@ -6,7 +6,10 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+import contas as mod_contas
 import mapa
+import nuvem
+from contas import contas
 from mapa import escritorio
 from sala import RAIO_CONVERSA, RAIO_SILENCIO, CORES, cor_valida, limpar_aparencia, sala
 
@@ -19,6 +22,10 @@ STATIC_DIR = Path(__file__).parent / "static"
 # endereço na internet — ninguém entra sem ela.
 SENHA = os.environ.get("SENHA", "").strip()
 
+# Na subida, primeiro tenta trazer o estado do repositório (o disco do plano
+# gratuito é apagado quando o serviço hiberna), depois carrega do arquivo.
+nuvem.restaurar([mod_contas.ARQUIVO, mapa.ARQUIVO])
+contas.carregar()
 escritorio.carregar()
 
 app = FastAPI(title="Escritório Virtual")
@@ -32,7 +39,47 @@ async def raiz():
 
 @app.get("/config")
 async def config():
-    return {"protegido": bool(SENHA)}
+    return {"protegido": bool(SENHA), "contas": True, "nuvem": nuvem.ligado}
+
+
+@app.post("/conta/registrar")
+async def registrar(dados: dict):
+    """Cadastro: só entra quem tem o código de convite da sala."""
+    if SENHA and (dados.get("convite") or "") != SENHA:
+        return {"erro": "Código de convite errado."}
+    nome = (dados.get("nome") or "").strip()
+    if contas.existe(nome):
+        return {"erro": "Já existe alguém com esse nome. Escolha outro ou faça login."}
+    token = contas.registrar(nome, dados.get("senha") or "",
+                             mod_contas_limpar(dados.get("aparencia")), dados.get("cor") or "#4f7fd9")
+    if not token:
+        return {"erro": "Nome precisa de 2 letras e senha de 4."}
+    nuvem.marcar(mod_contas.ARQUIVO)
+    return {"token": token, "conta": conta_publica(contas.por_token(token))}
+
+
+@app.post("/conta/entrar")
+async def entrar_conta(dados: dict):
+    token = contas.entrar((dados.get("nome") or ""), dados.get("senha") or "")
+    if not token:
+        return {"erro": "Nome ou senha não conferem."}
+    nuvem.marcar(mod_contas.ARQUIVO)
+    return {"token": token, "conta": conta_publica(contas.por_token(token))}
+
+
+@app.get("/conta/eu")
+async def conta_eu(token: str = ""):
+    conta = contas.por_token(token)
+    return {"conta": conta_publica(conta)} if conta else {"erro": "Sessão expirada."}
+
+
+def conta_publica(conta):
+    return {"nome": conta["nome"], "aparencia": conta.get("aparencia") or {},
+            "cor": conta.get("cor")} if conta else None
+
+
+def mod_contas_limpar(bruto):
+    return mapa.limpar_aparencia(bruto) if hasattr(mapa, "limpar_aparencia") else (bruto or {})
 
 
 @app.get("/saude")
@@ -49,12 +96,17 @@ async def websocket_sala(ws: WebSocket):
         if entrada.get("tipo") != "entrar":
             await ws.close(code=4000)
             return
-        if SENHA and (entrada.get("senha") or "") != SENHA:
-            await ws.send_json({"tipo": "recusado", "texto": "Senha incorreta."})
+        conta = contas.por_token(entrada.get("token") or "")
+        if not conta:
+            await ws.send_json({"tipo": "recusado", "texto": "Faça login para entrar."})
             await ws.close(code=4003)
             return
+        entrada = {**entrada, "nome": conta["nome"],
+                   "aparencia": conta.get("aparencia") or {},
+                   "cor": conta.get("cor") or entrada.get("cor")}
 
         eu = await sala.entrar(ws, entrada)
+        eu.token = entrada.get("token")
         log.info("entrou: %s (%s) — %d na sala", eu.nome, eu.id, len(sala.participantes))
 
         await ws.send_json({
@@ -116,6 +168,9 @@ async def websocket_sala(ws: WebSocket):
                 eu.emoji = (msg.get("emoji") or eu.emoji)[:4]
                 if msg.get("aparencia"):
                     eu.aparencia = limpar_aparencia(msg["aparencia"])
+                contas.atualizar(getattr(eu, "token", ""), nome=eu.nome,
+                                 aparencia=eu.aparencia, cor=eu.cor)
+                nuvem.marcar(mod_contas.ARQUIVO)
                 await sala.publicar({"tipo": "perfil", "participante": eu.publico()})
 
             elif tipo == "sinal":
@@ -133,6 +188,7 @@ async def websocket_sala(ws: WebSocket):
                 # sincronizar diferença por diferença e arriscar divergir.
                 if escritorio.editar(msg.get("acao") or {}):
                     escritorio.salvar()
+                    nuvem.marcar(mapa.ARQUIVO)
                     await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(),
                                          "por": eu.nome})
                 else:

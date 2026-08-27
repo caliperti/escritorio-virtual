@@ -15,12 +15,23 @@
     <h1>🏢 Escritório Virtual</h1>
     <p class="sub">Ande pelo escritório. Chegou perto de alguém, a conversa abre sozinha.</p>
 
+    <div class="abas-conta">
+      <button id="aba-entrar" type="button" aria-pressed="true">Entrar</button>
+      <button id="aba-criar" type="button" aria-pressed="false">Criar conta</button>
+    </div>
+
     <label>Seu nome
-      <input id="campo-nome" maxlength="24" placeholder="Como te chamam" autocomplete="off">
+      <input id="campo-nome" maxlength="24" placeholder="Como te chamam" autocomplete="username">
     </label>
 
-    <label hidden>Senha da sala
-      <input id="campo-senha" type="password" autocomplete="current-password">
+    <label>Sua senha
+      <input id="campo-senha" type="password" autocomplete="current-password"
+             placeholder="mínimo 4 caracteres">
+    </label>
+
+    <label id="linha-convite" hidden>Código de convite
+      <input id="campo-convite" type="password" autocomplete="off"
+             placeholder="o código que te mandaram">
     </label>
 
     <div class="editor">
@@ -33,6 +44,7 @@
 
     <button id="btn-entrar" class="principal">Entrar com câmera e microfone</button>
     <button id="btn-entrar-mudo" class="secundario">Entrar só olhando</button>
+    <button id="btn-sair-conta" class="secundario oculto">Sair desta conta</button>
     <p id="aviso-entrada" class="aviso"></p>
   </div>
 </div>

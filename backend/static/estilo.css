@@ -21,6 +21,8 @@ body {
 }
 
 .oculto { display: none !important; }
+/* `hidden` sozinho perde para o `display:block` dos rótulos do formulário */
+[hidden] { display: none !important; }
 kbd {
   background: var(--painel-2); border: 1px solid var(--borda); border-bottom-width: 2px;
   border-radius: 4px; padding: 1px 5px; font-size: 12px; font-family: inherit;
@@ -45,6 +47,15 @@ kbd {
   border: 1px solid var(--borda); color: var(--texto); font-size: 15px;
 }
 .cartao input:focus { outline: 2px solid var(--acento); outline-offset: 1px; }
+.abas-conta { display: flex; gap: 6px; margin-top: 6px; }
+.abas-conta button {
+  flex: 1; background: var(--painel-2); border: 1px solid var(--borda); color: var(--fraco);
+  border-radius: 9px; padding: 8px; font-size: 13.5px; cursor: pointer;
+}
+.abas-conta button[aria-pressed="true"] {
+  color: var(--texto); border-color: var(--acento); background: #17324a;
+}
+
 /* ---------- editor do boneco ---------- */
 .editor {
   display: grid; grid-template-columns: 148px 1fr; gap: 14px; margin-top: 16px;
