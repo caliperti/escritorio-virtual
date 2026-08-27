@@ -109,7 +109,7 @@ hora para quem está na sala.
 
 | Ferramenta | O que faz |
 |---|---|
-| 🪑 **Móveis** | clique para colocar; arraste para mudar de lugar; botão direito remove. Tem mesa, mesa de reunião, balcão, cadeira, sofá, poltrona, estante, armário, quadro branco, TV, tapete, planta, luminária, palco, pebolim, narguilé, cafeteira, geladeira, pia — e o que vai **em cima da mesa**: monitor, notebook, caneca, papéis, telefone, livros, vasinho, bolo |
+| 🪑 **Móveis** | clique num espaço vazio para colocar. **Clique num móvel e abre o menu dele**: ✋ Mover (ele fica na mão até você clicar no destino), 🔁 Trocar (por qualquer peça que caiba no mesmo espaço, mantendo o lugar) e 🗑️ Remover. Arrastar continua movendo direto, e botão direito remove. Tem mesa, mesa de reunião, balcão, cadeira, sofá, poltrona, estante, armário, quadro branco, TV, tapete, planta, luminária, palco, pebolim, narguilé, cafeteira, geladeira, pia — e o que vai **em cima da mesa**: monitor, notebook, caneca, papéis, telefone, livros, vasinho, bolo |
 | 🎨 **Piso** | madeira, carpete, azulejo, concreto, grama e os **carpetes de time** (lilás, azul, menta, rosa). `Shift` preenche um retângulo |
 | 🧱 **Parede** | arraste para levantar; `Alt` (ou botão direito) derruba. **`Shift` preenche um retângulo inteiro** — é assim que se fecha um bloco novo de uma vez |
 | 🚪 **Salas** | arraste para desenhar: sai uma **sala pronta** — parede em volta, porta de 2 tiles no lado que você escolher e o piso que escolher. Desmarque "levantar parede" para só marcar uma área. **📐 redesenha a área** de uma sala existente; clique no nome para renomear e trocar a cor; 🔒 liga/desliga o áudio fechado |

@@ -19,6 +19,7 @@ const Jogo = {
   config: { raio_conversa: 150, raio_silencio: 210, cores: [] },
   pessoas: new Map(),               // id -> { ...publico, xr, yr, bolha, reacao }
   teclas: new Set(),
+  escala: ESCALA,
   caminho: null,
   clique: null,
   camera: { x: 0, y: 0 },
@@ -382,7 +383,11 @@ document.addEventListener('keydown', (e) => {
 
   if (e.key === 'Enter' && !digitando) { document.getElementById('campo-chat').focus(); e.preventDefault(); return; }
   if (e.key === 'Escape' && digitando) { campo.blur(); return; }
-  if (e.key === 'Escape') { encolherTiles(); fecharEditor(); }
+  if (e.key === 'Escape') {
+    encolherTiles();
+    fecharEditor();
+    if (Editor.ativo) { Editor.movendo = null; Editor.fecharMenu(); }
+  }
   if (digitando) return;
 
   const dir = MAPA_TECLAS[e.key.toLowerCase()];

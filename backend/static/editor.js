@@ -12,6 +12,8 @@ const Editor = {
   pisoSel: 'c',
   selecionado: null,
   arrasto: null,
+  menu: null,          // popup aberto em cima de um móvel
+  movendo: null,       // móvel “na mão”, esperando o clique que solta
   pincel: null,          // traço em andamento de parede/piso
   retangulo: null,       // retângulo de sala em andamento
   cursor: null,
@@ -30,6 +32,8 @@ const Editor = {
   alternar() {
     this.ativo = !this.ativo;
     this.selecionado = null;
+    this.movendo = null;
+    this.fecharMenu();
     document.getElementById('btn-editor').classList.toggle('ligado', this.ativo);
     document.body.classList.toggle('editando', this.ativo);
     if (this.ativo) this.montarPainel();
@@ -87,6 +91,8 @@ const Editor = {
     this.ferramenta = fer;
     this.selecionado = null;
     this.retangulo = null;
+    this.movendo = null;
+    this.fecharMenu();
     document.querySelectorAll('#editor [data-fer]').forEach((b) => {
       b.setAttribute('aria-pressed', b.dataset.fer === fer);
     });
@@ -95,7 +101,7 @@ const Editor = {
     alvo.innerHTML = '';
 
     if (fer === 'mobilia') {
-      ajuda.textContent = 'Clique no mapa para colocar. Arraste um móvel para mudar de lugar; botão direito remove.';
+      ajuda.textContent = 'Clique no mapa para colocar. Clique num móvel para abrir o menu (mover, trocar, remover); arrastar também move.';
       const cat = this.jogo.mapa.catalogo;
       const grupos = {};
       for (const [tipo, info] of Object.entries(cat)) {
@@ -268,11 +274,22 @@ const Editor = {
     const apagando = e.button === 2 || e.altKey;
 
     if (this.ferramenta === 'mobilia' && !apagando) {
+      if (this.movendo) {                          // segundo clique: solta aqui
+        const m = this.movendo;
+        this.movendo = null;
+        this.acao({ acao: 'mover', id: m.id, x: t.x + m.dx, y: t.y + m.dy });
+        return;
+      }
       const alvo = this.objetoEm(t.x, t.y);
-      if (alvo) {                                  // pegou um móvel: arrasta
+      if (alvo) {
+        // guarda o arrasto, mas só vira movimento se a pessoa arrastar de fato:
+        // um clique seco abre o menu do móvel.
+        this.fecharMenu();
         this.selecionado = alvo;
-        this.arrasto = { id: alvo.id, dx: alvo.x - t.x, dy: alvo.y - t.y, x: alvo.x, y: alvo.y };
+        this.arrasto = { id: alvo.id, dx: alvo.x - t.x, dy: alvo.y - t.y,
+                         x: alvo.x, y: alvo.y, ox: alvo.x, oy: alvo.y };
       } else {
+        this.fecharMenu();
         this.acao({ acao: 'objeto', tipo: this.tipoSel, x: t.x, y: t.y });
       }
     } else if (this.ferramenta === 'apagar' || (this.ferramenta === 'mobilia' && apagando)) {
@@ -320,9 +337,13 @@ const Editor = {
     if (this.arrasto) {
       const a = this.arrasto;
       this.arrasto = null;
-      const alvo = this.jogo.mapa.objetos.find((o) => o.id === a.id);
-      if (alvo && (alvo.x !== a.x || alvo.y !== a.y)) {
-        this.acao({ acao: 'mover', id: a.id, x: a.x, y: a.y });
+      if (a.x === a.ox && a.y === a.oy) {          // clique seco: abre o menu
+        this.abrirMenu(a.id);
+      } else {
+        const alvo = this.jogo.mapa.objetos.find((o) => o.id === a.id);
+        if (alvo && (alvo.x !== a.x || alvo.y !== a.y)) {
+          this.acao({ acao: 'mover', id: a.id, x: a.x, y: a.y });
+        }
       }
     } else if (this.pincel) {
       const traco = this.pincel;
@@ -355,6 +376,81 @@ const Editor = {
       this.acao({ acao: 'remover', id: this.selecionado.id });
       this.selecionado = null;
     }
+  },
+
+  /* ==================== menu do móvel ==================== */
+
+  fecharMenu() {
+    if (this.menu) { this.menu.remove(); this.menu = null; }
+  },
+
+  /** Onde, na tela, está o canto do tile (tx, ty). */
+  _naTela(tx, ty) {
+    const r = document.getElementById('tela').getBoundingClientRect();
+    const e = this.jogo.escala || 1.5;
+    const palco = document.querySelector('.palco').getBoundingClientRect();
+    return {
+      x: r.left - palco.left + (tx * this.jogo.tile - this.jogo.camera.x) * e,
+      y: r.top - palco.top + (ty * this.jogo.tile - this.jogo.camera.y) * e,
+    };
+  },
+
+  abrirMenu(id) {
+    this.fecharMenu();
+    const mapa = this.jogo.mapa;
+    const o = mapa.objetos.find((x) => x.id === id);
+    if (!o) return;
+    const info = mapa.catalogo[o.tipo];
+    const pos = this._naTela(o.x + info.l / 2, o.y);
+
+    const caixa = document.createElement('div');
+    caixa.className = 'menu-movel';
+    caixa.innerHTML = `
+      <div class="cabeca">
+        <img src="${Objetos.miniatura(o.tipo, info.l, info.a, 34)}" alt="">
+        <div><strong>${info.nome}</strong><span>${info.l}×${info.a} · ${info.grupo}</span></div>
+      </div>
+      <div class="acoes">
+        <button data-fazer="mover">✋ Mover</button>
+        <button data-fazer="trocar">🔁 Trocar</button>
+        <button data-fazer="remover" class="perigo">🗑️ Remover</button>
+      </div>
+      <div class="troca oculto"></div>`;
+    document.querySelector('.palco').appendChild(caixa);
+    this.menu = caixa;
+    caixa.style.left = Math.max(8, Math.min(pos.x - 96, window.innerWidth - 500)) + 'px';
+    caixa.style.top = Math.max(8, pos.y - 12) + 'px';
+
+    caixa.querySelector('[data-fazer="mover"]').onclick = () => {
+      this.movendo = { id: o.id, dx: 0, dy: 0 };
+      this.fecharMenu();
+      document.getElementById('editor-ajuda').textContent =
+        'Clique onde o móvel deve ficar (Esc cancela).';
+    };
+    caixa.querySelector('[data-fazer="remover"]').onclick = () => {
+      this.acao({ acao: 'remover', id: o.id });
+      this.fecharMenu();
+    };
+    caixa.querySelector('[data-fazer="trocar"]').onclick = () => {
+      const alvo = caixa.querySelector('.troca');
+      alvo.classList.toggle('oculto');
+      if (alvo.childElementCount) return;
+      // qualquer móvel que caiba no espaço atual, do mais parecido ao menor —
+      // trocar por um maior invadiria o vizinho
+      const cabem = Object.entries(mapa.catalogo)
+        .filter(([tipo, i]) => tipo !== o.tipo && i.l <= info.l && i.a <= info.a)
+        .sort((a, b) => (info.l - a[1].l) + (info.a - a[1].a) - ((info.l - b[1].l) + (info.a - b[1].a)));
+      for (const [tipo, i] of cabem) {
+        const b = document.createElement('button');
+        b.title = i.nome;
+        b.innerHTML = `<img src="${Objetos.miniatura(tipo, i.l, i.a, 34)}" alt="">`;
+        b.onclick = () => { this.acao({ acao: 'trocar', id: o.id, tipo }); this.fecharMenu(); };
+        alvo.appendChild(b);
+      }
+      if (!alvo.childElementCount) {
+        alvo.innerHTML = '<p class="vazio">Nenhum outro móvel desse tamanho.</p>';
+      }
+    };
   },
 
   /* ==================== o que aparece por cima do mapa ==================== */
@@ -397,6 +493,17 @@ const Editor = {
       ctx.strokeStyle = '#38bdf8';
       ctx.lineWidth = 2;
       ctx.strokeRect(this.arrasto.x * t, this.arrasto.y * t, info.l * t, info.a * t);
+    } else if (this.movendo && this.cursor) {          // móvel “na mão”
+      const alvo = mapa.objetos.find((o) => o.id === this.movendo.id);
+      if (alvo) {
+        const info = mapa.catalogo[alvo.tipo];
+        ctx.globalAlpha = 0.6;
+        Objetos.desenhar(ctx, alvo.tipo, this.cursor.x * t, this.cursor.y * t, info.l * t, info.a * t);
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(this.cursor.x * t, this.cursor.y * t, info.l * t, info.a * t);
+      }
     } else if (this.cursor && this.ferramenta === 'mobilia') {
       const info = mapa.catalogo[this.tipoSel];       // prévia do que vai ser colocado
       if (info) {

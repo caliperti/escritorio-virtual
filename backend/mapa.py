@@ -257,6 +257,18 @@ class Escritorio:
                     return False
                 alvo["x"], alvo["y"] = x, y
 
+            elif tipo == "trocar":
+                alvo = next((o for o in self.objetos if o["id"] == int(acao["id"])), None)
+                novo = acao.get("tipo")
+                if not alvo or novo not in CATALOGO:
+                    self._historico.pop()
+                    return False
+                info = CATALOGO[novo]
+                if not (alvo["x"] + info["l"] <= self.largura and alvo["y"] + info["a"] <= self.altura):
+                    self._historico.pop()
+                    return False
+                alvo["tipo"] = novo
+
             elif tipo == "remover":
                 antes = len(self.objetos)
                 self.objetos = [o for o in self.objetos if o["id"] != int(acao["id"])]
