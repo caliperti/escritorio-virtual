@@ -38,6 +38,7 @@ com nomes diferentes.
 | `T` | compartilhar a tela (ou o botão 🖥️) · `Esc` fecha o vídeo aberto |
 | `B` | editar seu boneco sem sair da sala |
 | `E` | abrir o editor do escritório · `Delete` remove o móvel selecionado |
+| `+` `−` `0` | aproximar, afastar e voltar ao zoom padrão (a roda do mouse também) |
 
 Clique em qualquer miniatura de vídeo para abrir em tela cheia — é assim que se
 assiste à apresentação de alguém.

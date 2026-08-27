@@ -3,7 +3,11 @@
  * A regra de quem ouve quem está em duas mãos: aqui (para abrir a chamada na
  * hora certa) e em sala.py (para o chat "perto"). Mudou uma, mude a outra.   */
 
-const ESCALA = 1.5;                 // zoom do canvas
+// Zoom da tela. Fica em variável porque a pessoa aproxima e afasta em tempo
+// real; `Jogo.escala` acompanha para o editor posicionar os menus certo.
+const ZOOM_MIN = 0.9, ZOOM_MAX = 3.2;
+let ESCALA = Number(localStorage.getItem('escritorio:zoom')) || 1.5;
+if (!(ESCALA >= ZOOM_MIN && ESCALA <= ZOOM_MAX)) ESCALA = 1.5;
 const VELOCIDADE = 3.2;             // pixels por quadro (~190 px/s)
 const INTERVALO_ENVIO = 66;         // ms entre atualizações de posição
 const DURACAO_BOLHA = 6000;
@@ -20,6 +24,8 @@ const Jogo = {
   pessoas: new Map(),               // id -> { ...publico, xr, yr, bolha, reacao }
   teclas: new Set(),
   escala: ESCALA,
+  zoomMin: ZOOM_MIN,
+  zoomMax: ZOOM_MAX,
   caminho: null,
   clique: null,
   camera: { x: 0, y: 0 },
@@ -397,6 +403,7 @@ function iniciarSala(msg) {
   document.getElementById('app').classList.remove('oculto');
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   ajustarTela();
+  definirZoom(ESCALA);
   desenharListaPessoas();
   atualizarBotoesMidia();
   montarTiles();
@@ -433,6 +440,18 @@ function zonaDe(px, py) {
   return melhor;
 }
 
+/* ==================== zoom ==================== */
+
+function definirZoom(valor) {
+  ESCALA = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Number(valor.toFixed(2))));
+  Jogo.escala = ESCALA;
+  localStorage.setItem('escritorio:zoom', String(ESCALA));
+  const marca = document.getElementById('zoom-nivel');
+  if (marca) marca.textContent = Math.round(ESCALA / 1.5 * 100) + '%';
+}
+
+function ajustarZoom(fator) { definirZoom(ESCALA * fator); }
+
 /* ==================== entrada do teclado ==================== */
 
 const MAPA_TECLAS = {
@@ -464,6 +483,9 @@ document.addEventListener('keydown', (e) => {
   if (e.key.toLowerCase() === 't') alternarTela();
   if (e.key.toLowerCase() === 'b') abrirEditor();
   if (e.key.toLowerCase() === 'e') Editor.alternar();
+  if (e.key === '+' || e.key === '=') { ajustarZoom(1.15); e.preventDefault(); }
+  if (e.key === '-' || e.key === '_') { ajustarZoom(1 / 1.15); e.preventDefault(); }
+  if (e.key === '0') definirZoom(1.5);
   if ((e.key === 'Delete' || e.key === 'Backspace') && Editor.ativo) Editor.removerSelecionado();
   if (e.key.toLowerCase() === 'r') reagir();
 });
@@ -502,6 +524,13 @@ tela.addEventListener('pointerup', (e) => {
 });
 tela.addEventListener('pointercancel', () => { Editor.aoSoltar(); delete tela.dataset.alvo; });
 tela.addEventListener('contextmenu', (e) => { if (Editor.ativo) e.preventDefault(); });
+
+// roda do mouse / pinça do trackpad aproximam e afastam
+tela.addEventListener('wheel', (e) => {
+  if (!Jogo.eu) return;
+  e.preventDefault();
+  ajustarZoom(e.deltaY < 0 ? 1.12 : 1 / 1.12);
+}, { passive: false });
 tela.addEventListener('pointerleave', () => { Editor.cursor = null; });
 
 function pontoNoMapa(e) {
@@ -992,6 +1021,8 @@ document.getElementById('btn-cam').onclick = alternarCam;
 document.getElementById('btn-tela').onclick = alternarTela;
 document.getElementById('btn-boneco').onclick = abrirEditor;
 document.getElementById('btn-editor').onclick = () => Editor.alternar();
+document.getElementById('zoom-mais').onclick = () => ajustarZoom(1.15);
+document.getElementById('zoom-menos').onclick = () => ajustarZoom(1 / 1.15);
 document.getElementById('btn-reacao').onclick = reagir;
 document.getElementById('btn-sair').onclick = () => {
   Midia.fecharTudo();

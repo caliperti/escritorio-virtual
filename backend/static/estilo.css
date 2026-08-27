@@ -183,6 +183,18 @@ button.secundario:hover { color: var(--texto); }
 }
 .video-tile .sem-video img { width: 72px; height: 72px; image-rendering: pixelated; }
 
+.zoom {
+  position: absolute; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 2px;
+  background: rgba(19,28,49,.9); border: 1px solid var(--borda); border-radius: 999px;
+  padding: 3px; z-index: 15;
+}
+.zoom button {
+  width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 15px;
+  background: var(--painel-2); border: 1px solid var(--borda); color: var(--texto);
+}
+.zoom button:hover { background: #26314f; }
+.zoom span { min-width: 46px; text-align: center; font-size: 11.5px; color: var(--fraco); }
+
 /* ---------- lateral ---------- */
 .lateral {
   grid-area: lateral; display: grid; grid-template-rows: auto 1fr; min-height: 0;
