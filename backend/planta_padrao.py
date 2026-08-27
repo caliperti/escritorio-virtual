@@ -23,18 +23,40 @@ SALAS_PESSOAIS = [
     ("conteudo", "Conteúdo", 51, 29, 62, 38, "#c98a5a", "m", "cima"),
 ]
 
-# um posto diferente por sala, para nenhuma ser a cópia da outra
+# Uma mesa ampla (6x2) por sala, cada uma com um posto de trabalho diferente.
+# As coordenadas são relativas ao canto da mesa; a linha 0 é o tampo do fundo e
+# a linha 1 é onde ficam teclado, caneca e companhia.
 SETUPS = [
-    [("monitor", 0, 0), ("teclado", 0, 1), ("mouse", 1, 1)],
-    [("monitor_duplo", 0, 0), ("teclado", 0, 1), ("caneca", 2, 1)],
-    [("monitor_curvo", 0, 0), ("teclado", 1, 1), ("fone_mesa", 2, 1)],
-    [("monitor_gamer", 0, 0), ("torre", 1, 0), ("teclado", 0, 1)],
-    [("imac", 0, 0), ("tablet", 1, 0), ("teclado", 0, 1)],
-    [("notebook", 0, 0), ("papeis", 1, 0), ("caneca", 2, 1)],
-    [("monitor", 0, 0), ("monitor", 1, 0), ("teclado", 0, 1), ("mouse", 1, 1)],
-    [("imac", 1, 0), ("fone_mesa", 0, 0), ("teclado", 1, 1)],
-    [("monitor_duplo", 0, 0), ("torre", 2, 0), ("teclado", 1, 1)],
-    [("monitor_curvo", 0, 0), ("tablet", 2, 0), ("teclado", 1, 1)],
+    # recepção: atendimento — duas telas, telefone e impressora
+    [("monitor_duplo", 0, 0), ("telefone", 2, 0), ("impressora", 5, 0),
+     ("teclado", 0, 1), ("mouse", 1, 1), ("papeis", 4, 1)],
+    # diretoria: ultrawide, notebook de apoio e luminária
+    [("monitor_curvo", 1, 0), ("notebook", 4, 0), ("luminaria_mesa", 0, 0),
+     ("teclado", 2, 1), ("mouse", 3, 1), ("caneca", 5, 1)],
+    # comercial: três telas para acompanhar tudo
+    [("monitor_triplo", 1, 0), ("caneca", 0, 0), ("fone_mesa", 5, 0),
+     ("teclado", 2, 1), ("mouse", 3, 1), ("papeis", 0, 1)],
+    # marketing: setup gamer com gabinete de vidro ao lado
+    [("monitor_gamer", 1, 0), ("monitor_vertical", 3, 0), ("luminaria_mesa", 5, 0),
+     ("teclado", 1, 1), ("mouse", 2, 1), ("fone_mesa", 4, 1)],
+    # financeiro: planilha em duas telas e muita papelada
+    [("monitor_duplo", 1, 0), ("impressora", 4, 0), ("teclado", 1, 1),
+     ("mouse", 2, 1), ("papeis", 3, 1), ("caneca", 5, 1)],
+    # tráfego: painel de campanhas com tela em pé
+    [("monitor", 1, 0), ("monitor_vertical", 2, 0), ("monitor", 3, 0),
+     ("teclado", 1, 1), ("mouse", 2, 1), ("caneca", 4, 1)],
+    # design: all-in-one, mesa digitalizadora e luminária
+    [("imac", 2, 0), ("tablet", 4, 0), ("luminaria_mesa", 0, 0),
+     ("teclado", 2, 1), ("mouse", 3, 1), ("vasinho", 5, 1)],
+    # suporte: headset, telefone e duas telas
+    [("monitor_duplo", 1, 0), ("telefone", 0, 0), ("fone_mesa", 4, 0),
+     ("teclado", 1, 1), ("mouse", 2, 1), ("caneca", 4, 1)],
+    # TI: três telas, microfone e o gabinete grande no chão
+    [("monitor_triplo", 1, 0), ("microfone", 0, 0), ("teclado", 2, 1),
+     ("mouse", 3, 1), ("papeis", 5, 1)],
+    # conteúdo: edição de vídeo, microfone e notebook
+    [("monitor_curvo", 1, 0), ("notebook", 4, 0), ("microfone", 0, 0),
+     ("teclado", 2, 1), ("fone_mesa", 3, 1), ("caneca", 5, 1)],
 ]
 
 ENFEITES = ["estante", "armario", "quadro", "tv", "planta_alta", "luminaria"]
@@ -102,20 +124,23 @@ def montar_padrao(esc) -> None:
     # ---------------- as 10 salas individuais ----------------
     for i, (id_, nome, x1, y1, x2, y2, cor, tp, porta) in enumerate(SALAS_PESSOAIS):
         sala(id_, nome, x1, y1, x2, y2, cor, tp, porta)
-        # a mesa fica encostada na parede do fundo, olhando para a porta
+        # Uma mesa só, ampla, encostada na parede do fundo e olhando para a porta.
         fundo = y1 + 2 if porta == "baixo" else y2 - 3
-        mx = x1 + 3
-        por("mesa_grande", mx, fundo)
+        mx = x1 + 2
+        por("mesa_ampla", mx, fundo)
         for tipo, dx, dy in SETUPS[i % len(SETUPS)]:
             por(tipo, mx + dx, fundo + dy)
-        por("cadeira", mx + 1, fundo + 2 if porta == "baixo" else fundo - 1)
-        # cada sala com uma combinação de enfeites diferente
+        por("cadeira", mx + 2, fundo + 2 if porta == "baixo" else fundo - 1)
+        if i in (3, 8):                      # gabinete grande no chão, ao lado
+            por("torre_grande", x1 + 1, fundo)   # ao lado da mesa, sem fechar canto
+        # enfeites: cada sala com uma combinação diferente, sem outra mesa
+        # enfeites encostados na parede do fundo: no meio da sala eles fecham
+        # canto e deixam pedaço da sala inalcançável
         por(ENFEITES[i % len(ENFEITES)], x1 + 1, y1 + 1)
-        por(ENFEITES[(i + 2) % len(ENFEITES)], x2 - 2, y2 - 2)
+        por(ENFEITES[(i + 2) % len(ENFEITES)], x2 - 3, y1 + 1)
         por("planta_alta", x2 - 1, y1 + 1)
-        por("tapete", x1 + 2, (y1 + y2) // 2)
+        por("tapete", x1 + 2, (y1 + y2) // 2 + 1)
         por("janela", (x1 + x2) // 2, y1 if porta == "baixo" else y2)
-        por("poltrona" if i % 2 else "banqueta", x1 + 1, y2 - 2)
 
     # ---------------- sala de reunião de todo mundo ----------------
     sala("reuniao", "Sala de Reunião", 40, 13, 62, 26, "#8b7fd0", "m", "esquerda", privada=True)
@@ -160,3 +185,51 @@ def montar_padrao(esc) -> None:
 
     esc.nascimento = (12, 24)
     esc._recalcular()
+    _desobstruir(esc)
+
+
+def _desobstruir(esc) -> None:
+    """Tira o enfeite que fechar um pedaço de sala.
+
+    A planta é montada por regra, e uma peça alta num canto errado isola tiles
+    sem ninguém perceber. Em vez de caçar caso a caso, aqui a gente varre: o que
+    ficou inalcançável a pé perde o móvel que o bloqueia. Mesas e cadeiras ficam
+    — se o problema for uma mesa, é erro de desenho da planta, não de enfeite.
+    """
+    from collections import deque
+    intocaveis = {"mesa", "mesa_grande", "mesa_ampla", "mesa_reuniao", "mesa_canto",
+                  "mesa_redonda", "balcao", "cadeira", "palco"}
+    for _ in range(12):
+        vistos = {esc.nascimento}
+        fila = deque([esc.nascimento])
+        while fila:
+            x, y = fila.popleft()
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                viz = (x + dx, y + dy)
+                if viz not in vistos and esc.tile_livre(*viz):
+                    vistos.add(viz)
+                    fila.append(viz)
+        presos = [(x, y) for y in range(esc.altura) for x in range(esc.largura)
+                  if esc.tile_livre(x, y) and (x, y) not in vistos]
+        if not presos:
+            return
+        # remove o primeiro móvel removível que faz fronteira com o trecho preso
+        alvo = None
+        for (x, y) in presos:
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                for o in esc.objetos:
+                    from mapa import CATALOGO
+                    info = CATALOGO[o["tipo"]]
+                    if not info["bloqueia"] or o["tipo"] in intocaveis:
+                        continue
+                    if o["x"] <= x + dx < o["x"] + info["l"] and o["y"] <= y + dy < o["y"] + info["a"]:
+                        alvo = o
+                        break
+                if alvo:
+                    break
+            if alvo:
+                break
+        if not alvo:
+            return
+        esc.objetos.remove(alvo)
+        esc._recalcular()

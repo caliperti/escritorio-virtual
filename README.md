@@ -77,10 +77,10 @@ tem folha própria de sentado (3 poses × 4 direções), então é a pose de ver
 o boneco em pé em cima do assento. Quem decide é o cliente, olhando o que existe no
 tile: não precisou de nada no protocolo.
 
-A categoria **Computadores** tem 11 peças para montar o posto de cada um: monitor,
+A categoria **Computadores** tem 17 peças para montar o posto de cada um: monitor,
 dois monitores, ultrawide curvo, setup gamer com gabinete, all-in-one, notebook,
 tablet, headset, teclado e mouse. Cada tela desenha um conteúdo diferente (código,
-planilha, gráfico, jogo, vídeo), que é o que faz o computador parecer ligado.
+planilha, gráfico, jogo, vídeo, chat, terminal, linha do tempo de edição, mapa), que é o que faz o computador parecer ligado.
 
 ## Os personagens
 
@@ -113,14 +113,20 @@ O formato é **uma sala por pessoa**, não open space:
 
 - **10 salas individuais** em volta (Recepção, Diretoria, Comercial, Marketing,
   Financeiro, Tráfego, Design, Suporte, TI e Conteúdo), cada uma com porta,
-  piso próprio, mesa, um setup de computador diferente e enfeites variados;
+  piso próprio e **uma única mesa ampla (6×2)** — é sala de uma pessoa, não
+  precisa de mais. O que muda de sala para sala é o **posto de trabalho**:
+  atendimento com duas telas e impressora, ultrawide da diretoria, três telas do
+  comercial, setup gamer com monitor em pé, edição de vídeo com microfone,
+  all-in-one com mesa digitalizadora, e por aí;
 - **uma sala de reunião grande** no meio à direita, com mesa comprida, 48
   lugares, quadro, TV e um canto de espera;
 - **circulação** ligando tudo, com **café** e **convivência** (sofás, pebolim,
   TV) — áreas abertas, onde a conversa é por proximidade;
 - **jardim** na entrada, com árvores, arbustos e bancos.
 
-São 64×36 tiles e 14 áreas. Os nomes são só o ponto de partida: clique na
+São 64×40 tiles e 14 áreas. A planta **se confere sozinha ao ser montada**:
+se um enfeite fechar um canto e deixar parte da sala inalcançável a pé, ele é
+removido automaticamente (`_desobstruir`) — mesas e cadeiras nunca. Os nomes são só o ponto de partida: clique na
 plaquinha de qualquer sala para renomear (o nome da pessoa, por exemplo), trocar
 a cor, ligar o áudio fechado ou redesenhar a área.
 

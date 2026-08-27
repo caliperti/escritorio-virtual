@@ -93,6 +93,21 @@ const Objetos = {
     /* ================= mesas ================= */
     mesa(c, x, y, w, h) { this._mesa(c, x, y, w, h); },
     mesa_grande(c, x, y, w, h) { this._mesa(c, x, y, w, h, true); },
+    mesa_ampla(c, x, y, w, h) {
+      this._mesa(c, x, y, w, h, true);
+      // gaveteiro embutido, para a mesa grande não virar uma prancha lisa
+      this.ret(c, x + w - 34, y + h - 20, 28, 12, 3, this.sombra(this.TAMPO, 0.2));
+      this.ret(c, x + w - 31, y + h - 17, 22, 2, 1, this.METAL);
+      this.ret(c, x + w - 31, y + h - 13, 22, 2, 1, this.METAL);
+    },
+    mesa_canto(c, x, y, w, h) {
+      const cor = this.TAMPO;
+      this.ret(c, x + 2, y + 2, w - 4, h - 4, 5, this.traco(cor));
+      this.ret(c, x + 3, y + h - 12, w - 6, 9, 4, this.sombra(cor, 0.28));
+      this.ret(c, x + 3, y + 3, w - 6, h - 13, 5, cor);
+      this.ret(c, x + 6, y + 5, w - 12, 2, 1, this.luz(cor, 0.5));
+      this.ret(c, x + 6, y + h - 24, 3, 14, 1, this.sombra(cor, 0.14));   // emenda do L
+    },
     mesa_reuniao(c, x, y, w, h) {
       const cor = this.MADEIRA;
       this.bloco(c, x + 3, y + 3, w - 6, h - 6, cor, 10);
@@ -486,6 +501,70 @@ const Objetos = {
       this._tela(c, x + 6, y + 7, w - 12, h - 26, 'desktop');
     },
 
+    monitor_triplo(c, x, y, w, h) {
+      const l = (w - 8) / 3;
+      this._monitor(c, x + 2, y + 6, l, h - 13, 'chat');
+      this._monitor(c, x + w / 2 - l / 2, y + 3, l, h - 10, 'codigo');
+      this._monitor(c, x + w - l - 2, y + 6, l, h - 13, 'grafico');
+    },
+
+    monitor_vertical(c, x, y, w, h) {
+      const cor = this.ESCURO;
+      this.ret(c, x + w / 2 - 6, y + h - 6, 12, 4, 2, this.mix(cor, this.METAL, 0.35));
+      this.ret(c, x + w / 2 - 2.5, y + h - 10, 5, 5, 1, this.mix(cor, this.METAL, 0.2));
+      this.ret(c, x + 8, y + 1, w - 16, h - 11, 2, this.traco(cor));
+      this.ret(c, x + 9, y + 2, w - 18, h - 13, 2, cor);
+      this._tela(c, x + 11, y + 4, w - 22, h - 17, 'terminal');
+    },
+
+    torre_grande(c, x, y, w, h) {
+      const cor = '#2b2f38';
+      this.sombraChao(c, x, y, w, h);
+      this.ret(c, x + 5, y + 6, w - 10, h - 12, 3, this.traco(cor));
+      this.ret(c, x + 6, y + 7, w - 12, h - 14, 3, cor);
+      c.save(); c.globalAlpha = 0.8;                       // lateral de vidro
+      this.ret(c, x + 9, y + 11, w - 18, h - 24, 2, '#1c2a44');
+      c.restore();
+      for (let i = 0; i < 3; i++) {                        // ventoinhas acesas
+        this.elipse(c, x + w / 2, y + 18 + i * 14, 5, 5, ['#4fd8ff', '#9d5cff', '#ff4fd8'][i]);
+        this.elipse(c, x + w / 2, y + 18 + i * 14, 2, 2, '#0e1420');
+      }
+      this.ret(c, x + 8, y + 9, w - 16, 2, 1, this.luz(cor, 0.3));
+    },
+
+    microfone(c, x, y, w, h) {
+      const cor = '#3a3f49';
+      this.ret(c, x + w / 2 - 6, y + h - 8, 12, 4, 2, cor);               // base
+      this.ret(c, x + w / 2 - 1.5, y + 12, 3, h - 20, 1, this.METAL);     // haste
+      this.ret(c, x + w / 2 - 5, y + 4, 10, 12, 5, this.traco(cor));
+      this.ret(c, x + w / 2 - 4, y + 5, 8, 10, 4, cor);
+      c.fillStyle = 'rgba(255,255,255,.18)';
+      for (let i = 0; i < 4; i++) c.fillRect(x + w / 2 - 3, y + 6 + i * 2, 6, 1);
+    },
+
+    impressora(c, x, y, w, h) {
+      const cor = '#c9ccd2';
+      this.ret(c, x + 4, y + 8, w - 8, h - 16, 3, this.traco(cor));
+      this.ret(c, x + 5, y + 9, w - 10, h - 18, 2, cor);
+      this.ret(c, x + 7, y + 5, w - 14, 5, 1, '#f4f2ee');                 // folha saindo
+      this.ret(c, x + 7, y + h - 13, w - 14, 3, 1, this.sombra(cor, 0.35));
+      this.ret(c, x + w - 12, y + 11, 4, 2, 1, '#4fd8ff');
+    },
+
+    luminaria_mesa(c, x, y, w, h) {
+      const cor = '#4a5060';
+      this.elipse(c, x + w / 2 + 4, y + h - 8, 7, 3, cor);
+      c.strokeStyle = cor; c.lineWidth = 2.5; c.lineCap = 'round';
+      c.beginPath();
+      c.moveTo(x + w / 2 + 4, y + h - 9);
+      c.quadraticCurveTo(x + w / 2 + 5, y + 10, x + w / 2 - 4, y + 9);
+      c.stroke();
+      this.ret(c, x + w / 2 - 9, y + 6, 11, 6, 3, cor);
+      c.save(); c.globalAlpha = 0.3;
+      this.elipse(c, x + w / 2 - 4, y + 18, 10, 7, '#ffe9b8');
+      c.restore();
+    },
+
     torre(c, x, y, w, h) {
       const cor = '#2f333d';
       this.ret(c, x + 8, y + 5, w - 16, h - 12, 3, this.traco(cor));
@@ -593,7 +672,9 @@ const Objetos = {
   /** Conteúdo da tela: é o que faz o computador parecer ligado. */
   _tela(c, x, y, w, h, assunto) {
     const fundo = { codigo: '#1e2b3d', planilha: '#f2f4f7', grafico: '#22304a',
-                    jogo: '#1a1230', video: '#101826', desktop: '#2b4a6f' }[assunto] || '#1e2b3d';
+                    jogo: '#1a1230', video: '#101826', desktop: '#2b4a6f',
+                    chat: '#22262e', terminal: '#0f1a14', edicao: '#191b22',
+                    mapa: '#1d3a2e' }[assunto] || '#1e2b3d';
     this.ret(c, x, y, w, h, 1, fundo);
     const px = (dx, dy, dw, dh, cor) => this.ret(c, x + dx, y + dy, dw, dh, 0.5, cor);
     if (assunto === 'codigo') {
@@ -621,6 +702,27 @@ const Objetos = {
       px(w * 0.42, h * 0.22, 4, 4, '#e8f2ff');
       px(1, h - 3, w - 2, 2, '#33455f');
       px(1, h - 3, (w - 2) * 0.4, 2, '#4fd8ff');
+    } else if (assunto === 'chat') {
+      for (let i = 0; i < Math.floor((h - 4) / 5); i++) {
+        const dir = i % 2;
+        px(dir ? w * 0.35 : 2, 2 + i * 5, w * 0.6, 3.5, dir ? '#4f8de0' : '#3a4150');
+      }
+    } else if (assunto === 'terminal') {
+      px(2, 2, 3, 1.5, '#7ee0a0');
+      for (let i = 1; i < Math.floor((h - 4) / 3); i++) {
+        px(2, 2 + i * 3, (w - 5) * (0.3 + ((i * 7) % 5) / 8), 1.5, '#5ec97f');
+      }
+    } else if (assunto === 'edicao') {
+      px(1, 1, w - 2, h * 0.5, '#2b3040');                 // prévia do vídeo
+      px(w * 0.4, h * 0.2, 4, 4, '#e8f2ff');
+      px(1, h * 0.58, w - 2, 2, '#4fd8ff');                // trilhas
+      px(1, h * 0.72, (w - 2) * 0.7, 2, '#ffd479');
+      px(1, h * 0.86, (w - 2) * 0.45, 2, '#ff9ec4');
+    } else if (assunto === 'mapa') {
+      px(1, 1, w - 2, h - 2, '#20402f');
+      px(2, h * 0.4, w - 4, 1.5, '#7ee0a0');
+      px(w * 0.45, 2, 1.5, h - 4, '#7ee0a0');
+      px(w * 0.6, h * 0.6, 3, 3, '#ff9ec4');
     } else {
       px(1, 1, 4, 4, '#e8f2ff'); px(6, 1, 4, 4, '#ffd479');
       px(1, 6, 4, 4, '#7ee0a0'); px(1, h - 3, w - 2, 2, '#1b3350');
