@@ -19,6 +19,8 @@ const Jogo = {
   config: { raio_conversa: 150, raio_silencio: 210, cores: [] },
   pessoas: new Map(),               // id -> { ...publico, xr, yr, bolha, reacao }
   teclas: new Set(),
+  caminho: null,
+  clique: null,
   camera: { x: 0, y: 0 },
   ultimoEnvio: 0,
   zonaAnterior: null,
@@ -324,6 +326,7 @@ function iniciarSala(msg) {
 
   document.getElementById('entrada').classList.add('oculto');
   document.getElementById('app').classList.remove('oculto');
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   ajustarTela();
   desenharListaPessoas();
   atualizarBotoesMidia();
@@ -370,7 +373,11 @@ const MAPA_TECLAS = {
 
 document.addEventListener('keydown', (e) => {
   const campo = document.activeElement;
-  const digitando = campo && ['INPUT', 'TEXTAREA', 'SELECT'].includes(campo.tagName);
+  // offsetParent nulo = o campo está escondido. Sem isso, quem entrava dando
+  // Enter no nome ficava com o foco preso no campo da tela de entrada (já
+  // oculta) e o teclado não movia o boneco.
+  const digitando = campo && ['INPUT', 'TEXTAREA', 'SELECT'].includes(campo.tagName)
+    && campo.offsetParent !== null;
 
   if (e.key === 'Enter' && !digitando) { document.getElementById('campo-chat').focus(); e.preventDefault(); return; }
   if (e.key === 'Escape' && digitando) { campo.blur(); return; }
@@ -395,20 +402,30 @@ document.addEventListener('keyup', (e) => {
 
 window.addEventListener('blur', () => Jogo.teclas.clear());
 
-/* Clique no chão: anda naquela direção enquanto o botão fica pressionado.
-   Com o editor aberto, o mesmo clique vira pincel/arrasto de móvel. */
+/* Clique no chão: um clique manda caminhar até lá (contornando os móveis);
+   segurar o botão anda na direção do cursor. Com o editor aberto, o mesmo
+   clique vira pincel/arrasto de móvel. */
 tela.addEventListener('pointerdown', (e) => {
   tela.setPointerCapture(e.pointerId);
   if (Editor.ativo) { Editor.aoApontar(e, pontoNoMapa(e)); return; }
-  tela.dataset.alvo = JSON.stringify(pontoNoMapa(e));
+  Jogo.caminho = null;
+  Jogo.clique = { ponto: pontoNoMapa(e), tela: { x: e.clientX, y: e.clientY }, quando: Date.now() };
+  tela.dataset.alvo = JSON.stringify(Jogo.clique.ponto);
 });
 tela.addEventListener('pointermove', (e) => {
   if (Editor.ativo) { Editor.aoMover(pontoNoMapa(e)); return; }
   if (tela.dataset.alvo) tela.dataset.alvo = JSON.stringify(pontoNoMapa(e));
 });
-tela.addEventListener('pointerup', () => {
+tela.addEventListener('pointerup', (e) => {
   if (Editor.ativo) { Editor.aoSoltar(); return; }
   delete tela.dataset.alvo;
+  // clique curto e sem arrastar = "vá até ali"
+  const c = Jogo.clique;
+  Jogo.clique = null;
+  if (!c) return;
+  const arrastou = Math.hypot(e.clientX - c.tela.x, e.clientY - c.tela.y) > 8;
+  if (arrastou || Date.now() - c.quando > 450) return;
+  Jogo.caminho = tracarCaminho(Jogo.eu.x, Jogo.eu.y, c.ponto.x, c.ponto.y);
 });
 tela.addEventListener('pointercancel', () => { Editor.aoSoltar(); delete tela.dataset.alvo; });
 tela.addEventListener('contextmenu', (e) => { if (Editor.ativo) e.preventDefault(); });
@@ -418,6 +435,52 @@ function pontoNoMapa(e) {
   const r = tela.getBoundingClientRect();
   return { x: (e.clientX - r.left) / ESCALA + Jogo.camera.x,
            y: (e.clientY - r.top) / ESCALA + Jogo.camera.y };
+}
+
+/** Caminho até o ponto clicado, contornando parede e móvel (A* nos tiles).
+ *  Devolve uma lista de pontos (centro de cada tile) ou null se não há como
+ *  chegar — é o que faz o clique parecer o do Gather em vez de empurrar o
+ *  boneco contra a mesa. */
+function tracarCaminho(x0, y0, x1, y1) {
+  const T = Jogo.tile;
+  const ini = { x: Math.floor(x0 / T), y: Math.floor(y0 / T) };
+  const fim = { x: Math.floor(x1 / T), y: Math.floor(y1 / T) };
+  if (!tileLivre(fim.x, fim.y)) return null;
+  if (ini.x === fim.x && ini.y === fim.y) return null;
+
+  const chave = (p) => p.x + ',' + p.y;
+  const h = (p) => Math.abs(p.x - fim.x) + Math.abs(p.y - fim.y);
+  const abertos = [{ ...ini, g: 0, f: h(ini) }];
+  const veio = new Map();
+  const custo = new Map([[chave(ini), 0]]);
+  let voltas = 0;
+
+  while (abertos.length && voltas++ < 6000) {
+    abertos.sort((a, b) => a.f - b.f);
+    const atual = abertos.shift();
+    if (atual.x === fim.x && atual.y === fim.y) {
+      const caminho = [];
+      let p = chave(atual);
+      while (p) {
+        const [px, py] = p.split(',').map(Number);
+        caminho.unshift({ x: (px + 0.5) * T, y: (py + 0.5) * T });
+        p = veio.get(p);
+      }
+      caminho.shift();                       // o primeiro é onde já estamos
+      return caminho.length ? caminho : null;
+    }
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const viz = { x: atual.x + dx, y: atual.y + dy };
+      if (!tileLivre(viz.x, viz.y)) continue;
+      const g = atual.g + 1;
+      const k = chave(viz);
+      if (custo.has(k) && custo.get(k) <= g) continue;
+      custo.set(k, g);
+      veio.set(k, chave(atual));
+      abertos.push({ ...viz, g, f: g + h(viz) });
+    }
+  }
+  return null;
 }
 
 /* ==================== laço principal ==================== */
@@ -436,7 +499,18 @@ function atualizar() {
   if (Jogo.teclas.has('cima')) dy -= 1;
   if (Jogo.teclas.has('baixo')) dy += 1;
 
-  if (!dx && !dy && tela.dataset.alvo) {          // andando com o mouse/dedo
+  if (dx || dy) Jogo.caminho = null;             // o teclado cancela o trajeto
+
+  if (!dx && !dy && Jogo.caminho && Jogo.caminho.length) {
+    const passo = Jogo.caminho[0];
+    const vx = passo.x - eu.x, vy = passo.y - eu.y;
+    const d = Math.hypot(vx, vy);
+    if (d < 4) Jogo.caminho.shift();
+    else { dx = vx / d; dy = vy / d; }
+    if (!Jogo.caminho.length) Jogo.caminho = null;
+  }
+
+  if (!dx && !dy && tela.dataset.alvo) {          // segurando o botão: anda para lá
     const alvo = JSON.parse(tela.dataset.alvo);
     const vx = alvo.x - eu.x, vy = alvo.y - eu.y;
     const d = Math.hypot(vx, vy);
@@ -447,9 +521,12 @@ function atualizar() {
     const n = Math.hypot(dx, dy) || 1;
     const px = eu.x + (dx / n) * VELOCIDADE;
     const py = eu.y + (dy / n) * VELOCIDADE;
-    // Testa os eixos separado: deslizar na parede em vez de travar.
-    if (livre(px, eu.y)) eu.x = px;
-    if (livre(eu.x, py)) eu.y = py;
+    // Testa os eixos separado: deslizar na parede em vez de travar. Se a pessoa
+    // já está presa dentro de um móvel (alguém colocou em cima dela), qualquer
+    // movimento vale — senão a única saída seria recarregar.
+    const preso = !livre(eu.x, eu.y);
+    if (preso || livre(px, eu.y)) eu.x = px;
+    if (preso || livre(eu.x, py)) eu.y = py;
     eu.direcao = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'direita' : 'esquerda')
                                              : (dy > 0 ? 'baixo' : 'cima');
     const agora = Date.now();

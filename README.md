@@ -31,7 +31,8 @@ com nomes diferentes.
 
 | Tecla | O quê |
 |---|---|
-| `W A S D` / setas | andar (segurar o clique no chão também anda) |
+| `W A S D` / setas | andar |
+| clique no chão | caminha até lá contornando os móveis (segurar o botão anda na direção do cursor) |
 | `Enter` | escrever no chat · `Esc` sai do campo |
 | `M` | microfone · `V` câmera · `R` reagir |
 | `T` | compartilhar a tela (ou o botão 🖥️) · `Esc` fecha o vídeo aberto |

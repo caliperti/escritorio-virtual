@@ -180,8 +180,29 @@ class Escritorio:
         return min(achadas, key=lambda z: (z["x2"] - z["x1"] + 1) * (z["y2"] - z["y1"] + 1))
 
     def ponto_de_nascimento(self) -> Tuple[float, float]:
+        """Se puserem um móvel em cima da entrada, quem chega nasce dentro dele e
+        fica preso — então procuramos o chão livre mais perto."""
         x, y = self.nascimento
+        if not self._cabe(x, y):
+            for raio in range(1, 12):
+                achou = None
+                for dy in range(-raio, raio + 1):
+                    for dx in range(-raio, raio + 1):
+                        if max(abs(dx), abs(dy)) != raio:
+                            continue
+                        if self._cabe(x + dx, y + dy):
+                            achou = (x + dx, y + dy)
+                            break
+                    if achou:
+                        break
+                if achou:
+                    x, y = achou
+                    break
         return (x + 0.5) * TAMANHO_TILE, (y + 0.5) * TAMANHO_TILE
+
+    def _cabe(self, x: int, y: int) -> bool:
+        """O avatar é uma caixinha: precisa do tile e das bordas dele livres."""
+        return self.livre((x + 0.5) * TAMANHO_TILE, (y + 0.5) * TAMANHO_TILE)
 
     def para_cliente(self) -> Dict:
         return {**self.para_json(), "tile": TAMANHO_TILE, "raio_avatar": RAIO_AVATAR,
