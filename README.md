@@ -164,17 +164,27 @@ caminho é plugar na área de membros, que já tem usuários.
 
 Sem `.env`, ou com `SENHA` em branco, a sala fica aberta para quem tiver o link.
 
-**Permanente e de graça** — tem `Dockerfile` e `render.yaml` prontos:
+### No ar em endereço fixo
 
-1. suba a pasta para um repositório no GitHub;
-2. em [render.com](https://render.com): *New → Blueprint* → aponte para o repositório;
-3. defina a variável `SENHA` (ou deixe em branco para sala aberta).
+**https://escritorio-virtual-3al4.onrender.com** — plano gratuito do Render,
+a partir do repositório <https://github.com/caliperti/escritorio-virtual>.
 
-O plano gratuito do Render dorme depois de 15 min sem ninguém — a primeira visita
-depois disso demora ~30 s. O mesmo `Dockerfile` serve para Fly.io, Koyeb ou
-Hugging Face Spaces. **Atenção:** nesses serviços o disco é efêmero, então o
-`mapa.json` volta à planta padrão a cada reinício — se o escritório editado
-importa, comite o `mapa.json` no repositório.
+Para publicar mudanças: `git push github main` — o Render reconstrói sozinho
+(`autoDeploy`). Para recriar o serviço do zero em outra conta:
+`RENDER_KEY=rnd_xxx SENHA=xxx REPO=https://github.com/... ./deploy-render.sh`.
+
+O que esperar do plano gratuito:
+
+- **dorme após 15 min sem ninguém** e leva ~1 min para voltar; no meio do
+  despertar algumas requisições respondem 404 (é o roteador do Render, não o
+  app) — basta recarregar;
+- **disco efêmero**: edições feitas no escritório pelo editor 🏗️ se perdem
+  quando ele reinicia, voltando ao `mapa.json` do repositório. Para fixar um
+  layout novo, comite o `mapa.json`;
+- a senha fica na variável de ambiente `SENHA` do serviço, não no código.
+
+O mesmo `Dockerfile` serve para Fly.io, Koyeb ou uma VPS, onde nada disso
+acontece. **Hugging Face Spaces não serve mais**: Docker lá virou plano PRO.
 
 ## Abrir para outras pessoas na rede local
 
