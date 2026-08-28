@@ -19,7 +19,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from planta_padrao import montar_padrao
+from planta_padrao import VERSAO as VERSAO_PLANTA, montar_padrao
 
 log = logging.getLogger("escritorio.mapa")
 
@@ -121,6 +121,7 @@ class Escritorio:
         self.objetos: List[Dict] = []
         self.zonas: List[Dict] = []
         self.nascimento: Tuple[int, int] = (20, 5)
+        self.versao_planta = 0
         self.proximo_id = 1
         self._bloqueados: set = set()
         self._historico: List[str] = []
@@ -131,8 +132,11 @@ class Escritorio:
         if ARQUIVO.exists():
             try:
                 self.de_json(json.loads(ARQUIVO.read_text(encoding="utf-8")))
-                log.info("mapa carregado de %s", ARQUIVO.name)
-                return
+                if self.versao_planta >= VERSAO_PLANTA:
+                    log.info("mapa carregado de %s", ARQUIVO.name)
+                    return
+                log.info("planta de fábrica é mais nova (%d > %d) — remontando o escritório",
+                         VERSAO_PLANTA, self.versao_planta)
             except Exception:
                 log.exception("mapa.json ilegível — voltando para a planta padrão")
         montar_padrao(self)
@@ -149,6 +153,7 @@ class Escritorio:
             "objetos": self.objetos,
             "zonas": self.zonas,
             "nascimento": list(self.nascimento),
+            "versao_planta": self.versao_planta,
         }
 
     def de_json(self, dados: Dict) -> None:
@@ -160,6 +165,7 @@ class Escritorio:
         self.objetos = [o for o in dados.get("objetos", []) if o.get("tipo") in CATALOGO]
         self.zonas = dados.get("zonas", [])
         self.nascimento = tuple(dados.get("nascimento", (2, 2)))
+        self.versao_planta = int(dados.get("versao_planta", 0))
         self.proximo_id = max([o["id"] for o in self.objetos], default=0) + 1
         self._recalcular()
 

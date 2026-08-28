@@ -222,9 +222,16 @@ apagaria contas e escritório editado. Então, quando existem as variáveis
 `GITHUB_TOKEN` e `GITHUB_REPO`, `nuvem.py` **espelha o estado no próprio
 repositório**: baixa na subida e sobe as mudanças agrupadas a cada 20s.
 
-Como o repositório é público, `contas.json` vai **cifrado** (Fernet, chave em
-`ESTADO_CHAVE`) — hash de senha e token de sessão não podem ficar legíveis. O
-`mapa.json` sobe em claro, que não tem nada sigiloso.
+Como o repositório é público, o estado sobe **cifrado** (Fernet, chave em
+`ESTADO_CHAVE`) — `contas.json` leva hash de senha e token de sessão, que não
+podem ficar legíveis.
+
+**Cuidado que já mordeu:** o espelho é restaurado na subida e *vence* o que veio
+na imagem. Ou seja, mudar a planta de fábrica não muda o escritório publicado —
+o mapa salvo continua valendo. Por isso `planta_padrao.py` tem uma constante
+`VERSAO`: suba o número quando a planta mudar e o servidor remonta o escritório
+sozinho na próxima subida (descartando as edições feitas no editor, que é
+justamente a intenção quando a planta muda).
 
 Sem essas variáveis nada disso acontece e valem os arquivos locais, que é o
 certo para rodar na sua máquina.

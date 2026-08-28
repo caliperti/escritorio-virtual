@@ -6,6 +6,12 @@ jardim na entrada. Cada sala tem porta, piso próprio e mobília variada — e �
 editável: dá para renomear pela plaquinha e trocar tudo pelo editor.
 """
 
+# Suba este número sempre que a planta de fábrica mudar: o servidor compara com
+# o que está gravado e, se for mais nova, remonta o escritório. Sem isso, o mapa
+# salvo (ou restaurado do espelho) vence para sempre e a planta nova nunca
+# aparece — foi exatamente o que aconteceu.
+VERSAO = 3
+
 LARGURA, ALTURA = 64, 40
 JARDIM = 6                      # colunas de área externa antes da fachada
 
@@ -184,6 +190,7 @@ def montar_padrao(esc) -> None:
         por("planta", x, y)
 
     esc.nascimento = (12, 24)
+    esc.versao_planta = VERSAO
     esc._recalcular()
     _desobstruir(esc)
 
