@@ -227,11 +227,11 @@ def _desobstruir(esc) -> None:
         for (x, y) in presos:
             for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 for o in esc.objetos:
-                    from mapa import CATALOGO
-                    info = CATALOGO[o["tipo"]]
-                    if not info["bloqueia"] or o["tipo"] in intocaveis:
+                    from mapa import CATALOGO, medida
+                    if not CATALOGO[o["tipo"]]["bloqueia"] or o["tipo"] in intocaveis:
                         continue
-                    if o["x"] <= x + dx < o["x"] + info["l"] and o["y"] <= y + dy < o["y"] + info["a"]:
+                    lg, ag = medida(o)
+                    if o["x"] <= x + dx < o["x"] + lg and o["y"] <= y + dy < o["y"] + ag:
                         alvo = o
                         break
                 if alvo:

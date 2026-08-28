@@ -82,11 +82,31 @@ const Objetos = {
     this.ret(c, x + 3, y + 2, w - 6, 2, 1, this.luz(cor, 0.5));           // luz de cima
   },
 
-  desenhar(c, tipo, x, y, w, h) {
+  /** Espaço que o móvel ocupa no mapa. De lado (90°/270°), largura e altura
+   *  trocam de lugar — o mesmo que `medida()` faz no servidor. */
+  medida(info, giro) {
+    return ((giro | 0) % 2) ? { l: info.a, a: info.l } : { l: info.l, a: info.a };
+  },
+
+  /** `x, y, w, h` são a área **já ocupada** no mapa; `giro` é 0..3 (×90°).
+   *  A sombra fica sempre no chão, sem girar; só o móvel roda. */
+  desenhar(c, tipo, x, y, w, h, giro) {
+    const g = (((giro | 0) % 4) + 4) % 4;
     const f = this.DESENHOS[tipo];
     if (!this.SEM_SOMBRA.has(tipo)) this.sombraChao(c, x, y, w, h);
-    if (f) f.call(this, c, x, y, w, h);
-    else this.bloco(c, x + 2, y + 2, w - 4, h - 4, this.TAMPO);
+    const pintar = (px, py, pw, ph) => {
+      if (f) f.call(this, c, px, py, pw, ph);
+      else this.bloco(c, px + 2, py + 2, pw - 4, ph - 4, this.TAMPO);
+    };
+    if (!g) { pintar(x, y, w, h); return; }
+    const lw = (g % 2) ? h : w;                  // tamanho do desenho sem girar
+    const lh = (g % 2) ? w : h;
+    c.save();
+    c.translate(x + w / 2, y + h / 2);
+    c.rotate(g * Math.PI / 2);
+    c.translate(-lw / 2, -lh / 2);
+    pintar(0, 0, lw, lh);
+    c.restore();
   },
 
   DESENHOS: {
@@ -783,8 +803,11 @@ const Objetos = {
 
   /* ---------- miniaturas para a paleta do editor ---------- */
   _minis: new Map(),
-  miniatura(tipo, l, a, lado) {
-    const chave = tipo + l + a + lado;
+  /** `l, a` são o tamanho natural do móvel; com `giro` ímpar a miniatura já
+   *  sai deitada. */
+  miniatura(tipo, l, a, lado, giro) {
+    const chave = tipo + l + a + lado + '/' + (giro | 0);
+    if (((giro | 0) % 2)) { const t = l; l = a; a = t; }
     if (this._minis.has(chave)) return this._minis.get(chave);
     const c = document.createElement('canvas');
     c.width = c.height = lado;
@@ -792,7 +815,7 @@ const Objetos = {
     const escala = Math.min(lado / (l * 32), lado / (a * 32)) * 0.92;
     cx.translate((lado - l * 32 * escala) / 2, (lado - a * 32 * escala) / 2);
     cx.scale(escala, escala);
-    this.desenhar(cx, tipo, 0, 0, l * 32, a * 32);
+    this.desenhar(cx, tipo, 0, 0, l * 32, a * 32, giro);
     const url = c.toDataURL();
     this._minis.set(chave, url);
     return url;

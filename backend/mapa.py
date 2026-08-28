@@ -113,6 +113,15 @@ _item("livros", "Na mesa", "Livros", 1, 1, False, "mesa")
 _item("bolo", "Na mesa", "Bolo", 1, 1, False, "mesa")
 
 
+def medida(objeto: Dict) -> Tuple[int, int]:
+    """Espaço que o móvel ocupa no mapa. Girado de lado (90° ou 270°), a
+    largura e a altura trocam de lugar."""
+    info = CATALOGO[objeto["tipo"]]
+    if int(objeto.get("g", 0)) % 2:
+        return info["a"], info["l"]
+    return info["l"], info["a"]
+
+
 class Escritorio:
     def __init__(self) -> None:
         self.largura = 52
@@ -179,11 +188,11 @@ class Escritorio:
                 if v:
                     bloq.add((x, y))
         for o in self.objetos:
-            info = CATALOGO[o["tipo"]]
-            if not info["bloqueia"]:
+            if not CATALOGO[o["tipo"]]["bloqueia"]:
                 continue
-            for dy in range(info["a"]):
-                for dx in range(info["l"]):
+            largura, altura = medida(o)
+            for dy in range(altura):
+                for dx in range(largura):
                     bloq.add((o["x"] + dx, o["y"] + dy))
         self._bloqueados = bloq
 
@@ -262,23 +271,39 @@ class Escritorio:
                 if len(self.objetos) >= MAX_OBJETOS or acao["tipo"] not in CATALOGO:
                     return False
                 x, y = int(acao["x"]), int(acao["y"])
-                info = CATALOGO[acao["tipo"]]
-                if not (0 <= x and x + info["l"] <= self.largura
-                        and 0 <= y and y + info["a"] <= self.altura):
+                novo = {"id": self.proximo_id, "tipo": acao["tipo"], "x": x, "y": y,
+                        "g": int(acao.get("g", 0)) % 4}
+                lg, ag = medida(novo)
+                if not (0 <= x and x + lg <= self.largura
+                        and 0 <= y and y + ag <= self.altura):
                     return False
-                self.objetos.append({"id": self.proximo_id, "tipo": acao["tipo"], "x": x, "y": y})
+                self.objetos.append(novo)
                 self.proximo_id += 1
 
             elif tipo == "mover":
                 alvo = next((o for o in self.objetos if o["id"] == int(acao["id"])), None)
                 if not alvo:
                     return False
-                info = CATALOGO[alvo["tipo"]]
+                lg, ag = medida(alvo)
                 x, y = int(acao["x"]), int(acao["y"])
-                if not (0 <= x and x + info["l"] <= self.largura
-                        and 0 <= y and y + info["a"] <= self.altura):
+                if not (0 <= x and x + lg <= self.largura
+                        and 0 <= y and y + ag <= self.altura):
                     return False
                 alvo["x"], alvo["y"] = x, y
+
+            elif tipo == "girar":
+                alvo = next((o for o in self.objetos if o["id"] == int(acao["id"])), None)
+                if not alvo:
+                    self._historico.pop()
+                    return False
+                giro = acao.get("g")
+                giro = (int(alvo.get("g", 0)) + 1) % 4 if giro is None else int(giro) % 4
+                candidato = {**alvo, "g": giro}
+                lg, ag = medida(candidato)
+                if not (alvo["x"] + lg <= self.largura and alvo["y"] + ag <= self.altura):
+                    self._historico.pop()
+                    return False                     # giraria para fora do mapa
+                alvo["g"] = giro
 
             elif tipo == "trocar":
                 alvo = next((o for o in self.objetos if o["id"] == int(acao["id"])), None)
@@ -286,8 +311,8 @@ class Escritorio:
                 if not alvo or novo not in CATALOGO:
                     self._historico.pop()
                     return False
-                info = CATALOGO[novo]
-                if not (alvo["x"] + info["l"] <= self.largura and alvo["y"] + info["a"] <= self.altura):
+                lg, ag = medida({**alvo, "tipo": novo})
+                if not (alvo["x"] + lg <= self.largura and alvo["y"] + ag <= self.altura):
                     self._historico.pop()
                     return False
                 alvo["tipo"] = novo
@@ -432,8 +457,8 @@ class Escritorio:
             self.paredes[0][x] = self.paredes[altura - 1][x] = 1
 
         self.objetos = [o for o in self.objetos
-                        if o["x"] + CATALOGO[o["tipo"]]["l"] <= largura
-                        and o["y"] + CATALOGO[o["tipo"]]["a"] <= altura]
+                        if o["x"] + medida(o)[0] <= largura
+                        and o["y"] + medida(o)[1] <= altura]
         self.zonas = [z for z in self.zonas if z["x1"] < largura and z["y1"] < altura]
         for z in self.zonas:
             z["x2"] = min(z["x2"], largura - 1)

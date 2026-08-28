@@ -273,6 +273,16 @@ button.secundario:hover { color: var(--texto); }
   font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
   color: var(--fraco); margin-bottom: 5px;
 }
+.editor-painel .barra-giro {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 9px;
+}
+.editor-painel .barra-giro button {
+  padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer;
+  background: var(--painel-2); color: inherit;
+  border: 2px solid transparent; border-radius: 8px;
+}
+.editor-painel .barra-giro button[aria-pressed="true"] { border-color: var(--acento); }
+.editor-painel .barra-giro span { font-size: 11px; opacity: .7; }
 .editor-painel .paleta { display: flex; flex-wrap: wrap; gap: 5px; }
 .editor-painel .paleta button {
   width: 48px; height: 48px; padding: 2px; cursor: pointer; display: grid; place-items: center;

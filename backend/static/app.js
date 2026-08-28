@@ -374,8 +374,9 @@ function receberMapa(mapa) {
   for (const o of mapa.objetos) {
     const info = mapa.catalogo[o.tipo];
     if (!info || !info.bloqueia) continue;
-    for (let dy = 0; dy < info.a; dy++) {
-      for (let dx = 0; dx < info.l; dx++) bloq.add((o.x + dx) + ',' + (o.y + dy));
+    const m = Objetos.medida(info, o.g);
+    for (let dy = 0; dy < m.a; dy++) {
+      for (let dx = 0; dx < m.l; dx++) bloq.add((o.x + dx) + ',' + (o.y + dy));
     }
   }
   Jogo.bloqueados = bloq;
@@ -488,6 +489,8 @@ document.addEventListener('keydown', (e) => {
   if (e.key === '-' || e.key === '_') { ajustarZoom(1 / 1.15); e.preventDefault(); }
   if (e.key === '0') definirZoom(1.5);
   if ((e.key === 'Delete' || e.key === 'Backspace') && Editor.ativo) Editor.removerSelecionado();
+  // G gira o móvel: o que está na mão, o selecionado, ou o próximo a ser posto
+  if (e.key.toLowerCase() === 'g' && (Editor.ativo || Editor.movendo)) Editor.girar();
   if (e.key.toLowerCase() === 'r') reagir();
 });
 
@@ -701,7 +704,8 @@ function assentoEm(px, py) {
   for (const o of Jogo.mapa.objetos) {
     if (!ASSENTOS.has(o.tipo)) continue;
     const info = Jogo.mapa.catalogo[o.tipo];
-    if (tx >= o.x && tx < o.x + info.l && ty >= o.y && ty < o.y + info.a) return o;
+    const m = Objetos.medida(info, o.g);
+    if (tx >= o.x && tx < o.x + m.l && ty >= o.y && ty < o.y + m.a) return o;
   }
   return null;
 }
@@ -865,13 +869,15 @@ function desenhar() {
   // ---------- tapetes (ficam no chão, sob todo o resto) ----------
   const noQuadro = (o) => {
     const info = mapa.catalogo[o.tipo] || { l: 1, a: 1 };
-    return o.x + info.l > x0 && o.x < x1 && o.y + info.a > y0 && o.y < y1;
+    const m = Objetos.medida(info, o.g);
+    return o.x + m.l > x0 && o.x < x1 && o.y + m.a > y0 && o.y < y1;
   };
   const visiveis = mapa.objetos.filter(noQuadro);
   for (const o of visiveis) {
     const info = mapa.catalogo[o.tipo];
     if (info && info.camada === 'piso') {
-      Objetos.desenhar(ctx, o.tipo, o.x * t, o.y * t, info.l * t, info.a * t);
+      const m = Objetos.medida(info, o.g);
+      Objetos.desenhar(ctx, o.tipo, o.x * t, o.y * t, m.l * t, m.a * t, o.g);
     }
   }
 
@@ -893,8 +899,9 @@ function desenhar() {
   for (const o of visiveis) {
     const info = mapa.catalogo[o.tipo];
     if (!info || info.camada !== 'chao') continue;
-    fila.push({ base: (o.y + info.a) * t, desenhar: () =>
-      Objetos.desenhar(ctx, o.tipo, o.x * t, o.y * t, info.l * t, info.a * t) });
+    const m = Objetos.medida(info, o.g);
+    fila.push({ base: (o.y + m.a) * t, desenhar: () =>
+      Objetos.desenhar(ctx, o.tipo, o.x * t, o.y * t, m.l * t, m.a * t, o.g) });
   }
   const gente = [...Jogo.pessoas.values(), eu];
   for (const pes of gente) {
@@ -902,7 +909,7 @@ function desenhar() {
     // cadeira (cuja base é o fim do tile) é desenhada por cima dela.
     const cad = assentoEm(pes.xr, pes.yr);
     const base = cad
-      ? (cad.y + mapa.catalogo[cad.tipo].a) * t + 0.5
+      ? (cad.y + Objetos.medida(mapa.catalogo[cad.tipo], cad.g).a) * t + 0.5
       : pes.yr + 13;
     fila.push({ base, desenhar: () => desenharAvatar(pes, pes === eu) });
   }
@@ -913,7 +920,8 @@ function desenhar() {
   for (const o of visiveis) {
     const info = mapa.catalogo[o.tipo];
     if (info && info.camada === 'mesa') {
-      Objetos.desenhar(ctx, o.tipo, o.x * t, o.y * t, info.l * t, info.a * t);
+      const m = Objetos.medida(info, o.g);
+      Objetos.desenhar(ctx, o.tipo, o.x * t, o.y * t, m.l * t, m.a * t, o.g);
     }
   }
 

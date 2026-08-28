@@ -17,6 +17,7 @@ const Editor = {
   pincel: null,          // traço em andamento de parede/piso
   retangulo: null,       // retângulo de sala em andamento
   cursor: null,
+  giro: 0,                       // 0..3 (×90°) do móvel que vai ser colocado
   enviar: null,
   jogo: null,
 
@@ -101,7 +102,14 @@ const Editor = {
     alvo.innerHTML = '';
 
     if (fer === 'mobilia') {
-      ajuda.textContent = 'Clique no mapa para colocar. Clique num móvel para abrir o menu (mover, trocar, remover); arrastar também move.';
+      ajuda.textContent = this.AJUDA_MOBILIA;
+      const barra = document.createElement('div');
+      barra.className = 'barra-giro';
+      barra.innerHTML = '<button id="editor-girar" type="button" title="Girar 90° (tecla G)">'
+        + '↻ Girar</button><span>fica valendo para o próximo móvel</span>';
+      barra.querySelector('button').onclick = () => this.girar();
+      barra.querySelector('button').setAttribute('aria-pressed', this.giro !== 0);
+      alvo.appendChild(barra);
       const cat = this.jogo.mapa.catalogo;
       const grupos = {};
       for (const [tipo, info] of Object.entries(cat)) {
@@ -263,7 +271,9 @@ const Editor = {
     for (let i = this.jogo.mapa.objetos.length - 1; i >= 0; i--) {
       const o = this.jogo.mapa.objetos[i];
       const info = cat[o.tipo];
-      if (info && tx >= o.x && tx < o.x + info.l && ty >= o.y && ty < o.y + info.a) return o;
+      if (!info) continue;
+      const m = Objetos.medida(info, o.g);
+      if (tx >= o.x && tx < o.x + m.l && ty >= o.y && ty < o.y + m.a) return o;
     }
     return null;
   },
@@ -290,7 +300,7 @@ const Editor = {
                          x: alvo.x, y: alvo.y, ox: alvo.x, oy: alvo.y };
       } else {
         this.fecharMenu();
-        this.acao({ acao: 'objeto', tipo: this.tipoSel, x: t.x, y: t.y });
+        this.acao({ acao: 'objeto', tipo: this.tipoSel, x: t.x, y: t.y, g: this.giro });
       }
     } else if (this.ferramenta === 'apagar' || (this.ferramenta === 'mobilia' && apagando)) {
       const alvo = this.objetoEm(t.x, t.y);
@@ -378,6 +388,33 @@ const Editor = {
     }
   },
 
+  /** Gira 90°. Se tem móvel na mão ou selecionado, gira ele; senão gira o que
+   *  ainda vai ser colocado (a prévia embaixo do cursor). */
+  girar() {
+    // só gira um móvel do mapa quando ele está na mão ou com o menu aberto —
+    // senão G viraria o último clicado em vez da prévia
+    const alvo = this.movendo || (this.menu && this.selecionado);
+    if (alvo) {
+      this.acao({ acao: 'girar', id: alvo.id });
+      return;
+    }
+    this.giro = (this.giro + 1) % 4;
+    const b = document.getElementById('editor-girar');
+    if (b) b.setAttribute('aria-pressed', this.giro !== 0);
+    this._avisarGiro();
+  },
+
+  _avisarGiro() {
+    const ajuda = document.getElementById('editor-ajuda');
+    if (!ajuda || this.ferramenta !== 'mobilia') return;
+    ajuda.textContent = this.giro
+      ? `Girado ${this.giro * 90}° — clique no mapa para colocar assim. G gira mais.`
+      : this.AJUDA_MOBILIA;
+  },
+
+  AJUDA_MOBILIA: 'Clique no mapa para colocar; G (ou o botão ↻) gira antes. '
+    + 'Clique num móvel para abrir o menu (girar, mover, trocar, remover); arrastar também move.',
+
   /** Prévia do móvel que está sendo carregado, com ou sem o editor aberto. */
   desenharNaMao(ctx) {
     if (!this.movendo || !this.cursor) return;
@@ -385,13 +422,14 @@ const Editor = {
     const t = this.jogo.tile;
     const alvo = mapa.objetos.find((o) => o.id === this.movendo.id);
     if (!alvo) return;
-    const info = mapa.catalogo[alvo.tipo];
+    const m = Objetos.medida(mapa.catalogo[alvo.tipo], alvo.g);
     ctx.globalAlpha = 0.6;
-    Objetos.desenhar(ctx, alvo.tipo, this.cursor.x * t, this.cursor.y * t, info.l * t, info.a * t);
+    Objetos.desenhar(ctx, alvo.tipo, this.cursor.x * t, this.cursor.y * t,
+                     m.l * t, m.a * t, alvo.g);
     ctx.globalAlpha = 1;
     ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 2;
-    ctx.strokeRect(this.cursor.x * t, this.cursor.y * t, info.l * t, info.a * t);
+    ctx.strokeRect(this.cursor.x * t, this.cursor.y * t, m.l * t, m.a * t);
   },
 
   /* ==================== menu do móvel ==================== */
@@ -417,16 +455,18 @@ const Editor = {
     const o = mapa.objetos.find((x) => x.id === id);
     if (!o) return;
     const info = mapa.catalogo[o.tipo];
-    const pos = this._naTela(o.x + info.l / 2, o.y);
+    const m = Objetos.medida(info, o.g);
+    const pos = this._naTela(o.x + m.l / 2, o.y);
 
     const caixa = document.createElement('div');
     caixa.className = 'menu-movel';
     caixa.innerHTML = `
       <div class="cabeca">
-        <img src="${Objetos.miniatura(o.tipo, info.l, info.a, 34)}" alt="">
-        <div><strong>${info.nome}</strong><span>${info.l}×${info.a} · ${info.grupo}</span></div>
+        <img src="${Objetos.miniatura(o.tipo, info.l, info.a, 34, o.g)}" alt="">
+        <div><strong>${info.nome}</strong><span>${m.l}×${m.a} · ${info.grupo}</span></div>
       </div>
       <div class="acoes">
+        <button data-fazer="girar">↻ Girar</button>
         <button data-fazer="mover">✋ Mover</button>
         <button data-fazer="trocar">🔁 Trocar</button>
         <button data-fazer="remover" class="perigo">🗑️ Remover</button>
@@ -437,6 +477,10 @@ const Editor = {
     caixa.style.left = Math.max(8, Math.min(pos.x - 96, window.innerWidth - 500)) + 'px';
     caixa.style.top = Math.max(8, pos.y - 12) + 'px';
 
+    caixa.querySelector('[data-fazer="girar"]').onclick = () => {
+      this.acao({ acao: 'girar', id: o.id });
+      this.fecharMenu();
+    };
     caixa.querySelector('[data-fazer="mover"]').onclick = () => {
       this.movendo = { id: o.id, dx: 0, dy: 0 };
       this.fecharMenu();
@@ -568,26 +612,28 @@ const Editor = {
 
     // móvel sendo arrastado
     if (this.arrasto) {
-      const info = mapa.catalogo[mapa.objetos.find((o) => o.id === this.arrasto.id).tipo];
+      const alvo = mapa.objetos.find((o) => o.id === this.arrasto.id);
+      const m = Objetos.medida(mapa.catalogo[alvo.tipo], alvo.g);
       ctx.globalAlpha = 0.65;
-      Objetos.desenhar(ctx, mapa.objetos.find((o) => o.id === this.arrasto.id).tipo,
-                       this.arrasto.x * t, this.arrasto.y * t, info.l * t, info.a * t);
+      Objetos.desenhar(ctx, alvo.tipo, this.arrasto.x * t, this.arrasto.y * t,
+                       m.l * t, m.a * t, alvo.g);
       ctx.globalAlpha = 1;
       ctx.strokeStyle = '#38bdf8';
       ctx.lineWidth = 2;
-      ctx.strokeRect(this.arrasto.x * t, this.arrasto.y * t, info.l * t, info.a * t);
+      ctx.strokeRect(this.arrasto.x * t, this.arrasto.y * t, m.l * t, m.a * t);
     } else if (this.movendo && this.cursor) {
       this.desenharNaMao(ctx);
     } else if (this.cursor && this.ferramenta === 'mobilia') {
       const info = mapa.catalogo[this.tipoSel];       // prévia do que vai ser colocado
       if (info) {
+        const m = Objetos.medida(info, this.giro);
         ctx.globalAlpha = 0.45;
         Objetos.desenhar(ctx, this.tipoSel, this.cursor.x * t, this.cursor.y * t,
-                         info.l * t, info.a * t);
+                         m.l * t, m.a * t, this.giro);
         ctx.globalAlpha = 1;
         ctx.strokeStyle = 'rgba(56,189,248,.8)';
         ctx.lineWidth = 2;
-        ctx.strokeRect(this.cursor.x * t, this.cursor.y * t, info.l * t, info.a * t);
+        ctx.strokeRect(this.cursor.x * t, this.cursor.y * t, m.l * t, m.a * t);
       }
     }
 
@@ -608,10 +654,10 @@ const Editor = {
     if (this.selecionado) {
       const o = mapa.objetos.find((x) => x.id === this.selecionado.id);
       if (o) {
-        const info = mapa.catalogo[o.tipo];
+        const m = Objetos.medida(mapa.catalogo[o.tipo], o.g);
         ctx.strokeStyle = '#fbbf24';
         ctx.lineWidth = 2;
-        ctx.strokeRect(o.x * t + 1, o.y * t + 1, info.l * t - 2, info.a * t - 2);
+        ctx.strokeRect(o.x * t + 1, o.y * t + 1, m.l * t - 2, m.a * t - 2);
       }
     }
   },

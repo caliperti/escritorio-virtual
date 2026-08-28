@@ -38,10 +38,11 @@ com nomes diferentes.
 | `T` | compartilhar a tela (ou o botão 🖥️) · `Esc` fecha o vídeo aberto |
 | `B` | editar seu boneco sem sair da sala |
 | `E` | abrir o editor do escritório · `Delete` remove o móvel selecionado |
+| `G` | girar 90° o móvel que está na mão, no menu aberto, ou o próximo a ser colocado |
 | `+` `−` `0` | aproximar, afastar e voltar ao zoom padrão (a roda do mouse também) |
 
-**Clique num móvel** (mesmo sem abrir o editor) e abre o menu dele: ✋ mover,
-🔁 trocar por outra peça que caiba, 🗑️ remover. **Clique na plaquinha da sala**
+**Clique num móvel** (mesmo sem abrir o editor) e abre o menu dele: ↻ girar,
+✋ mover, 🔁 trocar por outra peça que caiba, 🗑️ remover. **Clique na plaquinha da sala**
 e abre o menu dela: renomear, trocar a cor, ligar o áudio fechado, redesenhar a
 área ou remover. Tapete não abre menu — senão não daria para andar em cima.
 
@@ -142,7 +143,7 @@ hora para quem está na sala.
 
 | Ferramenta | O que faz |
 |---|---|
-| 🪑 **Móveis** | clique num espaço vazio para colocar. **Clique num móvel e abre o menu dele**: ✋ Mover (ele fica na mão até você clicar no destino), 🔁 Trocar (por qualquer peça que caiba no mesmo espaço, mantendo o lugar) e 🗑️ Remover. Arrastar continua movendo direto, e botão direito remove. Tem mesa, mesa de reunião, balcão, cadeira, sofá, poltrona, estante, armário, quadro branco, TV, tapete, planta, luminária, palco, pebolim, narguilé, cafeteira, geladeira, pia — e o que vai **em cima da mesa**: monitor, notebook, caneca, papéis, telefone, livros, vasinho, bolo |
+| 🪑 **Móveis** | clique num espaço vazio para colocar. O botão **↻ Girar** (ou a tecla `G`) vira a peça de 90° em 90° **antes** de colocar — a prévia embaixo do cursor já mostra o resultado, e o giro fica valendo para os próximos. **Clique num móvel e abre o menu dele**: ↻ Girar (também depois de posto), ✋ Mover (ele fica na mão até você clicar no destino), 🔁 Trocar (por qualquer peça que caiba no mesmo espaço, mantendo o lugar) e 🗑️ Remover. Arrastar continua movendo direto, e botão direito remove. Tem mesa, mesa de reunião, balcão, cadeira, sofá, poltrona, estante, armário, quadro branco, TV, tapete, planta, luminária, palco, pebolim, narguilé, cafeteira, geladeira, pia — e o que vai **em cima da mesa**: monitor, notebook, caneca, papéis, telefone, livros, vasinho, bolo |
 | 🎨 **Piso** | madeira, carpete, azulejo, concreto, grama e os **carpetes de time** (lilás, azul, menta, rosa). `Shift` preenche um retângulo |
 | 🧱 **Parede** | arraste para levantar; `Alt` (ou botão direito) derruba. **`Shift` preenche um retângulo inteiro** — é assim que se fecha um bloco novo de uma vez |
 | 🚪 **Salas** | o jeito rápido é clicar na plaquinha da sala no mapa. Aqui, arraste para desenhar: sai uma **sala pronta** — parede em volta, porta de 2 tiles no lado que você escolher e o piso que escolher. Desmarque "levantar parede" para só marcar uma área. **📐 redesenha a área** de uma sala existente; clique no nome para renomear e trocar a cor; 🔒 liga/desliga o áudio fechado |
@@ -151,6 +152,11 @@ hora para quem está na sala.
 
 No rodapé: **Desfazer** (o servidor guarda os últimos 40 passos), **Ampliar**
 (+6 colunas e +4 linhas, para caber sala nova) e **♻︎** (volta à planta original).
+
+O giro é o campo `g` (0 a 3, ×90°) de cada móvel. Deitado (90° ou 270°) ele
+ocupa o espaço trocado — uma mesa 6×2 vira 2×6 —, e tanto a colisão do servidor
+quanto o desenho do cliente usam a mesma conta (`medida()` nos dois lados), então
+não dá para girar uma peça para fora do mapa nem atravessar uma mesa deitada.
 
 Como funciona por baixo: cada edição vira uma mensagem
 `{tipo:'editar', acao:{…}}`. Quem valida, aplica, grava em **`backend/mapa.json`**
