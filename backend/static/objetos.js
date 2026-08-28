@@ -82,10 +82,29 @@ const Objetos = {
     this.ret(c, x + 3, y + 2, w - 6, 2, 1, this.luz(cor, 0.5));           // luz de cima
   },
 
-  /** Espaço que o móvel ocupa no mapa. De lado (90°/270°), largura e altura
-   *  trocam de lugar — o mesmo que `medida()` faz no servidor. */
-  medida(info, giro) {
-    return ((giro | 0) % 2) ? { l: info.a, a: info.l } : { l: info.l, a: info.a };
+  /** Coisas que ficam **em pé** na mesa. Girar a arte delas deixaria a tela de
+   *  ponta-cabeça; o que gira é a direção para onde o objeto olha, então em vez
+   *  de rodar o desenho a gente troca a vista: frente, lado e costas. */
+  EM_PE: new Set([
+    'monitor', 'monitor_duplo', 'monitor_curvo', 'monitor_gamer', 'monitor_triplo',
+    'monitor_vertical', 'imac', 'torre', 'torre_grande', 'notebook', 'tablet',
+    'microfone', 'impressora', 'luminaria_mesa', 'fone_mesa', 'teclado', 'mouse',
+    'caneca', 'papeis', 'telefone', 'vasinho', 'livros', 'bolo',
+  ]),
+  VISTAS: ['frente', 'direita', 'tras', 'esquerda'],
+  _vista: 'frente',
+
+  /** Fileiras de monitor: as únicas peças de ficar em pé que se enfileiram no
+   *  outro eixo quando a mesa está deitada. */
+  FILEIRA: new Set(['monitor_duplo', 'monitor_curvo', 'monitor_triplo']),
+
+  /** Espaço que o móvel ocupa no mapa. Deitado (90°/270°), largura e altura
+   *  trocam de lugar — a não ser que seja um móvel de ficar em pé. Mesma conta
+   *  que `medida()` faz no servidor. */
+  medida(tipo, info, giro) {
+    const deita = !this.EM_PE.has(tipo) || this.FILEIRA.has(tipo);
+    return (deita && ((giro | 0) % 2)) ? { l: info.a, a: info.l }
+                                       : { l: info.l, a: info.a };
   },
 
   /** `x, y, w, h` são a área **já ocupada** no mapa; `giro` é 0..3 (×90°).
@@ -99,6 +118,20 @@ const Objetos = {
       else this.bloco(c, px + 2, py + 2, pw - 4, ph - 4, this.TAMPO);
     };
     if (!g) { pintar(x, y, w, h); return; }
+    if (this.EM_PE.has(tipo)) {
+      // fica de pé: muda para onde olha, não a inclinação. A caixa já vem
+      // girada, então o desenho só precisa se acomodar nela.
+      this._vista = this.VISTAS[g];
+      if (this._vista === 'esquerda') {          // o perfil do outro lado é o espelho
+        c.save(); c.translate(x + w, y); c.scale(-1, 1);
+        pintar(0, 0, w, h);
+        c.restore();
+      } else {
+        pintar(x, y, w, h);
+      }
+      this._vista = 'frente';
+      return;
+    }
     const lw = (g % 2) ? h : w;                  // tamanho do desenho sem girar
     const lh = (g % 2) ? w : h;
     c.save();
@@ -476,12 +509,21 @@ const Objetos = {
     monitor(c, x, y, w, h) { this._monitor(c, x + 2, y + 3, w - 4, h - 9, 'codigo'); },
 
     monitor_duplo(c, x, y, w, h) {
+      if (h > w) {                               // mesa em pé: um monitor atrás do outro
+        const a = (h - 6) / 2;
+        this._monitor(c, x + 3, y + 3, w - 6, a - 3, 'planilha');
+        this._monitor(c, x + 3, y + h / 2 + 2, w - 6, a - 3, 'grafico');
+        return;
+      }
       const l = (w - 6) / 2;
       this._monitor(c, x + 2, y + 4, l, h - 11, 'planilha');
       this._monitor(c, x + w / 2 + 1, y + 4, l, h - 11, 'grafico');
     },
 
     monitor_curvo(c, x, y, w, h) {
+      if (this._vista === 'direita' || this._vista === 'esquerda') {
+        this._perfil(c, x + 2, y + 3, w - 4, h - 9, this.ESCURO); return;
+      }
       const cor = this.ESCURO;
       this.ret(c, x + w / 2 - 9, y + h - 11, 18, 5, 2, this.mix(cor, this.METAL, 0.35));
       this.ret(c, x + w / 2 - 4, y + h - 16, 8, 6, 2, this.mix(cor, this.METAL, 0.2));
@@ -494,6 +536,9 @@ const Objetos = {
     },
 
     monitor_gamer(c, x, y, w, h) {
+      if (this._vista === 'direita' || this._vista === 'esquerda') {
+        this._perfil(c, x + 2, y + 3, w - 4, h - 9, this.ESCURO); return;
+      }
       c.save(); c.globalAlpha = 0.28;                       // brilho RGB atrás
       this.ret(c, x + 1, y + 2, w - 2, h - 8, 6, '#9d5cff');
       c.restore();
@@ -502,6 +547,9 @@ const Objetos = {
     },
 
     imac(c, x, y, w, h) {
+      if (this._vista === 'direita' || this._vista === 'esquerda') {
+        this._perfil(c, x + 2, y + 3, w - 4, h - 9, '#dfe2e8'); return;
+      }
       const cor = '#dfe2e8';
       this.ret(c, x + w / 2 - 7, y + h - 11, 14, 4, 2, cor);
       this.ret(c, x + w / 2 - 3, y + h - 15, 6, 5, 1, cor);
@@ -511,6 +559,13 @@ const Objetos = {
     },
 
     monitor_triplo(c, x, y, w, h) {
+      if (h > w) {                               // mesa em pé: os três em fila
+        const a = (h - 8) / 3;
+        this._monitor(c, x + 4, y + 3, w - 8, a - 3, 'chat');
+        this._monitor(c, x + 2, y + h / 2 - a / 2, w - 4, a - 3, 'codigo');
+        this._monitor(c, x + 4, y + h - a - 1, w - 8, a - 3, 'grafico');
+        return;
+      }
       const l = (w - 8) / 3;
       this._monitor(c, x + 2, y + 6, l, h - 13, 'chat');
       this._monitor(c, x + w / 2 - l / 2, y + 3, l, h - 10, 'codigo');
@@ -518,6 +573,9 @@ const Objetos = {
     },
 
     monitor_vertical(c, x, y, w, h) {
+      if (this._vista === 'direita' || this._vista === 'esquerda') {
+        this._perfil(c, x + 2, y + 3, w - 4, h - 9, this.ESCURO); return;
+      }
       const cor = this.ESCURO;
       this.ret(c, x + w / 2 - 6, y + h - 6, 12, 4, 2, this.mix(cor, this.METAL, 0.35));
       this.ret(c, x + w / 2 - 2.5, y + h - 10, 5, 5, 1, this.mix(cor, this.METAL, 0.2));
@@ -622,6 +680,11 @@ const Objetos = {
       this.ret(c, x + 4, y + h - 15, w - 8, 8, 2, this.traco(this.METAL));
       this.ret(c, x + 5, y + h - 14, w - 10, 6, 2, this.METAL);
       this.ret(c, x + 5, y + 5, w - 10, h - 19, 2, this.ESCURO);
+      if (this._vista === 'tras') {               // de costas se vê a tampa
+        this.ret(c, x + 7, y + 7, w - 14, h - 23, 1, this.mix(this.ESCURO, this.METAL, 0.16));
+        this.elipse(c, x + w / 2, y + h / 2 - 3, 2.5, 2.5, this.mix(this.ESCURO, this.METAL, 0.34));
+        return;
+      }
       this.ret(c, x + 7, y + 7, w - 14, h - 23, 1, this.TELA);
     },
     caneca(c, x, y, w, h) {
@@ -716,6 +779,10 @@ const Objetos = {
 
   /** Monitor com pé, moldura e tela — a base de quase todo computador. */
   _monitor(c, x, y, w, h, assunto) {
+    if (this._vista === 'direita' || this._vista === 'esquerda') {
+      this._perfil(c, x, y, w, h, this.ESCURO);
+      return;
+    }
     const cor = this.ESCURO;
     this.ret(c, x + w / 2 - 6, y + h - 3, 12, 4, 2, this.mix(cor, this.METAL, 0.35));  // base
     this.ret(c, x + w / 2 - 2.5, y + h - 7, 5, 5, 1, this.mix(cor, this.METAL, 0.2)); // pescoço
@@ -724,8 +791,31 @@ const Objetos = {
     this._tela(c, x + 3, y + 3, w - 6, h - 12, assunto);
   },
 
-  /** Conteúdo da tela: é o que faz o computador parecer ligado. */
+  /** Monitor visto de lado: o painel vira um talo fino, com o pé embaixo.
+   *  Serve para qualquer tela — é a silhueta que muda, não o conteúdo. */
+  _perfil(c, x, y, w, h, cor) {
+    const meio = x + w / 2;
+    this.ret(c, meio - 7, y + h - 3, 14, 4, 2, this.mix(cor, this.METAL, 0.35));   // base
+    this.ret(c, meio - 2, y + h - 8, 4, 6, 1, this.mix(cor, this.METAL, 0.2));     // pescoço
+    this.ret(c, meio + 0.5, y + 3, 4, h - 12, 2, this.sombra(cor, 0.3));           // corcova de trás
+    this.ret(c, meio - 4, y + 1, 8, h - 8, 2, this.traco(cor));                    // painel de lado
+    this.ret(c, meio - 3, y + 2, 6, h - 10, 2, cor);
+    // a faixa clara é o lado da tela: é o que diz para onde o monitor olha
+    this.ret(c, meio - 3, y + 3, 2, h - 12, 1, this.TELA);
+  },
+
+  /** Conteúdo da tela: é o que faz o computador parecer ligado. De costas não
+   *  tem conteúdo nenhum — o que se vê é a traseira do monitor. */
   _tela(c, x, y, w, h, assunto) {
+    if (this._vista === 'tras') {
+      const cor = this.ESCURO;
+      this.ret(c, x, y, w, h, 1, this.mix(cor, this.METAL, 0.14));
+      this.ret(c, x + w / 2 - 3, y + 1, 6, h - 2, 1, this.mix(cor, this.METAL, 0.26));
+      for (let i = 0; i * 4 < h - 6; i++) {                 // respiros
+        this.ret(c, x + 2, y + 3 + i * 4, w - 4, 1, 0.5, this.sombra(cor, 0.4));
+      }
+      return;
+    }
     const fundo = { codigo: '#1e2b3d', planilha: '#f2f4f7', grafico: '#22304a',
                     jogo: '#1a1230', video: '#101826', desktop: '#2b4a6f',
                     chat: '#22262e', terminal: '#0f1a14', edicao: '#191b22',

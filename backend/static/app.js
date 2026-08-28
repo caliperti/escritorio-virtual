@@ -374,7 +374,7 @@ function receberMapa(mapa) {
   for (const o of mapa.objetos) {
     const info = mapa.catalogo[o.tipo];
     if (!info || !info.bloqueia) continue;
-    const m = Objetos.medida(info, o.g);
+    const m = Objetos.medida(o.tipo, info, o.g);
     for (let dy = 0; dy < m.a; dy++) {
       for (let dx = 0; dx < m.l; dx++) bloq.add((o.x + dx) + ',' + (o.y + dy));
     }
@@ -704,7 +704,7 @@ function assentoEm(px, py) {
   for (const o of Jogo.mapa.objetos) {
     if (!ASSENTOS.has(o.tipo)) continue;
     const info = Jogo.mapa.catalogo[o.tipo];
-    const m = Objetos.medida(info, o.g);
+    const m = Objetos.medida(o.tipo, info, o.g);
     if (tx >= o.x && tx < o.x + m.l && ty >= o.y && ty < o.y + m.a) return o;
   }
   return null;
@@ -869,14 +869,14 @@ function desenhar() {
   // ---------- tapetes (ficam no chão, sob todo o resto) ----------
   const noQuadro = (o) => {
     const info = mapa.catalogo[o.tipo] || { l: 1, a: 1 };
-    const m = Objetos.medida(info, o.g);
+    const m = Objetos.medida(o.tipo, info, o.g);
     return o.x + m.l > x0 && o.x < x1 && o.y + m.a > y0 && o.y < y1;
   };
   const visiveis = mapa.objetos.filter(noQuadro);
   for (const o of visiveis) {
     const info = mapa.catalogo[o.tipo];
     if (info && info.camada === 'piso') {
-      const m = Objetos.medida(info, o.g);
+      const m = Objetos.medida(o.tipo, info, o.g);
       Objetos.desenhar(ctx, o.tipo, o.x * t, o.y * t, m.l * t, m.a * t, o.g);
     }
   }
@@ -899,7 +899,7 @@ function desenhar() {
   for (const o of visiveis) {
     const info = mapa.catalogo[o.tipo];
     if (!info || info.camada !== 'chao') continue;
-    const m = Objetos.medida(info, o.g);
+    const m = Objetos.medida(o.tipo, info, o.g);
     fila.push({ base: (o.y + m.a) * t, desenhar: () =>
       Objetos.desenhar(ctx, o.tipo, o.x * t, o.y * t, m.l * t, m.a * t, o.g) });
   }
@@ -909,7 +909,7 @@ function desenhar() {
     // cadeira (cuja base é o fim do tile) é desenhada por cima dela.
     const cad = assentoEm(pes.xr, pes.yr);
     const base = cad
-      ? (cad.y + Objetos.medida(mapa.catalogo[cad.tipo], cad.g).a) * t + 0.5
+      ? (cad.y + Objetos.medida(cad.tipo, mapa.catalogo[cad.tipo], cad.g).a) * t + 0.5
       : pes.yr + 13;
     fila.push({ base, desenhar: () => desenharAvatar(pes, pes === eu) });
   }
@@ -920,7 +920,7 @@ function desenhar() {
   for (const o of visiveis) {
     const info = mapa.catalogo[o.tipo];
     if (info && info.camada === 'mesa') {
-      const m = Objetos.medida(info, o.g);
+      const m = Objetos.medida(o.tipo, info, o.g);
       Objetos.desenhar(ctx, o.tipo, o.x * t, o.y * t, m.l * t, m.a * t, o.g);
     }
   }

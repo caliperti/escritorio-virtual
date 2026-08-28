@@ -153,10 +153,21 @@ hora para quem está na sala.
 No rodapé: **Desfazer** (o servidor guarda os últimos 40 passos), **Ampliar**
 (+6 colunas e +4 linhas, para caber sala nova) e **♻︎** (volta à planta original).
 
-O giro é o campo `g` (0 a 3, ×90°) de cada móvel. Deitado (90° ou 270°) ele
-ocupa o espaço trocado — uma mesa 6×2 vira 2×6 —, e tanto a colisão do servidor
-quanto o desenho do cliente usam a mesma conta (`medida()` nos dois lados), então
-não dá para girar uma peça para fora do mapa nem atravessar uma mesa deitada.
+O giro é o campo `g` (0 a 3, ×90°) de cada móvel, e ele funciona de dois jeitos:
+
+- **Móvel deitado** (mesa, sofá, tapete, estante): a arte gira mesmo, e o espaço
+  ocupado troca junto — uma mesa 6×2 vira 2×6.
+- **Móvel em pé** (monitor, gabinete, notebook, caneca): girar muda **para onde
+  ele olha**, não a inclinação — senão a tela ficaria de ponta-cabeça. O que muda
+  é a vista: de frente aparece o conteúdo da tela, de lado o perfil do painel
+  (com a faixa clara mostrando de que lado a tela está) e de costas a traseira
+  do monitor. O espaço ocupado não muda; a exceção são as **fileiras de monitor**
+  (dois, três, ultrawide), que se enfileiram no outro eixo quando a mesa está em pé.
+
+Quem decide em qual grupo o móvel está é o conjunto `EM_PE` (`mapa.py` e
+`objetos.js`, iguais nos dois lados), e a conta do espaço ocupado é a mesma
+função `medida()` no servidor e no cliente — então não dá para girar uma peça
+para fora do mapa nem atravessar uma mesa deitada.
 
 Como funciona por baixo: cada edição vira uma mensagem
 `{tipo:'editar', acao:{…}}`. Quem valida, aplica, grava em **`backend/mapa.json`**

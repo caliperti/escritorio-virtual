@@ -113,11 +113,26 @@ _item("livros", "Na mesa", "Livros", 1, 1, False, "mesa")
 _item("bolo", "Na mesa", "Bolo", 1, 1, False, "mesa")
 
 
+# Coisas que ficam em pé (monitor, gabinete, caneca): girar muda só para onde
+# elas olham, não o espaço que ocupam — senão um gabinete 1x2 viraria uma caixa
+# deitada 2x1. As fileiras de monitor são a exceção: elas se enfileiram no
+# outro eixo quando a mesa está em pé. A mesma regra vale no cliente.
+EM_PE = {
+    "monitor", "monitor_duplo", "monitor_curvo", "monitor_gamer", "monitor_triplo",
+    "monitor_vertical", "imac", "torre", "torre_grande", "notebook", "tablet",
+    "microfone", "impressora", "luminaria_mesa", "fone_mesa", "teclado", "mouse",
+    "caneca", "papeis", "telefone", "vasinho", "livros", "bolo",
+}
+FILEIRA = {"monitor_duplo", "monitor_curvo", "monitor_triplo"}
+
+
 def medida(objeto: Dict) -> Tuple[int, int]:
-    """Espaço que o móvel ocupa no mapa. Girado de lado (90° ou 270°), a
-    largura e a altura trocam de lugar."""
-    info = CATALOGO[objeto["tipo"]]
-    if int(objeto.get("g", 0)) % 2:
+    """Espaço que o móvel ocupa no mapa. Deitado (90° ou 270°), largura e altura
+    trocam de lugar — a não ser que seja um móvel de ficar em pé."""
+    tipo = objeto["tipo"]
+    info = CATALOGO[tipo]
+    deita = tipo not in EM_PE or tipo in FILEIRA
+    if deita and int(objeto.get("g", 0)) % 2:
         return info["a"], info["l"]
     return info["l"], info["a"]
 

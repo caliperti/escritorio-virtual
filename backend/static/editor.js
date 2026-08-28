@@ -272,7 +272,7 @@ const Editor = {
       const o = this.jogo.mapa.objetos[i];
       const info = cat[o.tipo];
       if (!info) continue;
-      const m = Objetos.medida(info, o.g);
+      const m = Objetos.medida(o.tipo, info, o.g);
       if (tx >= o.x && tx < o.x + m.l && ty >= o.y && ty < o.y + m.a) return o;
     }
     return null;
@@ -422,7 +422,7 @@ const Editor = {
     const t = this.jogo.tile;
     const alvo = mapa.objetos.find((o) => o.id === this.movendo.id);
     if (!alvo) return;
-    const m = Objetos.medida(mapa.catalogo[alvo.tipo], alvo.g);
+    const m = Objetos.medida(alvo.tipo, mapa.catalogo[alvo.tipo], alvo.g);
     ctx.globalAlpha = 0.6;
     Objetos.desenhar(ctx, alvo.tipo, this.cursor.x * t, this.cursor.y * t,
                      m.l * t, m.a * t, alvo.g);
@@ -455,7 +455,7 @@ const Editor = {
     const o = mapa.objetos.find((x) => x.id === id);
     if (!o) return;
     const info = mapa.catalogo[o.tipo];
-    const m = Objetos.medida(info, o.g);
+    const m = Objetos.medida(o.tipo, info, o.g);
     const pos = this._naTela(o.x + m.l / 2, o.y);
 
     const caixa = document.createElement('div');
@@ -613,7 +613,7 @@ const Editor = {
     // móvel sendo arrastado
     if (this.arrasto) {
       const alvo = mapa.objetos.find((o) => o.id === this.arrasto.id);
-      const m = Objetos.medida(mapa.catalogo[alvo.tipo], alvo.g);
+      const m = Objetos.medida(alvo.tipo, mapa.catalogo[alvo.tipo], alvo.g);
       ctx.globalAlpha = 0.65;
       Objetos.desenhar(ctx, alvo.tipo, this.arrasto.x * t, this.arrasto.y * t,
                        m.l * t, m.a * t, alvo.g);
@@ -626,7 +626,7 @@ const Editor = {
     } else if (this.cursor && this.ferramenta === 'mobilia') {
       const info = mapa.catalogo[this.tipoSel];       // prévia do que vai ser colocado
       if (info) {
-        const m = Objetos.medida(info, this.giro);
+        const m = Objetos.medida(this.tipoSel, info, this.giro);
         ctx.globalAlpha = 0.45;
         Objetos.desenhar(ctx, this.tipoSel, this.cursor.x * t, this.cursor.y * t,
                          m.l * t, m.a * t, this.giro);
@@ -654,7 +654,7 @@ const Editor = {
     if (this.selecionado) {
       const o = mapa.objetos.find((x) => x.id === this.selecionado.id);
       if (o) {
-        const m = Objetos.medida(mapa.catalogo[o.tipo], o.g);
+        const m = Objetos.medida(o.tipo, mapa.catalogo[o.tipo], o.g);
         ctx.strokeStyle = '#fbbf24';
         ctx.lineWidth = 2;
         ctx.strokeRect(o.x * t + 1, o.y * t + 1, m.l * t - 2, m.a * t - 2);
