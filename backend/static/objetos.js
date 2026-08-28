@@ -132,19 +132,8 @@ const Objetos = {
     },
 
     /* ================= assentos ================= */
-    cadeira(c, x, y, w, h) {
-      // Menor que o tile e centrada: cadeira ocupando o quadrado inteiro vira
-      // um bloco escuro e o chão some.
-      const cor = this.CADEIRA;
-      const l = w * 0.5, a = h * 0.4;
-      const cx = x + (w - l) / 2, cy = y + (h - a) / 2 + 3;
-      this.elipse(c, x + w / 2, cy + a + 2, l * 0.42, 2.5, 'rgba(70,60,90,.14)');
-      this.ret(c, cx, cy - 6, l, 5, 3, this.traco(cor));                      // encosto
-      this.ret(c, cx + 1, cy - 5, l - 2, 3, 2, this.CADEIRA_LUZ);
-      this.elipse(c, x + w / 2, cy + a / 2, l / 2, a / 2 + 1, this.traco(cor));
-      this.elipse(c, x + w / 2, cy + a / 2 - 1, l / 2 - 1, a / 2, cor);       // assento
-      this.elipse(c, x + w / 2 - 2, cy + 1, l / 5, a / 5, this.luz(cor, 0.18));
-    },
+    cadeira(c, x, y, w, h) { this._cadeira(c, x, y, w, h, this.CADEIRA); },
+    cadeira_gamer(c, x, y, w, h) { this._cadeira(c, x, y, w, h, '#2b2f3a', '#e0453f'); },
     poltrona(c, x, y, w, h) {
       const cor = this.ESTOFADO;
       this.ret(c, x + 3, y + 4, w - 6, h - 8, 8, this.traco(cor));
@@ -658,6 +647,52 @@ const Objetos = {
   },
 
   /* ---------- peças auxiliares ---------- */
+
+  /** Cadeira de escritório: base de cinco pontas com rodinhas, coluna, assento,
+   *  encosto e braços. Com `destaque`, vira cadeira gamer (asas coloridas). */
+  _cadeira(c, x, y, w, h, cor, destaque) {
+    const cx = x + w / 2;
+    const baseY = y + h - 6;
+    this.elipse(c, cx, baseY + 2, w * 0.3, 2.5, 'rgba(70,60,90,.16)');
+    // base de cinco pontas
+    for (const ang of [-2.6, -1.6, -0.55, 0.5, 1.5]) {
+      const px = cx + Math.cos(ang) * w * 0.36;
+      const py = baseY + Math.sin(ang) * h * 0.07;
+      c.strokeStyle = this.traco(cor); c.lineWidth = 3.5; c.lineCap = 'round';
+      c.beginPath(); c.moveTo(cx, baseY); c.lineTo(px, py); c.stroke();
+      this.elipse(c, px, py, 2, 1.6, this.mix(cor, '#000', 0.25));       // rodinha
+    }
+    this.ret(c, cx - 2, baseY - 8, 4, 8, 1, this.METAL);                 // coluna
+    // encosto
+    const encostoL = w * (destaque ? 0.46 : 0.42);
+    const encostoA = h * (destaque ? 0.42 : 0.3);
+    const ey = y + h * 0.1;
+    if (destaque) {                     // asas laterais: sobram do lado de quem senta
+      for (const s of [-1, 1]) {
+        const ax = cx + s * w * 0.4 - (s > 0 ? w * 0.13 : 0);
+        this.ret(c, ax, ey + 1, w * 0.13, encostoA + 2, 4, destaque);
+        this.ret(c, ax + 1, ey + 3, w * 0.13 - 2, encostoA - 4, 3, this.luz(destaque, 0.18));
+      }
+    }
+    this.ret(c, cx - encostoL / 2, ey, encostoL, encostoA, 5, this.traco(cor));
+    this.ret(c, cx - encostoL / 2 + 1, ey + 1, encostoL - 2, encostoA - 2, 4, cor);
+    this.ret(c, cx - encostoL / 2 + 3, ey + 3, encostoL - 6, 3, 2, this.luz(cor, 0.28));
+    if (destaque) {
+      this.ret(c, cx - encostoL / 2 + 4, ey + 5, encostoL - 8, 2, 1, destaque);
+      this.ret(c, cx - 6, ey - 4, 12, 6, 3, this.traco(cor));            // apoio de cabeça
+      this.ret(c, cx - 5, ey - 3, 10, 4, 2, destaque);
+    }
+    // braços — bem abertos, para sobrarem dos lados de quem senta
+    for (const s of [-1, 1]) {
+      const bx = cx + s * w * 0.36 - (s > 0 ? 5 : 0);
+      this.ret(c, bx, y + h * 0.42, 5, h * 0.2, 2, this.traco(cor));
+      this.ret(c, bx + 1, y + h * 0.42 + 1, 3, h * 0.2 - 2, 1, this.luz(cor, 0.14));
+    }
+    // assento
+    this.ret(c, cx - w * 0.3, y + h * 0.44, w * 0.6, h * 0.24, 5, this.traco(cor));
+    this.ret(c, cx - w * 0.3 + 1, y + h * 0.44 + 1, w * 0.6 - 2, h * 0.24 - 2, 4, cor);
+    this.ret(c, cx - w * 0.22, y + h * 0.47, w * 0.44, 2, 1, this.luz(cor, 0.2));
+  },
 
   /** Monitor com pé, moldura e tela — a base de quase todo computador. */
   _monitor(c, x, y, w, h, assunto) {

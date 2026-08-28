@@ -692,7 +692,7 @@ function atualizar() {
 }
 
 /** Assentos: pisar em cima de um deles senta a pessoa (como no Gather). */
-const ASSENTOS = new Set(['cadeira', 'poltrona', 'banqueta', 'sofa']);
+const ASSENTOS = new Set(['cadeira', 'cadeira_gamer', 'poltrona', 'banqueta', 'sofa']);
 
 function assentoEm(px, py) {
   if (!Jogo.mapa) return null;
@@ -898,7 +898,13 @@ function desenhar() {
   }
   const gente = [...Jogo.pessoas.values(), eu];
   for (const pes of gente) {
-    fila.push({ base: pes.yr + 13, desenhar: () => desenharAvatar(pes, pes === eu) });
+    // Sentado, a pessoa tem que sair depois da cadeira na fila — senão a
+    // cadeira (cuja base é o fim do tile) é desenhada por cima dela.
+    const cad = assentoEm(pes.xr, pes.yr);
+    const base = cad
+      ? (cad.y + mapa.catalogo[cad.tipo].a) * t + 0.5
+      : pes.yr + 13;
+    fila.push({ base, desenhar: () => desenharAvatar(pes, pes === eu) });
   }
   fila.sort((a, b) => a.base - b.base);
   for (const item of fila) item.desenhar();
@@ -954,8 +960,8 @@ function desenharAvatar(p, souEu) {
     ctx.stroke();
   }
 
-  const sentado = !!assentoEm(p.xr, p.yr);
-  Boneco.desenhar(ctx, p.aparencia, p.xr, p.yr, p.direcao, Math.floor(p.passo || 0), 2, sentado);
+  const assento = assentoEm(p.xr, p.yr);
+  Boneco.desenhar(ctx, p.aparencia, p.xr, p.yr, p.direcao, Math.floor(p.passo || 0), 2, !!assento);
 
   // placa com o nome, logo abaixo dos pés
   ctx.textAlign = 'center';

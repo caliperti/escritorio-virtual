@@ -10,7 +10,7 @@ editável: dá para renomear pela plaquinha e trocar tudo pelo editor.
 # o que está gravado e, se for mais nova, remonta o escritório. Sem isso, o mapa
 # salvo (ou restaurado do espelho) vence para sempre e a planta nova nunca
 # aparece — foi exatamente o que aconteceu.
-VERSAO = 3
+VERSAO = 4
 
 LARGURA, ALTURA = 64, 40
 JARDIM = 6                      # colunas de área externa antes da fachada
@@ -136,7 +136,9 @@ def montar_padrao(esc) -> None:
         por("mesa_ampla", mx, fundo)
         for tipo, dx, dy in SETUPS[i % len(SETUPS)]:
             por(tipo, mx + dx, fundo + dy)
-        por("cadeira", mx + 2, fundo + 2 if porta == "baixo" else fundo - 1)
+        # marketing, design e TI ganham cadeira gamer; o resto, de escritório
+        por("cadeira_gamer" if i in (3, 6, 8) else "cadeira",
+            mx + 2, fundo + 2 if porta == "baixo" else fundo - 1)
         if i in (3, 8):                      # gabinete grande no chão, ao lado
             por("torre_grande", x1 + 1, fundo)   # ao lado da mesa, sem fechar canto
         # enfeites: cada sala com uma combinação diferente, sem outra mesa

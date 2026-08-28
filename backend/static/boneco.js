@@ -17,8 +17,10 @@ const Boneco = {
   QUADRO: 64,
   QUADROS: 9,
   LINHA: { cima: 0, esquerda: 1, baixo: 2, direita: 3 },
-  // A folha de sentado tem 3 poses por direção; usamos a primeira (cadeira).
+  // A folha de sentado tem 3 poses por direção: 0 e 1 são sentar no chão,
+  // 2 é sentar em cadeira (pernas para baixo) — é essa que queremos.
   QUADROS_SENTADO: 3,
+  POSE_CADEIRA: 2,
 
   CATALOGO: {
     corpo: ['m', 'f'],
@@ -204,11 +206,11 @@ const Boneco = {
     const Q = this.QUADRO;
     const linha = this.LINHA[direcao] === undefined ? this.LINHA.baixo : this.LINHA[direcao];
     // quadro 0 é a pose parada; 1..8 é a passada. Sentado tem pose única.
-    const col = sentado ? 0 : (quadro > 0 ? 1 + (quadro % 8) : 0);
+    const col = sentado ? this.POSE_CADEIRA : (quadro > 0 ? 1 + (quadro % 8) : 0);
     const lado = Q * S;
     ctx.imageSmoothingEnabled = false;
     // sentado o corpo sobe um pouco, para o quadril encostar no assento
-    const base = sentado ? lado * 0.9 : lado * 0.955;
+    const base = sentado ? lado * 0.93 : lado * 0.955;
     ctx.drawImage(folha, col * Q, linha * Q, Q, Q,
                   Math.round(x - lado / 2), Math.round(y + 13 - base), lado, lado);
   },
