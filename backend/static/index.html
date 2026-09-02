@@ -61,6 +61,7 @@
       <button id="btn-mic" class="icone" title="Microfone (M)">🎤</button>
       <button id="btn-cam" class="icone" title="Câmera (V)">📹</button>
       <button id="btn-tela" class="icone" title="Compartilhar tela (T)">🖥️</button>
+      <button id="btn-reuniao" class="icone" title="Modo reunião — todos em grade (C)">👥</button>
       <button id="btn-boneco" class="icone" title="Editar meu boneco (B)">🧑‍🎨</button>
       <button id="btn-editor" class="icone" title="Editar o escritório (E)">🏗️</button>
       <button id="btn-reacao" class="icone" title="Reagir (R)">👋</button>
@@ -70,8 +71,12 @@
 
   <main class="palco">
     <canvas id="tela"></canvas>
+    <div id="reconectando" class="reconectando oculto">
+      <span class="girando"></span> Reconectando…
+    </div>
     <div id="dica" class="dica">Use <kbd>W A S D</kbd> ou as setas para andar · <kbd>Enter</kbd> para o chat</div>
     <div id="videos" class="videos"></div>
+    <button id="btn-fechar-reuniao" class="fechar-reuniao" hidden>✕ sair da grade (Esc)</button>
     <div class="zoom" title="Aproximar e afastar (roda do mouse, + e −, 0 volta ao padrão)">
       <button id="zoom-menos" type="button">−</button>
       <span id="zoom-nivel">100%</span>

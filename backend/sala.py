@@ -102,6 +102,20 @@ class Sala:
             y=escritorio.ponto_de_nascimento()[1],
             ws=ws,
         )
+        # Quem está voltando de uma queda de conexão volta para onde estava —
+        # senão cair a internet por um segundo teleportava a pessoa para a
+        # recepção no meio de uma conversa.
+        voltando = dados.get("voltando")
+        if isinstance(voltando, dict):
+            try:
+                vx, vy = float(voltando["x"]), float(voltando["y"])
+            except (KeyError, TypeError, ValueError):
+                vx = vy = None
+            if vx is not None and mapa.livre(vx, vy):
+                p.x, p.y = vx, vy
+                async with self._trava:
+                    self.participantes[p.id] = p
+                return p
         # Espalha um pouco quem chega junto, para ninguém nascer em cima do outro.
         for _ in range(24):
             if not any(o.id != p.id and abs(o.x - p.x) < 24 and abs(o.y - p.y) < 24

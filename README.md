@@ -136,6 +136,43 @@ a cor, ligar o áudio fechado ou redesenhar a área.
 | 🔒 as 10 individuais e a de reunião | fechado — só quem está dentro se ouve |
 | Circulação, Café, Convivência | aberto — vale o raio de proximidade |
 
+## Quando a conexão cai
+
+O escritório vive de um WebSocket aberto. Ele cai — o proxy recicla conexão
+parada, o serviço reinicia, o notebook dorme — e antes disso a tela
+simplesmente congelava até alguém apertar F5. Agora:
+
+- o cliente manda um `ping` a cada 20 s, e considera a conexão morta se ficar
+  55 s sem receber nada de volta (aí derruba de propósito para reconectar);
+- ao cair, aparece a faixa **Reconectando…** e ele tenta voltar sozinho,
+  dobrando a espera a cada tentativa até o teto de 15 s — ou seja, sobrevive
+  também ao minuto que o serviço leva para subir de novo;
+- quem volta **renasce onde estava**: o `entrar` leva a última posição no campo
+  `voltando`, e o servidor a aceita se o lugar ainda estiver livre;
+- a câmera e o microfone **não** são desligados na queda (só as chamadas P2P,
+  que são refeitas), para ninguém ter que dar permissão de novo;
+- voltar para a aba força uma verificação na hora — é quando a queda costuma
+  aparecer, porque os temporizadores ficam congelados com a aba escondida;
+- uma recusa do servidor (sessão expirada, conta removida) **para** as
+  tentativas e devolve a tela de entrada, em vez de bater na porta para sempre.
+
+## Testes
+
+Moram em `backend/testes/` — antes viviam em `/tmp` e sumiam na primeira faxina
+do sistema. Precisam do Playwright e de um servidor de pé:
+
+```bash
+~/espiao-ads/backend/.venv/bin/python backend/testes/fumaca.py
+~/espiao-ads/backend/.venv/bin/python backend/testes/reconexao.py
+ENDERECO=https://escritorio-virtual-3al4.onrender.com \
+  ~/espiao-ads/backend/.venv/bin/python backend/testes/fumaca.py
+```
+
+`fumaca.py` é o básico de ponta a ponta (entrar, ver o outro, andar, sentar,
+chat perto e para todos, colocar/girar/remover móvel). `reconexao.py` derruba a
+conexão de propósito e confere que a sala volta sozinha. Cada execução cria
+contas novas, com sufixo do relógio.
+
 ## Editar o escritório (o "Mapmaker")
 
 Botão **🏗️** ou tecla **`E`**. Todo mundo pode editar, e a mudança aparece na

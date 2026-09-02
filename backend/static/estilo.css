@@ -183,6 +183,35 @@ button.secundario:hover { color: var(--texto); }
 }
 .video-tile .sem-video img { width: 72px; height: 72px; image-rendering: pixelated; }
 
+/* ---------- modo reunião: todo mundo em grade, estilo Meet ---------- */
+.videos.reuniao {
+  position: fixed; inset: 0; z-index: 40; max-width: none; padding: 60px 3vw 3vh;
+  background: rgba(4, 8, 18, .93); display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-auto-rows: minmax(0, 1fr); align-content: stretch; overflow: auto;
+}
+.videos.reuniao .video-tile {
+  width: auto; height: 100%; min-height: 130px; aspect-ratio: auto; cursor: pointer;
+}
+.videos.reuniao .video-tile .rotulo { font-size: 12.5px; padding: 5px 8px; }
+.videos.reuniao .video-tile video { object-fit: cover; }
+
+/* Quem apresenta ou está falando ocupa o palco; o resto vira tira lateral. */
+.videos.reuniao.com-destaque { grid-template-columns: 1fr minmax(170px, 230px); }
+.videos.reuniao.com-destaque .video-tile.destaque { grid-column: 1; grid-row: 1 / span 99; }
+.videos.reuniao.com-destaque .video-tile:not(.destaque) { grid-column: 2; }
+.videos.reuniao .video-tile.destaque video,
+.videos.reuniao .video-tile.tela video { object-fit: contain; background: #000; }
+.videos.reuniao .video-tile.destaque { border-color: var(--acento); }
+
+.fechar-reuniao {
+  position: fixed; top: 14px; right: 16px; z-index: 41; cursor: pointer;
+  background: rgba(19, 28, 49, .95); border: 1px solid var(--borda); color: var(--texto);
+  border-radius: 999px; padding: 7px 14px; font-size: 12.5px;
+}
+.fechar-reuniao:hover { background: #26314f; }
+.icone.ativo { background: var(--acento); border-color: var(--acento); }
+
 .zoom {
   position: absolute; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 2px;
   background: rgba(19,28,49,.9); border: 1px solid var(--borda); border-radius: 999px;
@@ -392,3 +421,20 @@ body.editando #tela { cursor: crosshair; }
 .menu-sala .cores button[aria-pressed="true"] { border-color: #fff; }
 .menu-sala .acoes .ok { background: var(--acento); color: #06283d; border-color: var(--acento); font-weight: 600; }
 .menu-sala .dica { margin: 0; font-size: 10.5px; color: var(--fraco); line-height: 1.35; }
+
+/* Faixa de "caiu a conexão": discreta, no alto, só enquanto tenta voltar. */
+.reconectando {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; z-index: 30;
+  padding: 7px 14px; border-radius: 999px;
+  background: rgba(38, 34, 52, .88); color: #f6f4ef;
+  font-size: 13px; font-weight: 600; letter-spacing: .01em;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .25);
+}
+.reconectando.oculto { display: none; }
+.reconectando .girando {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid rgba(246, 244, 239, .35); border-top-color: #f6f4ef;
+  animation: reconectando-gira .8s linear infinite;
+}
+@keyframes reconectando-gira { to { transform: rotate(360deg); } }

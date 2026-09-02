@@ -247,21 +247,96 @@ async function entrar(comMidia) {
 
 /* ==================== conexão ==================== */
 
+// Um WebSocket parado é fechado sozinho pelo proxy (e o serviço no plano
+// gratuito hiberna sem tráfego). Sem estes dois números, quem ficava meia hora
+// sem se mexer descobria que a sala tinha congelado só ao tentar andar.
+const BATIDA_MS = 20000;        // manda um ping de tempos em tempos
+const SILENCIO_MS = 55000;      // nada vindo do servidor por tanto tempo = caiu
+const ESPERA_MAX_MS = 15000;    // teto da espera entre tentativas de voltar
+
+const Conexao = { perfil: null, tentativas: 0, batida: null, timer: null,
+                  ultima: 0, saindo: false };
+
 function conectar(perfil) {
+  Conexao.perfil = perfil;
+  clearTimeout(Conexao.timer);
   const protocolo = location.protocol === 'https:' ? 'wss' : 'ws';
   const ws = new WebSocket(`${protocolo}://${location.host}/ws`);
   Jogo.ws = ws;
 
-  ws.onopen = () => ws.send(JSON.stringify({ tipo: 'entrar', ...perfil }));
-  ws.onmessage = (ev) => receber(JSON.parse(ev.data));
+  ws.onopen = () => {
+    // voltando de uma queda: pede para nascer onde a pessoa estava
+    const voltando = Jogo.eu ? { x: Jogo.eu.x, y: Jogo.eu.y } : null;
+    ws.send(JSON.stringify({ tipo: 'entrar', ...perfil, ...(voltando ? { voltando } : {}) }));
+    Conexao.tentativas = 0;
+    Conexao.ultima = Date.now();
+    baterCoracao();
+  };
+  ws.onmessage = (ev) => {
+    Conexao.ultima = Date.now();
+    avisarReconectando(false);
+    receber(JSON.parse(ev.data));
+  };
   ws.onclose = () => {
-    escreverChat({ sistema: true, texto: 'Conexão encerrada. Recarregue a página para voltar.' });
-    Midia.fecharTudo();
+    pararCoracao();
+    // só as chamadas caem; câmera e microfone continuam ligados para a pessoa
+    // não ter que dar permissão de novo a cada tropeço da rede
+    Midia.fecharPares();
+    if (!Conexao.saindo) tentarVoltar();
   };
   ws.onerror = () => {
-    document.getElementById('aviso-entrada').textContent = 'Não consegui conectar ao servidor.';
+    if (!Jogo.eu) {
+      document.getElementById('aviso-entrada').textContent = 'Não consegui conectar ao servidor.';
+    }
   };
 }
+
+function baterCoracao() {
+  pararCoracao();
+  Conexao.batida = setInterval(() => {
+    const ws = Jogo.ws;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (Date.now() - Conexao.ultima > SILENCIO_MS) {
+      ws.close();                  // calado demais: derruba para reconectar
+      return;
+    }
+    ws.send(JSON.stringify({ tipo: 'ping' }));
+  }, BATIDA_MS);
+}
+
+function pararCoracao() {
+  clearInterval(Conexao.batida);
+  Conexao.batida = null;
+}
+
+function tentarVoltar() {
+  if (!Conexao.perfil) return;                 // nem chegou a entrar
+  avisarReconectando(true);
+  const espera = Math.min(1000 * 2 ** Conexao.tentativas, ESPERA_MAX_MS);
+  Conexao.tentativas++;
+  clearTimeout(Conexao.timer);
+  Conexao.timer = setTimeout(() => conectar(Conexao.perfil), espera);
+}
+
+function avisarReconectando(ligado) {
+  const faixa = document.getElementById('reconectando');
+  if (!faixa) return;
+  faixa.classList.toggle('oculto', !ligado);
+}
+
+// Voltar para a aba (ou o computador acordar) é quando a queda costuma
+// aparecer: os timers ficam congelados enquanto a aba está escondida.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || !Conexao.perfil) return;
+  const ws = Jogo.ws;
+  if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+    Conexao.tentativas = 0;
+    tentarVoltar();
+  } else if (ws.readyState === WebSocket.OPEN) {
+    Conexao.ultima = Date.now();
+    ws.send(JSON.stringify({ tipo: 'ping' }));
+  }
+});
 
 function enviar(msg) {
   if (Jogo.ws && Jogo.ws.readyState === WebSocket.OPEN) Jogo.ws.send(JSON.stringify(msg));
@@ -337,6 +412,12 @@ function receber(msg) {
       break;
 
     case 'recusado':
+      // Recusa é definitiva (sessão expirada, conta sumiu): insistir em
+      // reconectar só ficaria batendo na porta para sempre.
+      Conexao.perfil = null;
+      clearTimeout(Conexao.timer);
+      pararCoracao();
+      avisarReconectando(false);
       document.getElementById('aviso-entrada').textContent = msg.texto;
       document.getElementById('entrada').classList.remove('oculto');
       document.getElementById('app').classList.add('oculto');
@@ -383,9 +464,12 @@ function receberMapa(mapa) {
 }
 
 function iniciarSala(msg) {
+  // Isto roda de novo a cada reconexão: o que é de uma vez só fica no `primeira`.
+  const primeira = !Jogo.rodando;
   Jogo.eu = { ...msg.voce, xr: msg.voce.x, yr: msg.voce.y, bolha: null, reacao: null };
   receberMapa(msg.mapa);
   Jogo.config = msg.config;
+  Jogo.pessoas.clear();                        // a lista antiga é de outra sessão
   msg.participantes.forEach((p) => Jogo.pessoas.set(p.id, prepararPessoa(p)));
 
   Editor.configurar({ enviar, jogo: Jogo });
@@ -408,10 +492,13 @@ function iniciarSala(msg) {
   desenharListaPessoas();
   atualizarBotoesMidia();
   montarTiles();
-  escreverChat({ sistema: true, texto: 'Você chegou na recepção. Ande até alguém para conversar.' });
-  setTimeout(() => document.getElementById('dica').style.opacity = 0, 9000);
-  setInterval(cuidarDasChamadas, 250);
-  requestAnimationFrame(quadro);
+  if (primeira) {
+    escreverChat({ sistema: true, texto: 'Você chegou na recepção. Ande até alguém para conversar.' });
+    setTimeout(() => document.getElementById('dica').style.opacity = 0, 9000);
+    setInterval(cuidarDasChamadas, 250);
+    requestAnimationFrame(quadro);
+    Jogo.rodando = true;
+  }
 }
 
 /* ==================== mapa e colisão ==================== */
@@ -471,6 +558,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !digitando) { document.getElementById('campo-chat').focus(); e.preventDefault(); return; }
   if (e.key === 'Escape' && digitando) { campo.blur(); return; }
   if (e.key === 'Escape') {
+    if (Reuniao.ativa) { fecharReuniao(); return; }
     encolherTiles();
     fecharEditor();
     Editor.movendo = null;
@@ -492,6 +580,7 @@ document.addEventListener('keydown', (e) => {
   // G gira o móvel: o que está na mão, o selecionado, ou o próximo a ser posto
   if (e.key.toLowerCase() === 'g' && (Editor.ativo || Editor.movendo)) Editor.girar();
   if (e.key.toLowerCase() === 'r') reagir();
+  if (e.key.toLowerCase() === 'c') alternarReuniao();
 });
 
 document.addEventListener('keyup', (e) => {
@@ -895,12 +984,17 @@ function desenhar() {
   }
 
   // ---------- móveis e pessoas, de trás para a frente ----------
+  // Quando dois móveis terminam na mesma linha, a base empata e só a ordem da
+  // lista decidiria quem cobre quem — e essa ordem muda toda vez que se troca
+  // um móvel de lugar. Daí uma mesa recém-colocada passar por cima da cadeira
+  // que já estava ali. O peso desempata sempre do mesmo jeito: superfície
+  // embaixo, o que se apoia nela em cima.
   const fila = [];
   for (const o of visiveis) {
     const info = mapa.catalogo[o.tipo];
     if (!info || info.camada !== 'chao') continue;
     const m = Objetos.medida(o.tipo, info, o.g);
-    fila.push({ base: (o.y + m.a) * t, desenhar: () =>
+    fila.push({ base: (o.y + m.a) * t, peso: pesoDeEmpate(o.tipo, info), desenhar: () =>
       Objetos.desenhar(ctx, o.tipo, o.x * t, o.y * t, m.l * t, m.a * t, o.g) });
   }
   const gente = [...Jogo.pessoas.values(), eu];
@@ -911,9 +1005,9 @@ function desenhar() {
     const base = cad
       ? (cad.y + Objetos.medida(cad.tipo, mapa.catalogo[cad.tipo], cad.g).a) * t + 0.5
       : pes.yr + 13;
-    fila.push({ base, desenhar: () => desenharAvatar(pes, pes === eu) });
+    fila.push({ base, peso: PESO_PESSOA, desenhar: () => desenharAvatar(pes, pes === eu) });
   }
-  fila.sort((a, b) => a.base - b.base);
+  fila.sort((a, b) => a.base - b.base || a.peso - b.peso);
   for (const item of fila) item.desenhar();
 
   // ---------- o que fica em cima das mesas ----------
@@ -931,6 +1025,17 @@ function desenhar() {
     if (Editor.ativo) Editor.desenhar(ctx, x0, y0, x1, y1);
     else if (Editor.movendo && Editor.cursor) Editor.desenharNaMao(ctx);
   }
+}
+
+// Ordem de empate no chão: superfície primeiro (fica embaixo), depois o que se
+// apoia nela, e a pessoa por último. Vale para móveis que terminam na mesma linha.
+const PESO_SUPERFICIE = 0;   // mesas, balcões, palco — coisas em que se apoia algo
+const PESO_MOVEL = 1;        // cadeiras, plantas, armários…
+const PESO_PESSOA = 2;       // gente sempre por cima do móvel que divide a linha
+
+function pesoDeEmpate(tipo, info) {
+  if (info.grupo === 'Mesas' || tipo === 'palco') return PESO_SUPERFICIE;
+  return PESO_MOVEL;
 }
 
 function arredondado(x, y, w, h, r) {
@@ -1089,7 +1194,11 @@ document.getElementById('btn-editor').onclick = () => Editor.alternar();
 document.getElementById('zoom-mais').onclick = () => ajustarZoom(1.15);
 document.getElementById('zoom-menos').onclick = () => ajustarZoom(1 / 1.15);
 document.getElementById('btn-reacao').onclick = reagir;
+document.getElementById('btn-reuniao').onclick = () => alternarReuniao();
+document.getElementById('btn-fechar-reuniao').onclick = fecharReuniao;
 document.getElementById('btn-sair').onclick = () => {
+  Conexao.saindo = true;
+  pararCoracao();
   Midia.fecharTudo();
   if (Jogo.ws) Jogo.ws.close();
   location.reload();
@@ -1140,9 +1249,11 @@ function montarTiles() {
         <div class="sem-video"></div>
         <div class="rotulo"><span class="nome"></span><span class="estado"></span></div>`;
       tile.onclick = () => {
-        const jaAberto = tile.classList.contains('expandido');
-        encolherTiles();
-        if (!jaAberto) tile.classList.add('expandido');
+        // Fora da grade, clicar em alguém abre a reunião com essa pessoa no palco.
+        // Dentro dela, o clique prende (ou solta) o palco naquela pessoa.
+        if (!Reuniao.ativa) { abrirReuniao(id); return; }
+        Reuniao.fixado = Reuniao.fixado === id ? null : id;
+        atualizarDestaque();
       };
       caixa.appendChild(tile);
     }
@@ -1188,6 +1299,93 @@ function montarTiles() {
   for (const tile of [...caixa.children]) {
     if (!vivos.has(tile.dataset.id)) tile.remove();
   }
+  if (Reuniao.ativa) atualizarDestaque();
+}
+
+/* ---------- modo reunião ----------
+ * A tira de tiles no canto continua sendo o padrão: dá para andar pelo escritório
+ * enquanto se conversa. A grade é para quando a conversa vira reunião de fato —
+ * aí interessa ver todo mundo, e quem apresenta ganha o palco.                */
+const Reuniao = {
+  ativa: false,
+  fixado: null,      // palco preso por clique
+  destaque: null,    // quem está no palco agora
+  _candidato: null,  // quem vem falando mais alto
+  _desde: 0,
+  _apresentador: null,  // quem estava apresentando na última passada
+};
+
+function abrirReuniao(idFoco) {
+  Reuniao.ativa = true;
+  if (idFoco !== undefined) Reuniao.fixado = idFoco;
+  aplicarReuniao();
+}
+
+function fecharReuniao() {
+  Reuniao.ativa = false;
+  Reuniao.fixado = null;
+  Reuniao.destaque = null;
+  aplicarReuniao();
+}
+
+function alternarReuniao() {
+  if (Reuniao.ativa) fecharReuniao(); else abrirReuniao();
+}
+
+function aplicarReuniao() {
+  const caixa = document.getElementById('videos');
+  encolherTiles();
+  caixa.classList.toggle('reuniao', Reuniao.ativa);
+  document.getElementById('btn-reuniao').classList.toggle('ativo', Reuniao.ativa);
+  document.getElementById('btn-fechar-reuniao').hidden = !Reuniao.ativa;
+  if (!Reuniao.ativa) {
+    caixa.classList.remove('com-destaque');
+    for (const t of caixa.children) t.classList.remove('destaque');
+    return;
+  }
+  atualizarDestaque();
+}
+
+/** Escolhe quem fica no palco: quem foi fixado > quem apresenta > quem fala.
+ *  A troca por voz exige 1s de fala estável, senão o palco piscaria a cada
+ *  "uhum" de quem está ouvindo. */
+function atualizarDestaque() {
+  if (!Reuniao.ativa) return;
+  const caixa = document.getElementById('videos');
+  const tiles = [...caixa.children];
+  let alvo = null;
+
+  // Alguém que ACABOU de abrir a tela leva o palco na hora, mesmo que você
+  // tivesse prendido outra pessoa — é o motivo de estar todo mundo ali. Depois
+  // disso você pode clicar em quem quiser, que a sua escolha volta a valer.
+  const apresentador = (tiles.find((t) => t.classList.contains('tela')) || {}).dataset;
+  const idApresentando = apresentador ? apresentador.id : null;
+  if (idApresentando && idApresentando !== Reuniao._apresentador) Reuniao.fixado = idApresentando;
+  Reuniao._apresentador = idApresentando;
+
+  if (Reuniao.fixado && tiles.some((t) => t.dataset.id === Reuniao.fixado)) {
+    alvo = Reuniao.fixado;
+  } else {
+    Reuniao.fixado = null;
+    const apresentando = tiles.find((t) => t.classList.contains('tela'));
+    if (apresentando) {
+      alvo = apresentando.dataset.id;
+    } else {
+      let melhor = null, maior = 0.15;
+      for (const t of tiles) {
+        const n = Midia.nivel(t.dataset.id);
+        if (n > maior) { maior = n; melhor = t.dataset.id; }
+      }
+      const agora = Date.now();
+      if (melhor && melhor !== Reuniao._candidato) { Reuniao._candidato = melhor; Reuniao._desde = agora; }
+      alvo = (melhor && agora - Reuniao._desde >= 1000) ? melhor : Reuniao.destaque;
+      if (alvo && !tiles.some((t) => t.dataset.id === alvo)) alvo = null;   // saiu da conversa
+    }
+  }
+
+  Reuniao.destaque = alvo;
+  for (const t of tiles) t.classList.toggle('destaque', t.dataset.id === alvo);
+  caixa.classList.toggle('com-destaque', !!alvo && tiles.length > 1);
 }
 
 function encolherTiles() {
@@ -1199,6 +1397,7 @@ setInterval(() => {
   for (const tile of document.getElementById('videos').children) {
     tile.classList.toggle('falando', Midia.nivel(tile.dataset.id) > 0.15);
   }
+  atualizarDestaque();
 }, 200);
 
 /* ==================== pessoas e chat ==================== */

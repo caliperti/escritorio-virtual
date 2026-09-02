@@ -227,6 +227,12 @@ const Midia = {
     this.aoMudarTiles && this.aoMudarTiles();
   },
 
+  /** Derruba só as chamadas. A câmera e o microfone da pessoa continuam
+   *  ligados — numa reconexão, pedir permissão de novo seria um susto. */
+  fecharPares() {
+    for (const id of [...this.pares.keys()]) this.fechar(id);
+  },
+
   fecharTudo() {
     for (const id of [...this.pares.keys()]) this.fechar(id);
     if (this.streamLocal) this.streamLocal.getTracks().forEach((f) => f.stop());
