@@ -56,8 +56,11 @@ async def main():
         c("laço de desenho não duplicou", await a.evaluate("() => Jogo.rodando === true"))
 
         await asyncio.sleep(2.5)
-        c("o outro vê uma pessoa só", await b.evaluate("() => Jogo.pessoas.size"), 1)
-        c("sem fantasma com nome repetido", await b.evaluate("""() => {
+        # Em produção pode ter gente de verdade na sala; o que importa é que
+        # quem reconectou apareça uma vez só, sem o fantasma da sessão antiga.
+        c("quem voltou aparece uma vez só", await b.evaluate("""(n) =>
+            [...Jogo.pessoas.values()].filter(p => p.nome.startsWith(n)).length""", "Cai"), 1)
+        c("sem nome repetido na lista", await b.evaluate("""() => {
             const n = [...Jogo.pessoas.values()].map(p => p.nome);
             return new Set(n).size === n.length; }"""))
 
