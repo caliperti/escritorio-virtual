@@ -156,6 +156,36 @@ simplesmente congelava até alguém apertar F5. Agora:
 - uma recusa do servidor (sessão expirada, conta removida) **para** as
   tentativas e devolve a tela de entrada, em vez de bater na porta para sempre.
 
+## Publicar (subir no ar)
+
+O repositório é **público**, e para repositório público o Render não cria
+webhook — então `git push` sozinho **não publica nada**. É preciso pedir o
+deploy pela API. É o que o `./subir.sh` faz: dispara, acompanha e avisa se
+falhar.
+
+```bash
+git push github main
+./subir.sh
+```
+
+Ele lê a chave da API do Render de `RENDER_KEY` (do ambiente ou do `.env`, que
+não vai para o repositório). Cada pessoa usa a **sua** chave, criada em
+<https://dashboard.render.com/u/settings#api-keys>:
+
+```bash
+echo 'RENDER_KEY=rnd_suachave' >> .env
+```
+
+Antes de disparar, o script avisa se há mudança não commitada ou se o seu
+commit ainda não chegou no `github/main` — o Render publica o que está lá, não
+o que está na sua máquina.
+
+Para **ver logs, variáveis de ambiente e histórico de deploy** não basta a
+chave: a pessoa precisa estar no workspace do Render. Isso só existe no painel
+(a API é somente leitura para membros): **Workspace → Settings → Members →
+Invite**, com o e-mail dela. Adicionar a segunda pessoa exige workspace pago —
+no plano gratuito o workspace é de um usuário só.
+
 ## Testes
 
 Moram em `backend/testes/` — antes viviam em `/tmp` e sumiam na primeira faxina
