@@ -164,16 +164,18 @@ const Editor = {
     painel.id = 'editor';
     painel.className = 'editor-painel';
     painel.innerHTML = `
-      <div class="cabeca">
+      <div class="cabeca" title="Arraste para mover o painel">
         <strong>🏗️ Editar escritório</strong>
-        <button class="fechar" title="Fechar (E)">✕</button>
+        <span class="botoes-cabeca">
+          <button class="recolher" title="Recolher (deixa só esta barra)">–</button>
+          <button class="fechar" title="Fechar (E)">✕</button>
+        </span>
       </div>
       <div class="ferramentas">
-        ${[['mobilia', 'Móveis', 0], ['piso', 'Piso', 0], ['parede', 'Parede', 1],
-           ['sala', 'Salas', 1], ['inicio', 'Entrada', 1], ['apagar', 'Apagar', 0],
-           ['estudio', 'Estúdio', 1]]
+        ${this.FERRAMENTAS
           .filter(([, , soAdmin]) => !soAdmin || this.souAdmin())
-          .map(([id, nome]) => `<button data-fer="${id}" title="${nome}">${this.icone(id)}<span>${nome}</span></button>`)
+          .map(([id, nome, , explica]) => `<button data-fer="${id}" title="${explica}"
+            >${this.icone(id)}<span>${nome}</span></button>`)
           .join('')}
       </div>
       <div class="conteudo" id="editor-conteudo"></div>
@@ -190,6 +192,8 @@ const Editor = {
     document.querySelector('.palco').appendChild(painel);
 
     painel.querySelector('.fechar').onclick = () => this.alternar();
+    this._deixarFlutuante(painel);
+    this._explicarAoPassar(painel);
     painel.querySelectorAll('[data-fer]').forEach((b) => {
       b.onclick = () => this.usarFerramenta(b.dataset.fer);
     });
@@ -207,6 +211,123 @@ const Editor = {
       }
     });
     this.usarFerramenta(this.ferramenta);
+  },
+
+  /* ---------- o painel flutua ---------- */
+  // Ele nasce encostado na direita e cobre um pedaço do mapa. Se a sala que a
+  // pessoa quer editar estiver justamente ali, não dá para trabalhar. Agora ele
+  // é arrastado pela barra de cima, recolhe para uma faixa fina e lembra onde
+  // foi deixado.
+  CHAVE_PAINEL: 'escritorio:painel',
+
+  // id, rótulo, só admin, e o que a pessoa lê ao passar o mouse. O rótulo
+  // sozinho ("Piso", "Salas") não diz o que a ferramenta faz.
+  FERRAMENTAS: [
+    ['mobilia', 'Móveis', 0, 'Escolha uma peça na lista e clique no mapa para colocar. '
+      + 'Clique num móvel que já existe para girar, mover, trocar ou remover.'],
+    ['piso', 'Piso', 0, 'Pinta o chão. Escolha o tipo e arraste no mapa; com Shift, preenche um retângulo.'],
+    ['parede', 'Parede', 1, 'Levanta e derruba parede. Arraste para levantar; com Alt, derruba.'],
+    ['sala', 'Salas', 1, 'Arraste um retângulo para criar uma sala com parede, porta e piso. '
+      + 'Na lista dá para renomear, trocar a cor, redesenhar a área e remover.'],
+    ['inicio', 'Entrada', 1, 'Clique onde as pessoas devem nascer ao entrar no escritório.'],
+    ['apagar', 'Apagar', 0, 'Clique num móvel para removê-lo. Fora daqui, o botão direito faz o mesmo.'],
+    ['estudio', 'Estúdio', 1, 'Suba uma imagem e ela vira móvel ou roupa no arsenal.'],
+  ],
+
+  /** Passar o mouse já conta do que se trata, sem clicar e sem esperar a
+   *  tarja do navegador (que demora um segundo e some sozinha). O texto vai
+   *  para a mesma faixa de ajuda do rodapé, e o que estava escrito volta
+   *  quando o mouse sai. */
+  _explicarAoPassar(painel) {
+    const faixa = painel.querySelector('#editor-ajuda');
+    let antes = null;
+    const explicar = (e) => {
+      const alvo = e.target.closest('[title]');
+      if (!alvo || !painel.contains(alvo)) return;
+      const texto = alvo.getAttribute('title');
+      if (!texto) return;
+      if (antes === null) antes = faixa.textContent;
+      faixa.textContent = texto;
+      faixa.classList.add('passando');
+    };
+    const voltar = (e) => {
+      if (e.relatedTarget && painel.contains(e.relatedTarget)
+          && e.relatedTarget.closest('[title]')) return;
+      if (antes === null) return;
+      faixa.textContent = antes;
+      antes = null;
+      faixa.classList.remove('passando');
+    };
+    painel.addEventListener('mouseover', explicar);
+    painel.addEventListener('mouseout', voltar);
+    painel.addEventListener('focusin', explicar);      // quem navega pelo teclado também lê
+    painel.addEventListener('focusout', voltar);
+  },
+
+  _deixarFlutuante(painel) {
+    const cabeca = painel.querySelector('.cabeca');
+    const recolher = painel.querySelector('.recolher');
+
+    const guardado = this._lerJson(this.CHAVE_PAINEL) || {};
+    if (guardado.recolhido) painel.classList.add('recolhido');
+    if (typeof guardado.x === 'number') this._porPainel(painel, guardado.x, guardado.y);
+
+    recolher.onclick = () => {
+      painel.classList.toggle('recolhido');
+      recolher.textContent = painel.classList.contains('recolhido') ? '+' : '–';
+      recolher.title = painel.classList.contains('recolhido')
+        ? 'Abrir o painel' : 'Recolher (deixa só esta barra)';
+      this._porPainel(painel, painel.offsetLeft, painel.offsetTop);   // recolhido cabe melhor
+      this._guardarPainel(painel);
+    };
+    recolher.textContent = painel.classList.contains('recolhido') ? '+' : '–';
+
+    let arrasto = null;
+    cabeca.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('button')) return;          // fechar e recolher são cliques
+      const c = painel.getBoundingClientRect();
+      const palco = document.querySelector('.palco').getBoundingClientRect();
+      arrasto = { dx: e.clientX - c.left, dy: e.clientY - c.top, palco };
+      cabeca.setPointerCapture(e.pointerId);
+      painel.classList.add('arrastando');
+      e.preventDefault();
+    });
+    cabeca.addEventListener('pointermove', (e) => {
+      if (!arrasto) return;
+      this._porPainel(painel, e.clientX - arrasto.palco.left - arrasto.dx,
+                      e.clientY - arrasto.palco.top - arrasto.dy);
+    });
+    const soltar = (e) => {
+      if (!arrasto) return;
+      arrasto = null;
+      painel.classList.remove('arrastando');
+      try { cabeca.releasePointerCapture(e.pointerId); } catch (err) { /* já solto */ }
+      this._guardarPainel(painel);
+    };
+    cabeca.addEventListener('pointerup', soltar);
+    cabeca.addEventListener('pointercancel', soltar);
+  },
+
+  /** Põe o painel em (x, y) sem deixar nenhuma parte dele fora do palco. */
+  _porPainel(painel, x, y) {
+    const palco = document.querySelector('.palco').getBoundingClientRect();
+    const l = painel.offsetWidth, a = painel.offsetHeight, M = 8;
+    painel.style.right = 'auto';
+    painel.style.left = Math.round(Math.max(M, Math.min(x, palco.width - l - M))) + 'px';
+    painel.style.top = Math.round(Math.max(M, Math.min(y, palco.height - a - M))) + 'px';
+  },
+
+  _guardarPainel(painel) {
+    try {
+      localStorage.setItem(this.CHAVE_PAINEL, JSON.stringify({
+        x: painel.offsetLeft, y: painel.offsetTop,
+        recolhido: painel.classList.contains('recolhido'),
+      }));
+    } catch (e) { /* navegador sem armazenamento: só não lembra */ }
+  },
+
+  _lerJson(chave) {
+    try { return JSON.parse(localStorage.getItem(chave) || 'null'); } catch (e) { return null; }
   },
 
   usarFerramenta(fer) {
@@ -462,7 +583,8 @@ const Editor = {
         this.fecharMenu();
         this.selecionado = alvo;
         this.arrasto = { id: alvo.id, dx: alvo.x - t.x, dy: alvo.y - t.y,
-                         x: alvo.x, y: alvo.y, ox: alvo.x, oy: alvo.y };
+                         x: alvo.x, y: alvo.y, ox: alvo.x, oy: alvo.y,
+                         tile: t, quando: Date.now() };
       } else {
         this.fecharMenu();
         // Coloca só ao SOLTAR (ver aoSoltar). No celular a pinça de zoom começa
@@ -525,8 +647,19 @@ const Editor = {
     if (this.arrasto) {
       const a = this.arrasto;
       this.arrasto = null;
-      if (a.x === a.ox && a.y === a.oy) {          // clique seco: abre o menu
-        this.abrirMenu(a.id);
+      if (a.x === a.ox && a.y === a.oy) {
+        // Clique seco COLOCA a peça que está na mão. Antes ele abria o menu do
+        // que já estava ali, e por isso não dava para pôr um gabinete numa mesa
+        // que já tivesse teclado ou caneca: o clique selecionava em vez de
+        // soltar. Para abrir o menu, segure o botão — mesmo gesto de fora do
+        // editor.
+        if (Date.now() - a.quando > 450) {
+          this.abrirMenu(a.id);
+        } else {
+          this.acao({ acao: 'objeto', tipo: this.tipoSel, x: a.tile.x, y: a.tile.y, g: this.giro });
+          this._registrarRecente(this.tipoSel);
+          this._atualizarContagens();
+        }
       } else {
         const alvo = this.jogo.mapa.objetos.find((o) => o.id === a.id);
         if (alvo && (alvo.x !== a.x || alvo.y !== a.y)) {
@@ -597,9 +730,10 @@ const Editor = {
       : this.AJUDA_MOBILIA;
   },
 
-  AJUDA_MOBILIA: 'Clique no mapa para colocar; G (ou o botão de girar) gira antes. '
-    + 'Clique num móvel para abrir o menu (girar, mover, trocar, duplicar, remover); arrastar também move. '
-    + '⌘/Ctrl+D duplica o selecionado, Delete apaga, Esc solta o que está na mão.',
+  AJUDA_MOBILIA: 'Clique no mapa para colocar, mesmo em cima de outro móvel; '
+    + 'G (ou o botão de girar) gira antes. Arraste um móvel para mudar ele de lugar; '
+    + 'SEGURE o botão em cima dele para abrir o menu (girar, mover, trocar, duplicar, remover). '
+    + 'Botão direito apaga. ⌘/Ctrl+D duplica o selecionado, Delete apaga, Esc solta o que está na mão.',
 
   /** Prévia do móvel que está sendo carregado, com ou sem o editor aberto. */
   desenharNaMao(ctx) {

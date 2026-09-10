@@ -136,6 +136,9 @@ _item("mesa_madeira", "Mesas", "Mesa de madeira", 4, 2, True)
 _item("mesa_preta", "Mesas", "Mesa preta", 4, 2, True)
 _item("mesa_l", "Mesas", "Mesa em L", 4, 3, True)
 _item("mesa_gamer", "Mesas", "Mesa gamer", 6, 2, True)
+# a mesma mesa gamer em claro e em madeira, para quem não quer tudo preto
+_item("mesa_gamer_branca", "Mesas", "Mesa gamer branca", 6, 2, True)
+_item("mesa_gamer_madeira", "Mesas", "Mesa gamer madeira", 6, 2, True)
 _item("mesa_curva", "Mesas", "Mesa curva", 6, 2, True)
 _item("mesa_dupla", "Mesas", "Mesa para dois", 6, 3, True)
 _item("bancada_trabalho", "Mesas", "Bancada de trabalho", 8, 1, True)
@@ -177,10 +180,15 @@ _item("puff", "Poltronas", "Puff", 1, 1, True)
 # ---- monitores ----
 _item("monitor_ultra", "Monitores", "Ultrawide grande", 3, 1, False, "mesa")
 _item("monitor_branco", "Monitores", "Monitor branco", 1, 1, False, "mesa")
+_item("monitor_ultra_branco", "Monitores", "Ultrawide branco", 3, 1, False, "mesa")
 _item("braco_monitor", "Monitores", "Braço articulado", 1, 1, False, "mesa")
 # ---- computadores ----
 _item("notebook_fechado", "Computadores", "Notebook fechado", 1, 1, False, "mesa")
 _item("torre_gamer", "Computadores", "Gabinete gamer", 1, 1, False, "mesa")
+# Linha clara: a mesa gamer é preta, e peça preta em cima dela some. Estes
+# são os mesmos móveis em branco, para dar contraste.
+_item("torre_branca", "Computadores", "Gabinete branco", 1, 1, False, "mesa")
+_item("setup_branco", "Computadores", "Setup branco", 1, 1, False, "mesa")
 _item("dock", "Computadores", "Docking station", 1, 1, False, "mesa")
 # ---- eletrônicos ----
 _item("tv_grande", "Eletrônicos", "TV grande", 3, 1, True)
@@ -190,6 +198,7 @@ _item("caixa_som", "Eletrônicos", "Caixa de som", 1, 1, False, "mesa")
 _item("teclado_gamer", "Acessórios", "Teclado gamer", 1, 1, False, "mesa")
 _item("teclado_branco", "Acessórios", "Teclado branco", 1, 1, False, "mesa")
 _item("mouse_gamer", "Acessórios", "Mouse gamer", 1, 1, False, "mesa")
+_item("mouse_branco", "Acessórios", "Mouse branco", 1, 1, False, "mesa")
 _item("mousepad", "Acessórios", "Mousepad", 2, 1, False, "mesa")
 _item("fone_branco", "Acessórios", "Headset branco", 1, 1, False, "mesa")
 _item("bloco_notas", "Acessórios", "Bloco de notas", 1, 1, False, "mesa")
@@ -259,8 +268,10 @@ EM_PE = {
     "dock", "webcam", "caixa_som", "teclado_gamer", "teclado_branco", "mouse_gamer",
     "fone_branco", "bloco_notas", "canetas", "copo", "copos", "porta_documentos",
     "aromatizador", "bonsai",
+    "torre_branca", "setup_branco", "mouse_branco", "monitor_ultra_branco",
 }
-FILEIRA = {"monitor_duplo", "monitor_curvo", "monitor_triplo", "monitor_ultra"}
+FILEIRA = {"monitor_duplo", "monitor_curvo", "monitor_triplo", "monitor_ultra",
+           "monitor_ultra_branco"}
 
 
 def medida(objeto: Dict) -> Tuple[int, int]:

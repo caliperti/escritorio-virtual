@@ -322,7 +322,9 @@ button.secundario:hover { color: var(--texto); }
 
 /* ---------- editor do escritório ---------- */
 .editor-painel {
-  position: absolute; top: 12px; right: 12px; width: 300px; max-height: calc(100% - 24px);
+  /* 78% e não a altura toda: um painel do tamanho da tela não teria para
+     onde ser arrastado, e o conteúdo já rola por dentro. */
+  position: absolute; top: 12px; right: 12px; width: 300px; max-height: 78%;
   display: grid; grid-template-rows: auto auto 1fr auto auto;
   background: rgba(255,255,255,.98); border: 1px solid var(--borda); border-radius: 12px;
   box-shadow: 0 20px 40px rgba(120,80,40,.22); overflow: hidden; z-index: 20;
@@ -330,7 +332,24 @@ button.secundario:hover { color: var(--texto); }
 .editor-painel .cabeca {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 12px; border-bottom: 1px solid var(--borda); font-size: 14px;
+  cursor: grab; user-select: none; touch-action: none;
 }
+.editor-painel.arrastando { cursor: grabbing; box-shadow: 0 26px 50px rgba(120, 80, 40, .3); }
+.editor-painel.arrastando .cabeca { cursor: grabbing; }
+.editor-painel .botoes-cabeca { display: flex; align-items: center; gap: 2px; }
+.editor-painel .recolher {
+  background: none; border: 0; color: var(--fraco); cursor: pointer;
+  font-size: 17px; line-height: 1; padding: 0 6px;
+}
+.editor-painel .recolher:hover, .editor-painel .cabeca .fechar:hover { color: var(--acento); }
+/* Recolhido sobra só a barra: dá para ver a sala inteira sem fechar o editor
+   e perder a peça escolhida. */
+.editor-painel.recolhido { max-height: none; }
+.editor-painel.recolhido .ferramentas,
+.editor-painel.recolhido .conteudo,
+.editor-painel.recolhido .rodape,
+.editor-painel.recolhido .ajuda { display: none; }
+.editor-painel .ajuda.passando { color: var(--texto); background: var(--acento-claro); }
 .editor-painel .cabeca .fechar {
   background: none; border: 0; color: var(--fraco); font-size: 15px; cursor: pointer;
 }

@@ -72,6 +72,18 @@ async def principal():
             }""", [tipo, tx, ty])
             await asyncio.sleep(1.0)
 
+        async def segurar(tipo, tx, ty):
+            """Mesmo clique, mas com o botão preso: é o gesto de abrir o menu."""
+            await pg.evaluate("""([tipo, tx, ty]) => {
+              const t = Jogo.tile;
+              Editor.tipoSel = tipo;
+              Editor.aoApontar({ button: 0, altKey: false, shiftKey: false },
+                               { x: (tx + 0.5) * t, y: (ty + 0.5) * t });
+              Editor.arrasto.quando -= 900;          // como se tivesse segurado
+              Editor.aoSoltar();
+            }""", [tipo, tx, ty])
+            await asyncio.sleep(1.0)
+
         async def quantos(tipo):
             return await pg.evaluate("(t) => Jogo.mapa.objetos.filter(o => o.tipo === t).length", tipo)
 
@@ -85,12 +97,17 @@ async def principal():
         await clicar("teclado", mesa["x"] + 2, mesa["y"])
         conferir("teclado entra na mesma mesa", await quantos("teclado") > antes)
 
-        # 3) clicar de novo com monitor na mão, onde já tem monitor, PEGA o monitor
+        # 3) clique seco COLOCA, mesmo em cima de outro móvel: era o que impedia
+        #    pôr um gabinete numa mesa que já tinha teclado ou caneca
         antes = await quantos("monitor")
         await clicar("monitor", mesa["x"] + 1, mesa["y"])
-        conferir("clicar em cima de outro monitor não empilha, seleciona",
-                 await quantos("monitor") == antes)
-        conferir("e o selecionado é o monitor",
+        conferir("clique em cima de outro móvel coloca assim mesmo",
+                 await quantos("monitor") == antes + 1)
+        # segurar o botão é que abre o menu do que já está ali
+        antes = await quantos("monitor")
+        await segurar("monitor", mesa["x"] + 1, mesa["y"])
+        conferir("segurar não coloca nada", await quantos("monitor") == antes)
+        conferir("e abre o menu do móvel de cima",
                  await pg.evaluate("() => Editor.selecionado && Editor.selecionado.tipo") == "monitor")
 
         # 4) tapete (camada do piso) entra por baixo da mesa
@@ -98,10 +115,13 @@ async def principal():
         await clicar("tapete", mesa["x"], mesa["y"])
         conferir("tapete entra por baixo da mesa", await quantos("tapete") > antes)
 
-        # 5) cadeira (mesma camada da mesa) não é colocada em cima da mesa
+        # 5) segurar com a cadeira na mão pega a MESA, que é da mesma camada
         antes = await quantos("cadeira")
-        await clicar("cadeira", mesa["x"], mesa["y"])
-        conferir("cadeira não é jogada em cima da mesa", await quantos("cadeira") == antes)
+        await segurar("cadeira", mesa["x"], mesa["y"])
+        conferir("segurar com peça de chão na mão não coloca nada",
+                 await quantos("cadeira") == antes)
+        conferir("e o menu aberto é o da mesa",
+                 await pg.evaluate("() => Editor.selecionado && Editor.selecionado.tipo") == "mesa_preta")
 
         conferir("nenhum erro de página", not erros)
         if erros:

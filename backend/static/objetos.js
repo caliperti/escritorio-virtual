@@ -107,6 +107,8 @@ const Objetos = {
     'dock', 'webcam', 'caixa_som', 'teclado_gamer', 'teclado_branco', 'mouse_gamer',
     'fone_branco', 'bloco_notas', 'canetas', 'copo', 'copos', 'porta_documentos',
     'aromatizador', 'bonsai',
+    // linha clara: os mesmos móveis em branco, para contrastar na mesa gamer preta
+    'torre_branca', 'setup_branco', 'mouse_branco', 'monitor_ultra_branco',
   ]),
   VISTAS: ['frente', 'direita', 'tras', 'esquerda'],
   _vista: 'frente',
@@ -161,7 +163,8 @@ const Objetos = {
    *  outro eixo quando a mesa está deitada. */
   // `monitor_ultra` estava no servidor e faltava aqui: girado, o cliente desenhava
   // 3x1 e o servidor cobrava 1x3 (testes/permissoes.py confere as duas listas).
-  FILEIRA: new Set(['monitor_duplo', 'monitor_curvo', 'monitor_triplo', 'monitor_ultra']),
+  FILEIRA: new Set(['monitor_duplo', 'monitor_curvo', 'monitor_triplo', 'monitor_ultra',
+                   'monitor_ultra_branco']),
 
   /** Espaço que o móvel ocupa no mapa. Deitado (90°/270°), largura e altura
    *  trocam de lugar — a não ser que seja um móvel de ficar em pé. Mesma conta
@@ -454,19 +457,11 @@ const Objetos = {
       // Mesa em L: o braço comprido atrás e o braço curto descendo pela direita.
       this._blocoL(c, x + 1, y + 2, w - 2, h - 4, h * 0.5, w * 0.42, this.TAMPO);
     },
-    mesa_gamer(c, x, y, w, h) {
-      // Tampo preto fosco com a fita de LED correndo pela borda da frente.
-      const cor = '#2f323b';
-      this._mesa(c, x, y, w, h, false, cor);
-      const g = c.createLinearGradient(x, 0, x + w, 0);
-      g.addColorStop(0, '#ff4fd8'); g.addColorStop(0.5, '#9d5cff'); g.addColorStop(1, '#4fd8ff');
-      c.fillStyle = g;
-      c.fillRect(x + 5, y + h - 8, w - 10, 2);                                  // fita de LED
-      c.save(); c.globalAlpha = 0.22;
-      c.fillRect(x + 5, y + h - 12, w - 10, 4);                                 // o brilho sobe pelo tampo
-      c.restore();
-      this.elipse(c, x + w / 2, y + 9, 3, 2, this.sombra(cor, 0.45));          // passa-cabo
-    },
+    mesa_gamer(c, x, y, w, h) { this._mesaGamer(c, x, y, w, h, '#2f323b'); },
+    // A mesa gamer preta engole qualquer máquina preta em cima dela. Estas duas
+    // são a mesma mesa em claro e em madeira, para dar contraste.
+    mesa_gamer_branca(c, x, y, w, h) { this._mesaGamer(c, x, y, w, h, '#eceae5'); },
+    mesa_gamer_madeira(c, x, y, w, h) { this._mesaGamer(c, x, y, w, h, '#a9764a'); },
     mesa_curva(c, x, y, w, h) {
       // Tampo com a frente côncava, o recorte para quem senta. Três passadas
       // do mesmo caminho: contorno, faceta da frente e tampo — o tampo é o
@@ -914,16 +909,8 @@ const Objetos = {
       this._tela(c, x + 5, y + 8, w - 10, h - 26, 'video');
     },
 
-    monitor_gamer(c, x, y, w, h) {
-      if (this._vista === 'direita' || this._vista === 'esquerda') {
-        this._perfil(c, x + 2, y + 3, w - 4, h - 9, this.ESCURO); return;
-      }
-      c.save(); c.globalAlpha = 0.28;                       // brilho RGB atrás
-      this.ret(c, x + 1, y + 2, w - 2, h - 8, 6, '#9d5cff');
-      c.restore();
-      this._monitor(c, x + 2, y + 3, w - 4, h - 9, 'jogo');
-      this.ret(c, x + 4, y + h - 12, w - 8, 2, 1, '#ff4fd8');   // fita de LED
-    },
+    monitor_gamer(c, x, y, w, h) { this._setupGamer(c, x, y, w, h, this.ESCURO); },
+    setup_branco(c, x, y, w, h) { this._setupGamer(c, x, y, w, h, '#e9e7e2'); },
 
     imac(c, x, y, w, h) {
       if (this._vista === 'direita' || this._vista === 'esquerda') {
@@ -1109,18 +1096,8 @@ const Objetos = {
 
     /* ================= arsenal: telas, computadores e eletrônicos ================= */
 
-    monitor_ultra(c, x, y, w, h) {
-      // Ultrawide de três tiles: um painel só, largo e baixo, com pé central.
-      if (this._vista === 'direita' || this._vista === 'esquerda') {
-        this._perfil(c, x, y, w, h, this.ESCURO); return;
-      }
-      const cor = this.ESCURO;
-      this.ret(c, x + w / 2 - 15, y + h - 4, 30, 4, 2, this.mix(cor, this.METAL, 0.35));
-      this.ret(c, x + w / 2 - 3, y + h - 8, 6, 5, 1, this.mix(cor, this.METAL, 0.2));
-      this.ret(c, x + 2, y + 1, w - 4, h - 8, 4, this.traco(cor));
-      this.ret(c, x + 3, y + 2, w - 6, h - 10, 3, cor);
-      this._tela(c, x + 5, y + 4, w - 10, h - 14, 'linha');
-    },
+    monitor_ultra(c, x, y, w, h) { this._ultra(c, x, y, w, h, this.ESCURO); },
+    monitor_ultra_branco(c, x, y, w, h) { this._ultra(c, x, y, w, h, '#e9e7e2'); },
     monitor_branco(c, x, y, w, h) {
       if (this._vista === 'direita' || this._vista === 'esquerda') {
         this._perfil(c, x, y, w, h, '#e6e4df'); return;
@@ -1155,17 +1132,9 @@ const Objetos = {
       this.ret(c, x + 5, y + h * 0.3 + 3, w - 10, 1.5, 1, this.luz(cor, 0.5));
       this.elipse(c, x + w / 2, y + h * 0.46, 3, 3, this.sombra(cor, 0.3));   // marca
     },
-    torre_gamer(c, x, y, w, h) {
-      const cor = '#1e1e26';
-      this.bloco(c, x + 5, y + 3, w - 10, h - 8, cor, 3);
-      this.ret(c, x + 8, y + 6, w - 20, h - 16, 2, '#2b3350');                // vidro lateral
-      for (let i = 0; i < 3; i++) {                                          // ventoinhas acesas
-        const cy = y + 10 + i * ((h - 24) / 2);
-        this.elipse(c, x + w / 2 - 2, cy, 4, 4, ['#e0453f', '#8f6ce8', '#3fb0e0'][i]);
-        this.elipse(c, x + w / 2 - 2, cy, 2, 2, this.luz(['#e0453f', '#8f6ce8', '#3fb0e0'][i], 0.5));
-      }
-      this.ret(c, x + w - 9, y + 6, 2, h - 16, 1, '#8f6ce8');                 // fita lateral
-    },
+    torre_gamer(c, x, y, w, h) { this._torreGamer(c, x, y, w, h, '#1e1e26', '#2b3350'); },
+    // O mesmo gabinete em branco: em cima da mesa gamer preta ele aparece.
+    torre_branca(c, x, y, w, h) { this._torreGamer(c, x, y, w, h, '#efedE8', '#cfd6e6'); },
     dock(c, x, y, w, h) {
       const cor = '#3a3f4a';
       this.bloco(c, x + 5, y + h * 0.42, w - 10, h * 0.3, cor, 2);
@@ -1223,13 +1192,8 @@ const Objetos = {
         for (let i = 0; i * 4 < w - 16; i++) c.fillRect(x + 7 + i * 4, meio + f * 2.4 - 0.5, 2.4, 1.6);
       }
     },
-    mouse_gamer(c, x, y, w, h) {
-      const cx = x + w / 2, cy = y + h / 2 + 1;
-      this.elipse(c, cx, cy, 5.5, 8, this.traco('#2a2d36'));
-      this.elipse(c, cx, cy - 0.5, 4.6, 7, '#2a2d36');
-      this.ret(c, cx - 0.6, cy - 6, 1.2, 4, 0.5, this.sombra('#2a2d36', 0.5));
-      this.elipse(c, cx, cy + 4, 3, 2, '#8f6ce8');                            // luz
-    },
+    mouse_gamer(c, x, y, w, h) { this._mouseGamer(c, x, y, w, h, '#2a2d36'); },
+    mouse_branco(c, x, y, w, h) { this._mouseGamer(c, x, y, w, h, '#f0eee9'); },
     mousepad(c, x, y, w, h) {
       const cor = '#2f333c';
       this.ret(c, x + 3, y + h * 0.3, w - 6, h * 0.42, 4, this.mix(cor, '#000', 0.25));
@@ -1791,12 +1755,66 @@ const Objetos = {
   },
 
   /** Monitor com pé, moldura e tela — a base de quase todo computador. */
-  _monitor(c, x, y, w, h, assunto) {
+  /* ---------- versões claras: peça preta em cima da mesa gamer preta some ---------- */
+  _mesaGamer(c, x, y, w, h, cor) {
+    // Tampo fosco com a fita de LED correndo pela borda da frente.
+    this._mesa(c, x, y, w, h, false, cor);
+    const g = c.createLinearGradient(x, 0, x + w, 0);
+    g.addColorStop(0, '#ff4fd8'); g.addColorStop(0.5, '#9d5cff'); g.addColorStop(1, '#4fd8ff');
+    c.fillStyle = g;
+    c.fillRect(x + 5, y + h - 8, w - 10, 2);                                  // fita de LED
+    c.save(); c.globalAlpha = 0.22;
+    c.fillRect(x + 5, y + h - 12, w - 10, 4);                                 // o brilho sobe pelo tampo
+    c.restore();
+    this.elipse(c, x + w / 2, y + 9, 3, 2, this.sombra(cor, 0.45));          // passa-cabo
+  },
+  _torreGamer(c, x, y, w, h, cor, vidro) {
+    this.bloco(c, x + 5, y + 3, w - 10, h - 8, cor, 3);
+    this.ret(c, x + 8, y + 6, w - 20, h - 16, 2, vidro);                    // vidro lateral
+    for (let i = 0; i < 3; i++) {                                          // ventoinhas acesas
+      const cy = y + 10 + i * ((h - 24) / 2);
+      this.elipse(c, x + w / 2 - 2, cy, 4, 4, ['#e0453f', '#8f6ce8', '#3fb0e0'][i]);
+      this.elipse(c, x + w / 2 - 2, cy, 2, 2, this.luz(['#e0453f', '#8f6ce8', '#3fb0e0'][i], 0.5));
+    }
+    this.ret(c, x + w - 9, y + 6, 2, h - 16, 1, '#8f6ce8');                 // fita lateral
+  },
+  _mouseGamer(c, x, y, w, h, cor) {
+    const cx = x + w / 2, cy = y + h / 2 + 1;
+    this.elipse(c, cx, cy, 5.5, 8, this.traco(cor));
+    this.elipse(c, cx, cy - 0.5, 4.6, 7, cor);
+    this.ret(c, cx - 0.6, cy - 6, 1.2, 4, 0.5, this.sombra(cor, 0.5));
+    this.elipse(c, cx, cy + 4, 3, 2, '#8f6ce8');                            // luz
+  },
+  _setupGamer(c, x, y, w, h, cor) {
     if (this._vista === 'direita' || this._vista === 'esquerda') {
-      this._perfil(c, x, y, w, h, this.ESCURO);
+      this._perfil(c, x + 2, y + 3, w - 4, h - 9, cor); return;
+    }
+    c.save(); c.globalAlpha = 0.28;                       // brilho RGB atrás
+    this.ret(c, x + 1, y + 2, w - 2, h - 8, 6, '#9d5cff');
+    c.restore();
+    this._monitor(c, x + 2, y + 3, w - 4, h - 9, 'jogo', cor);
+    this.ret(c, x + 4, y + h - 12, w - 8, 2, 1, '#ff4fd8');   // fita de LED
+  },
+  _ultra(c, x, y, w, h, cor) {
+    // Ultrawide de três tiles: um painel só, largo e baixo, com pé central.
+    if (this._vista === 'direita' || this._vista === 'esquerda') {
+      this._perfil(c, x, y, w, h, cor); return;
+    }
+    this.ret(c, x + w / 2 - 15, y + h - 4, 30, 4, 2, this.mix(cor, this.METAL, 0.35));
+    this.ret(c, x + w / 2 - 3, y + h - 8, 6, 5, 1, this.mix(cor, this.METAL, 0.2));
+    this.ret(c, x + 2, y + 1, w - 4, h - 8, 4, this.traco(cor));
+    this.ret(c, x + 3, y + 2, w - 6, h - 10, 3, cor);
+    this._tela(c, x + 5, y + 4, w - 10, h - 14, 'linha');
+  },
+
+  _monitor(c, x, y, w, h, assunto, corDaCaixa) {
+    // `corDaCaixa` deixa o mesmo monitor sair em branco: em cima da mesa gamer
+    // preta, um monitor preto some.
+    const cor = corDaCaixa || this.ESCURO;
+    if (this._vista === 'direita' || this._vista === 'esquerda') {
+      this._perfil(c, x, y, w, h, cor);
       return;
     }
-    const cor = this.ESCURO;
     this.ret(c, x + w / 2 - 6, y + h - 3, 12, 4, 2, this.mix(cor, this.METAL, 0.35));  // base
     this.ret(c, x + w / 2 - 2.5, y + h - 7, 5, 5, 1, this.mix(cor, this.METAL, 0.2)); // pescoço
     this.ret(c, x, y, w, h - 6, 3, this.traco(cor));
