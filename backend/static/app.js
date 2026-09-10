@@ -1195,17 +1195,25 @@ function assentoEm(px, py) {
 
 /* ==================== quem ouve quem ==================== */
 
+function mesmaSala(a, b) {
+  const za = zonaDe(a.x, a.y), zb = zonaDe(b.x, b.y);
+  return !!(za && zb && za.id === zb.id);
+}
+
 function podemConversar(a, b, jaConectados) {
   const za = zonaDe(a.x, a.y), zb = zonaDe(b.x, b.y);
   const privA = !!(za && za.privada), privB = !!(zb && zb.privada);
   if (privA || privB) return privA && privB && za.id === zb.id;
+  // Dentro de uma sala todo mundo se ouve, por mais longe que esteja: numa
+  // reunião ninguém pode ficar mudo só porque sentou na outra ponta da mesa.
+  // O raio só vale em área aberta (corredor, convivência, jardim).
+  if (za && zb && za.id === zb.id) return true;
   const d = Math.hypot(a.x - b.x, a.y - b.y);
   return d <= (jaConectados ? Jogo.config.raio_silencio : Jogo.config.raio_conversa);
 }
 
 function volumeEntre(a, b) {
-  const za = zonaDe(a.x, a.y);
-  if (za && za.privada) return 1;                  // dentro da sala, todos no volume cheio
+  if (mesmaSala(a, b)) return 1;                   // dentro da sala, volume cheio
   const d = Math.hypot(a.x - b.x, a.y - b.y);
   const perto = 70, longe = Jogo.config.raio_silencio;
   return Math.max(0, Math.min(1, (longe - d) / (longe - perto)));
