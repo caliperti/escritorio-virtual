@@ -172,7 +172,10 @@ button.secundario:hover { color: var(--texto); }
 
 /* ---------- palco ---------- */
 .palco { grid-area: palco; position: relative; overflow: hidden; background: #efe7dd; }
-#tela { display: block; width: 100%; height: 100%; }
+/* `touch-action: none`: sem isso o navegador tomava o dedo para si no segundo
+   movimento e mandava um `pointercancel` — arrastar um móvel ou "segurar para
+   andar" no celular morria no meio. A pinça de zoom o app.js faz sozinho. */
+#tela { display: block; width: 100%; height: 100%; touch-action: none; }
 .dica {
   position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
   background: rgba(255,255,255,.94); border: 1px solid var(--borda); border-radius: 999px;
@@ -223,20 +226,33 @@ button.secundario:hover { color: var(--texto); }
 .videos.reuniao .video-tile .rotulo { font-size: 12.5px; padding: 5px 8px; }
 .videos.reuniao .video-tile video { object-fit: cover; }
 
-/* Quem apresenta ou está falando ocupa o palco; o resto vira tira lateral. */
-.videos.reuniao.com-destaque { grid-template-columns: 1fr minmax(170px, 230px); }
-.videos.reuniao.com-destaque .video-tile.destaque { grid-column: 1; grid-row: 1 / span 99; }
-.videos.reuniao.com-destaque .video-tile:not(.destaque) { grid-column: 2; }
+/* Quem apresenta ou está falando ocupa o palco; o resto vira tira lateral.
+   `--fileiras` é quantos cartões a tira tem (o app.js conta): a grade abre
+   exatamente essas linhas e o palco ocupa todas. Era "span 99": 99 linhas de
+   10px davam um palco de 980px numa janela de 820 (a grade rolava e o palco
+   saía por baixo), e cada cartão da tira, com 130px de altura numa linha de
+   10px, subia em cima do seguinte. */
+.videos.reuniao.com-destaque {
+  grid-template-columns: 1fr minmax(170px, 230px);
+  grid-template-rows: repeat(var(--fileiras, 1), minmax(0, 1fr));
+}
+.videos.reuniao.com-destaque .video-tile.destaque { grid-column: 1; grid-row: 1 / -1; }
+.videos.reuniao.com-destaque .video-tile:not(.destaque) {
+  grid-column: 2; min-height: 0; max-height: 170px;
+}
 .videos.reuniao .video-tile.destaque video,
 .videos.reuniao .video-tile.tela video { object-fit: contain; background: #000; }
 .videos.reuniao .video-tile.destaque { border-color: var(--acento); }
 
+/* Pílula escura em cima da grade escura: o texto tem de ser CLARO. Estava com
+   a cor do tema (marrom quase preto) em cima do azul-noite — "sair da grade"
+   era invisível, sobrava um botão em branco no canto. */
 .fechar-reuniao {
   position: fixed; top: 14px; right: 16px; z-index: 41; cursor: pointer;
-  background: rgba(19, 28, 49, .95); border: 1px solid var(--borda); color: var(--texto);
+  background: rgba(19, 28, 49, .95); border: 1px solid rgba(255, 255, 255, .35); color: #f6f4ef;
   border-radius: 999px; padding: 7px 14px; font-size: 12.5px;
 }
-.fechar-reuniao:hover { background: var(--acento-claro); }
+.fechar-reuniao:hover { background: var(--acento-claro); color: var(--texto); border-color: var(--acento); }
 .icone.ativo { background: var(--acento); border-color: var(--acento); color: #fff; }
 
 .zoom {
@@ -296,6 +312,12 @@ button.secundario:hover { color: var(--texto); }
          grid-template-areas: "barra" "palco" "lateral"; }
   .lateral { border-left: 0; border-top: 1px solid var(--borda); }
   .pessoas { max-height: 90px; }
+  /* Painel escondido: a linha dele some junto. A regra geral (`1fr 0`) só
+     tirava a COLUNA — aqui o painel é uma linha de 240px, e esconder deixava
+     uma faixa vazia de 240px no pé da tela, sem mapa e sem painel. */
+  .app.sem-lateral { grid-template-columns: 1fr; grid-template-rows: 52px 1fr;
+                     grid-template-areas: "barra" "palco"; }
+  .zoom { bottom: 66px; }                      /* sobe para não ficar embaixo do botão */
 }
 
 /* ---------- editor do escritório ---------- */
@@ -633,7 +655,9 @@ body.editando #tela { cursor: crosshair; }
 /* Calar e expulsar, na lista de pessoas. Só o admin vê. */
 #lista-pessoas li { position: relative; }
 #lista-pessoas .moderar { display: none; gap: 2px; margin-left: auto; }
-#lista-pessoas li:hover .moderar { display: inline-flex; }
+/* `focus-within`: quem chega nos botões pelo teclado (Tab) precisa VER onde
+   está — só com o hover eles ficavam invisíveis enquanto focados. */
+#lista-pessoas li:hover .moderar, #lista-pessoas li:focus-within .moderar { display: inline-flex; }
 #lista-pessoas .moderar button {
   border: 1px solid var(--borda); background: #fff; color: var(--fraco);
   border-radius: 7px; width: 24px; height: 22px; font-size: 12px; cursor: pointer; padding: 0;
@@ -781,6 +805,17 @@ body.editando #tela { cursor: crosshair; }
   /* o cartão de "esta sala está livre" caía em cima das ferramentas */
   .pedido-sala { left: 8px; right: 8px; transform: none; max-width: none; }
   #na-mao { bottom: calc(46vh + 10px); }
+
+  /* Reunião com palco na tela estreita: a tira vai para BAIXO do palco, um
+     cartão por coluna. Ao lado, num celular em pé, sobravam 190px de palco. */
+  .videos.reuniao.com-destaque {
+    grid-template-columns: repeat(var(--fileiras, 1), minmax(0, 1fr));
+    grid-template-rows: minmax(0, 1fr) 96px;
+  }
+  .videos.reuniao.com-destaque .video-tile.destaque { grid-column: 1 / -1; grid-row: 1; }
+  .videos.reuniao.com-destaque .video-tile:not(.destaque) {
+    grid-column: auto; grid-row: 2; max-height: none;
+  }
 }
 
 /* Tela bem estreita: sobra só o essencial na barra. */
@@ -824,4 +859,23 @@ body.editando #tela { cursor: crosshair; }
 .menu-movel .dono-sala button {
   border: 0; border-radius: 7px; cursor: pointer; font: inherit; font-weight: 600;
   background: var(--acento); color: #fff; padding: 5px 11px;
+}
+
+
+/* Puxador do painel em tela estreita. Fica no FIM do arquivo de propósito: a
+   regra geral de `.puxador` mora lá em cima e tem a mesma força, então quem
+   vier depois é que vale. Escrito antes dela, o puxador continuava com a conta
+   de tela larga (320px da borda direita, meio da altura) e flutuava no meio do
+   mapa apontando para o lado. Aqui ele vira o botão redondo do celular,
+   encostado no painel de baixo, e desce para o canto quando o painel some. */
+@media (max-width: 860px) {
+  .puxador {
+    top: auto; right: 12px; bottom: 252px; transform: none;
+    width: 44px; height: 44px; border-radius: 50%;
+    border: 1px solid var(--borda); box-shadow: 0 6px 16px rgba(120, 80, 40, .2);
+    transition: bottom .22s ease;
+  }
+  .puxador svg { transform: rotate(90deg); }
+  .app.sem-lateral .puxador { right: 12px; bottom: 12px; }
+  .app.sem-lateral .puxador svg { transform: rotate(-90deg); }
 }

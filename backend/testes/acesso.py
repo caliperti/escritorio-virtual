@@ -125,7 +125,10 @@ async def principal():
         erro = await esperar(wv, "erro")
         conferir("visitante NÃO edita o escritório", bool(erro))
 
-        alvo = next(z for z in bem["mapa"]["zonas"] if z["privada"])
+        # tem de ser uma sala LIVRE: o mapa guardado pode ter sala com dono,
+        # e reivindicar sala dos outros é recusado, com razão
+        alvo = next(z for z in bem["mapa"]["zonas"]
+                    if z["privada"] and not z.get("dono_nome"))
         await wv.send(json.dumps({"tipo": "sala", "acao": "reivindicar", "id": alvo["id"]}))
         erro = await esperar(wv, "erro")
         conferir("visitante NÃO reivindica sala", bool(erro))

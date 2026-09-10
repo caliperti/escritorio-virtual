@@ -8,7 +8,7 @@ membro comum só edita dentro da sala que reivindicou — quem cuida dessa regra
 """
 import asyncio, os, sys, time
 from playwright.async_api import async_playwright
-END = "http://127.0.0.1:8400"
+END = os.environ.get("ENDERECO", "http://127.0.0.1:8400")
 erros, falhas, provas = [], [], 0
 
 def conferir(nome, ok):

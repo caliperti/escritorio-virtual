@@ -18,6 +18,7 @@ const Editor = {
   arrasto: null,
   menu: null,          // popup aberto em cima de um móvel
   movendo: null,       // móvel “na mão”, esperando o clique que solta
+  colocar: null,       // peça apontada no clique, colocada quando o botão solta
   conjunto: null,      // conjunto “na mão”: a prévia mostra a pegada inteira
   pincel: null,          // traço em andamento de parede/piso
   retangulo: null,       // retângulo de sala em andamento
@@ -26,9 +27,58 @@ const Editor = {
   enviar: null,
   jogo: null,
 
-  configurar({ enviar, jogo }) {
+  configurar({ enviar, jogo, avisar }) {
     this.enviar = enviar;
     this.jogo = jogo;
+    this.avisar = avisar || null;      // escreve um aviso no chat de quem edita
+  },
+
+  /** O mapa novo chegou (alguém editou, ou reconectamos). Tudo que o editor
+   *  guardava do mapa velho é conferido aqui: móvel na mão, arrastado ou
+   *  selecionado que sumiu é solto; o menu de um alvo apagado fecha; a lista
+   *  de salas e o arsenal acompanham. Antes nada disso acontecia: o menu de um
+   *  móvel apagado continuava aberto, "Mover" nele punha um fantasma na mão, e
+   *  o arrasto de um móvel que outra pessoa apagou estourava o desenho. */
+  aoMudarMapa() {
+    const mapa = this.jogo && this.jogo.mapa;
+    if (!mapa) return;
+    const ids = new Set(mapa.objetos.map((o) => o.id));
+    if (this.arrasto && !ids.has(this.arrasto.id)) this.arrasto = null;
+    if (this.movendo && !ids.has(this.movendo.id)) {
+      this.movendo = null;
+      this.avisoNaMao();
+      if (this.avisar) this.avisar('O móvel que estava na sua mão foi removido por outra pessoa.');
+    }
+    if (this.selecionado) {
+      // a referência era do mapa velho: troca pela do mapa novo (ou solta)
+      this.selecionado = mapa.objetos.find((o) => o.id === this.selecionado.id) || null;
+    }
+    this.ancorarMenu();
+    const chaves = Object.keys(mapa.catalogo).join('\n');
+    if (chaves !== this._chavesCatalogo) {
+      this._chavesCatalogo = chaves;
+      this._catalogoMudou();
+    }
+    if (this.ativo && this.ferramenta === 'sala') this._renderizarSalas();
+  },
+
+  /** Peça criada ou apagada no estúdio. O arsenal aberto mostrava a lista
+   *  velha: a peça apagada continuava clicável e colocar ela no mapa voltava
+   *  "Edição recusada"; a peça nova só aparecia depois de uma busca. */
+  _catalogoMudou() {
+    const cat = this.jogo.mapa.catalogo;
+    this._indiceCache = null;
+    this._conjuntosCache = null;
+    if (!cat[this.tipoSel]) this.tipoSel = Object.keys(cat)[0] || this.tipoSel;
+    if (this.conjunto && this.conjunto.pecas.some((p) => !cat[p.tipo])) this.cancelarMao();
+    const est = this.arsenal;
+    if (est.categoria.startsWith('g:') && !Object.values(cat).some((i) => 'g:' + i.grupo === est.categoria)) {
+      est.categoria = 'todos';
+    }
+    if (document.getElementById('arsenal-corpo')) {
+      this._renderizarCategorias();
+      this._renderizarGrade();
+    }
   },
 
 
@@ -89,9 +139,11 @@ const Editor = {
     this.ativo = !this.ativo;
     this.selecionado = null;
     this.movendo = null;
+    this.colocar = null;
     this.conjunto = null;
     this.fecharMenu();
-    document.getElementById('btn-editor').classList.toggle('ligado', this.ativo);
+    const botao = document.getElementById('btn-editor');   // visitante não tem o botão
+    if (botao) botao.classList.toggle('ligado', this.ativo);
     document.body.classList.toggle('editando', this.ativo);
     if (this.ativo) this.montarPainel();
     else {
@@ -166,6 +218,7 @@ const Editor = {
     // Quem liga o redesenhar marca DEPOIS de chamar esta função.
     this.redesenhando = null;
     this.movendo = null;
+    this.colocar = null;
     this.conjunto = null;
     this.fecharMenu();
     this._pararObservador();
@@ -220,6 +273,20 @@ const Editor = {
   },
 
   listarSalas(alvo) {
+    alvo.appendChild(this._montarListaSalas());
+  },
+
+  /** A lista de salas segue o mapa: quando ele muda, só ELA é refeita. Antes
+   *  a ferramenta inteira era remontada a cada mapa novo, e isso apagava o
+   *  formulário que a pessoa estava preenchendo (com o nome já digitado) e
+   *  desligava o "redesenhar área" sem aviso — bastava outra pessoa mover uma
+   *  cadeira em qualquer canto do escritório. */
+  _renderizarSalas() {
+    const velha = document.querySelector('#editor-conteudo .salas');
+    if (velha) velha.replaceWith(this._montarListaSalas());
+  },
+
+  _montarListaSalas() {
     const lista = document.createElement('div');
     lista.className = 'salas';
     for (const z of this.jogo.mapa.zonas) {
@@ -245,7 +312,7 @@ const Editor = {
       remover.onclick = () => this.acao({ acao: 'zona_remover', id: z.id });
       lista.appendChild(li);
     }
-    alvo.appendChild(lista);
+    return lista;
   },
 
   formularioSala(ret, existente) {
@@ -286,10 +353,16 @@ const Editor = {
     const fechar = () => { caixa.remove(); this.retangulo = null; };
     caixa.querySelector('#sala-cancelar').onclick = fechar;
     caixa.querySelector('#sala-ok').onclick = () => {
+      // A sala pode ter mudado de área enquanto o formulário estava aberto
+      // (outra pessoa redesenhou): manda as medidas de AGORA, não as de quando
+      // o formulário abriu — senão salvar o nome desfazia a área da outra.
+      const atual = existente ? this.jogo.mapa.zonas.find((z) => z.id === existente.id) : null;
+      if (existente && !atual) { fechar(); return; }     // a sala foi removida nesse meio-tempo
+      const area = atual || ret;
       const comum = {
         nome: document.getElementById('sala-nome').value.trim() || 'Sala',
         privada: document.getElementById('sala-privada').checked, cor: corSel,
-        x1: ret.x1, y1: ret.y1, x2: ret.x2, y2: ret.y2,
+        x1: area.x1, y1: area.y1, x2: area.x2, y2: area.y2,
       };
       const paredes = document.getElementById('sala-paredes');
       if (!existente && paredes && paredes.checked) {
@@ -392,9 +465,10 @@ const Editor = {
                          x: alvo.x, y: alvo.y, ox: alvo.x, oy: alvo.y };
       } else {
         this.fecharMenu();
-        this.acao({ acao: 'objeto', tipo: this.tipoSel, x: t.x, y: t.y, g: this.giro });
-        this._registrarRecente(this.tipoSel);     // colocar também conta como “usado”
-        this._atualizarContagens();
+        // Coloca só ao SOLTAR (ver aoSoltar). No celular a pinça de zoom começa
+        // com um dedo e o segundo chega milissegundos depois: colocar já no
+        // toque plantava um móvel embaixo do primeiro dedo a cada pinça.
+        this.colocar = { tipo: this.tipoSel, g: this.giro };
       }
     } else if (this.ferramenta === 'apagar' || (this.ferramenta === 'mobilia' && apagando)) {
       const alvo = this.objetoEm(t.x, t.y);
@@ -438,6 +512,16 @@ const Editor = {
   },
 
   aoSoltar() {
+    if (this.colocar) {
+      const c = this.colocar;
+      this.colocar = null;
+      if (this.cursor) {                         // onde o botão soltou, que é onde a prévia estava
+        this.acao({ acao: 'objeto', tipo: c.tipo, x: this.cursor.x, y: this.cursor.y, g: c.g });
+        this._registrarRecente(c.tipo);          // colocar também conta como “usado”
+        this._atualizarContagens();
+      }
+      return;
+    }
     if (this.arrasto) {
       const a = this.arrasto;
       this.arrasto = null;
@@ -579,6 +663,31 @@ const Editor = {
     caixa.style.top = Math.round(Math.max(M, Math.min(y, maxY))) + 'px';
   },
 
+  /** Amarra o cartão a um ponto do mapa. `calcular` devolve onde o cartão
+   *  deve ficar (em px do palco) ou null quando o alvo deixou de existir. */
+  _ancorar(caixa, calcular) {
+    caixa._ancora = calcular;
+    caixa._assinatura = '';
+    this.ancorarMenu();
+  },
+
+  /** Chamado a cada quadro pelo app.js. O menu é HTML por cima do canvas; a
+   *  câmera anda (zoom, teclado, janela redimensionada, outra pessoa moveu o
+   *  móvel) e antes o cartão ficava parado no pixel em que nasceu, apontando
+   *  para o nada. Se o alvo sumiu do mapa, o cartão fecha. */
+  ancorarMenu() {
+    const m = this.menu;
+    if (!m || !m._ancora || !this.jogo || !this.jogo.mapa) return;
+    const pos = m._ancora();
+    if (!pos) { this.fecharMenu(); return; }
+    const tela = document.getElementById('tela');
+    // só mexe no DOM quando algo mudou: câmera, zoom, tamanho do palco, o alvo
+    const assinatura = [Math.round(pos.x), Math.round(pos.y), tela.width, tela.height].join(',');
+    if (assinatura === m._assinatura) return;
+    m._assinatura = assinatura;
+    this._encaixarNoPalco(m, pos.x, pos.y);
+  },
+
   /** Onde, na tela, está o canto do tile (tx, ty). */
   _naTela(tx, ty) {
     const r = document.getElementById('tela').getBoundingClientRect();
@@ -628,7 +737,14 @@ const Editor = {
       <div class="troca oculto"></div>`;
     document.querySelector('.palco').appendChild(caixa);
     this.menu = caixa;
-    this._encaixarNoPalco(caixa, pos.x - 96, pos.y - 12);
+    this._ancorar(caixa, () => {
+      const atual = this.jogo.mapa.objetos.find((x) => x.id === id);
+      const infoAtual = atual && this.jogo.mapa.catalogo[atual.tipo];
+      if (!infoAtual) return null;                       // apagado: o menu fecha
+      const ma = Objetos.medida(atual.tipo, infoAtual, atual.g);
+      const p = this._naTela(atual.x + ma.l / 2, atual.y);
+      return { x: p.x - 96, y: p.y - 12 };
+    });
 
     const pegarSala = caixa.querySelector('[data-fazer="pegar-sala"]');
     if (pegarSala) pegarSala.onclick = () => {
@@ -728,7 +844,12 @@ const Editor = {
         use 🧱 no editor (Shift preenche um retângulo).</p>`;
     document.querySelector('.palco').appendChild(caixa);
     this.menu = caixa;
-    this._encaixarNoPalco(caixa, pos.x - 110, pos.y + 26);
+    this._ancorar(caixa, () => {
+      const atual = this.jogo.mapa.zonas.find((x) => x.id === id);
+      if (!atual) return null;                           // sala removida: o menu fecha
+      const p = this._naTela((atual.x1 + atual.x2 + 1) / 2, atual.y1);
+      return { x: p.x - 110, y: p.y + 26 };
+    });
 
     caixa.querySelectorAll('[data-cor]').forEach((b) => {
       b.onclick = () => {
@@ -738,7 +859,11 @@ const Editor = {
     });
     const nome = caixa.querySelector('#sala-menu-nome');
     const salvar = () => {
-      this.acao({ acao: 'zona', ...z, nome: nome.value.trim() || z.nome, cor: corSel,
+      // A sala de AGORA, não a de quando o menu abriu. A ação `zona` reescreve
+      // a zona inteira: com a cópia velha, salvar o nome desfazia a área que
+      // outra pessoa tinha acabado de redesenhar.
+      const atual = this.jogo.mapa.zonas.find((x) => x.id === z.id) || z;
+      this.acao({ acao: 'zona', ...atual, nome: nome.value.trim() || atual.nome, cor: corSel,
                   privada: caixa.querySelector('#sala-menu-privada').checked });
       this.fecharMenu();
     };
@@ -821,8 +946,13 @@ const Editor = {
     }
 
     // móvel sendo arrastado
-    if (this.arrasto) {
-      const alvo = mapa.objetos.find((o) => o.id === this.arrasto.id);
+    // Outra pessoa pode apagar o móvel no meio do arrasto: `aoMudarMapa` solta
+    // o arrasto quando o mapa chega, e esta conferência é a rede de segurança
+    // — um `alvo` nulo aqui estourava o quadro inteiro.
+    const arrastado = this.arrasto && mapa.objetos.find((o) => o.id === this.arrasto.id);
+    if (this.arrasto && !arrastado) this.arrasto = null;
+    if (arrastado) {
+      const alvo = arrastado;
       const m = Objetos.medida(alvo.tipo, mapa.catalogo[alvo.tipo], alvo.g);
       ctx.globalAlpha = 0.65;
       Objetos.desenhar(ctx, alvo.tipo, this.arrasto.x * t, this.arrasto.y * t,

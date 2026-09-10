@@ -13,7 +13,7 @@ import sys
 
 from playwright.async_api import async_playwright
 
-END = os.environ.get("END", "http://127.0.0.1:8400")
+END = os.environ.get("ENDERECO", os.environ.get("END", "http://127.0.0.1:8400"))
 ADMIN = os.environ.get("ADMIN_EMAIL", "gulisboa5@hotmail.com")
 SENHA = os.environ.get("ADMIN_SENHA", "")
 

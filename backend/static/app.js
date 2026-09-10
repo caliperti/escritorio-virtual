@@ -645,8 +645,10 @@ function receber(msg) {
 
     case 'mapa':
       receberMapa(msg.mapa);
-      // a lista de salas do editor mostra o estado do mapa: precisa acompanhar
-      if (Editor.ativo && Editor.ferramenta === 'sala') Editor.usarFerramenta('sala');
+      // O editor guarda referências ao mapa velho (móvel arrastado, na mão,
+      // selecionado, o menu aberto, a lista de salas, o arsenal): ele confere
+      // o que ainda existe e solta o que sumiu.
+      Editor.aoMudarMapa();
       if (msg.por && Jogo.eu && msg.por !== Jogo.eu.nome) {
         escreverChat({ sistema: true, texto: `${msg.por} mexeu no escritório.` });
       }
@@ -743,7 +745,11 @@ function iniciarSala(msg) {
   Jogo.pessoas.clear();                        // a lista antiga é de outra sessão
   msg.participantes.forEach((p) => Jogo.pessoas.set(p.id, prepararPessoa(p)));
 
-  Editor.configurar({ enviar, jogo: Jogo });
+  Editor.configurar({ enviar, jogo: Jogo,
+                      avisar: (texto) => escreverChat({ sistema: true, texto }) });
+  // Reconectou com o editor aberto: o mapa é outro objeto, e o que estava na
+  // mão ou selecionado pode nem existir mais.
+  Editor.aoMudarMapa();
   Midia.configurar({
     meuId: Jogo.eu.id,
     enviarSinal: (para, dados) => enviar({ tipo: 'sinal', para, dados }),
@@ -818,15 +824,46 @@ const MAPA_TECLAS = {
   arrowleft: 'esquerda', a: 'esquerda', arrowright: 'direita', d: 'direita',
 };
 
+/** Estamos dentro do escritório? A tela de entrada e a de "sessão recusada"
+ *  não têm boneco para mover nem chat para abrir. */
+function naSala() {
+  return !!Jogo.eu && !document.getElementById('app').classList.contains('oculto');
+}
+
 document.addEventListener('keydown', (e) => {
+  // Na tela de entrada os atalhos não valem. Antes eles rodavam mesmo ali:
+  // apertar E com o foco numa aba deixava `Editor.ativo` ligado sem painel
+  // nenhum (e, já dentro da sala, cada clique no mapa colocava uma mesa), R e
+  // B estouravam com `Jogo.eu` nulo, e o Enter num botão focado era engolido
+  // pelo `preventDefault` do chat — quem entrava pelo teclado não conseguia
+  // apertar "Entrar".
+  if (!naSala()) return;
+  // ⌘C, Ctrl+V, ⌘+: são do navegador. Sem esta linha copiar um trecho do
+  // chat abria a grade da reunião (C), colar ligava a câmera (V) e o zoom do
+  // navegador virava zoom do mapa.
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+
   const campo = document.activeElement;
   // offsetParent nulo = o campo está escondido. Sem isso, quem entrava dando
   // Enter no nome ficava com o foco preso no campo da tela de entrada (já
   // oculta) e o teclado não movia o boneco.
   const digitando = campo && ['INPUT', 'TEXTAREA', 'SELECT'].includes(campo.tagName)
     && campo.offsetParent !== null;
+  // Foco num botão (quem navega pelo teclado chegou nele com Tab): Enter e Tab
+  // fazem o que fazem em qualquer página — apertar o botão e ir para o
+  // próximo. Os atalhos de Enter (chat) e Tab (painel) só valem com o foco
+  // solto, senão o teclado nunca alcançava botão nenhum da barra.
+  const numControle = !!campo && campo !== document.body && !digitando;
 
-  if (e.key === 'Enter' && !digitando) { document.getElementById('campo-chat').focus(); e.preventDefault(); return; }
+  if (e.key === 'Enter' && !digitando) {
+    if (numControle) return;
+    // Com o painel escondido o campo do chat está em display:none e não recebe
+    // foco: o Enter ficava mudo. Abre o painel antes.
+    if (document.getElementById('app').classList.contains('sem-lateral')) alternarLateral(true);
+    document.getElementById('campo-chat').focus();
+    e.preventDefault();
+    return;
+  }
   if (e.key === 'Escape' && digitando) { campo.blur(); return; }
   if (e.key === 'Escape') {
     if (Reuniao.ativa) { fecharReuniao(); return; }
@@ -839,18 +876,24 @@ document.addEventListener('keydown', (e) => {
 
   const dir = MAPA_TECLAS[e.key.toLowerCase()];
   if (dir) { Jogo.teclas.add(dir); e.preventDefault(); return; }
+  if (e.key === '+' || e.key === '=') { ajustarZoom(1.15); e.preventDefault(); return; }
+  if (e.key === '-' || e.key === '_') { ajustarZoom(1 / 1.15); e.preventDefault(); return; }
+  if (e.key === 'Tab') {
+    if (!numControle && !e.shiftKey) { alternarLateral(); e.preventDefault(); }
+    return;
+  }
+  // Tecla segurada repete o keydown: o microfone piscava ligado/desligado e a
+  // reação saía em rajada. Só andar e zoom podem repetir.
+  if (e.repeat) return;
   if (e.key.toLowerCase() === 'm') alternarMic();
   if (e.key.toLowerCase() === 'v') alternarCam();
   if (e.key.toLowerCase() === 't') alternarTela();
   if (e.key.toLowerCase() === 'b') abrirEditor();
   if (e.key.toLowerCase() === 'e' && !Jogo.visitante) Editor.alternar();
-  if (e.key === '+' || e.key === '=') { ajustarZoom(1.15); e.preventDefault(); }
-  if (e.key === '-' || e.key === '_') { ajustarZoom(1 / 1.15); e.preventDefault(); }
   if (e.key === '0') definirZoom(1.5);
   if ((e.key === 'Delete' || e.key === 'Backspace') && Editor.ativo) Editor.removerSelecionado();
   // G gira o móvel: o que está na mão, o selecionado, ou o próximo a ser posto
   if (e.key.toLowerCase() === 'g' && (Editor.ativo || Editor.movendo)) Editor.girar();
-  if (e.key === 'Tab') { alternarLateral(); e.preventDefault(); }
   if (e.key.toLowerCase() === 'r') reagir();
   // P liga e desliga a profundidade na hora, para dar para comparar sem recarregar
   if (e.key.toLowerCase() === 'p') {
@@ -869,11 +912,50 @@ document.addEventListener('keyup', (e) => {
 
 window.addEventListener('blur', () => Jogo.teclas.clear());
 
+/* Dois dedos no mapa: pinça aproxima e afasta, como em qualquer mapa de
+   celular. O canvas tem `touch-action: none` (sem isso o navegador cancelava o
+   toque no meio do arrasto), então a pinça do sistema não existe mais ali e é
+   o jogo que a faz. Registrado ANTES do clique do jogo: o segundo dedo precisa
+   estar na conta quando o handler de baixo decidir se é passo ou pinça. */
+const dedos = new Map();       // pointerId -> { x, y }, só toques
+let pinca = null;              // { dist, escala } de quando a pinça começou
+
+tela.addEventListener('pointerdown', (e) => {
+  if (e.pointerType !== 'touch') return;
+  dedos.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (dedos.size !== 2) return;
+  const [a, b] = [...dedos.values()];
+  pinca = { dist: Math.hypot(a.x - b.x, a.y - b.y), escala: ESCALA };
+  // o segundo dedo cancela o que o primeiro estava fazendo: passo, arrasto de
+  // móvel, pincel — senão a pinça largava o móvel num canto qualquer
+  Jogo.clique = null;
+  delete tela.dataset.alvo;
+  Editor.arrasto = null;
+  Editor.colocar = null;
+  Editor.pincel = null;
+  if (Editor.retangulo && Editor.retangulo.arrastando) Editor.retangulo = null;
+});
+tela.addEventListener('pointermove', (e) => {
+  if (!dedos.has(e.pointerId)) return;
+  dedos.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (!pinca || dedos.size !== 2) return;
+  const [a, b] = [...dedos.values()];
+  const d = Math.hypot(a.x - b.x, a.y - b.y);
+  if (pinca.dist > 0) definirZoom(pinca.escala * d / pinca.dist);
+});
+const soltarDedo = (e) => {
+  dedos.delete(e.pointerId);
+  if (dedos.size < 2) pinca = null;
+};
+tela.addEventListener('pointerup', soltarDedo);
+tela.addEventListener('pointercancel', soltarDedo);
+
 /* Clique no chão: um clique manda caminhar até lá (contornando os móveis);
    segurar o botão anda na direção do cursor. Com o editor aberto, o mesmo
    clique vira pincel/arrasto de móvel. */
 tela.addEventListener('pointerdown', (e) => {
   tela.setPointerCapture(e.pointerId);
+  if (e.pointerType === 'touch' && dedos.size > 1) return;   // segundo dedo: é pinça, não clique
   if (Editor.ativo) { Editor.aoApontar(e, pontoNoMapa(e)); return; }
   if (Editor.movendo) {                       // móvel “na mão”, editor fechado
     const t = Editor._tile(pontoNoMapa(e));
@@ -888,6 +970,7 @@ tela.addEventListener('pointerdown', (e) => {
   tela.dataset.alvo = JSON.stringify(Jogo.clique.ponto);
 });
 tela.addEventListener('pointermove', (e) => {
+  if (pinca) return;                                          // os dois dedos são da pinça
   if (Editor.ativo) { Editor.aoMover(pontoNoMapa(e)); return; }
   if (Editor.movendo) Editor.cursor = Editor._tile(pontoNoMapa(e));
   if (tela.dataset.alvo) tela.dataset.alvo = JSON.stringify(pontoNoMapa(e));
@@ -965,7 +1048,11 @@ function caminhoPertoDe(ponto) {
   }
   return null;
 }
-tela.addEventListener('pointercancel', () => { Editor.aoSoltar(); delete tela.dataset.alvo; });
+tela.addEventListener('pointercancel', () => {
+  Editor.colocar = null;            // toque cancelado pelo sistema não coloca nada
+  Editor.aoSoltar();
+  delete tela.dataset.alvo;
+});
 tela.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // roda do mouse / pinça do trackpad aproximam e afastam
@@ -1035,10 +1122,25 @@ function tracarCaminho(x0, y0, x1, y1) {
 
 /* ==================== laço principal ==================== */
 
+// Um quadro que estoura não pode parar o escritório. Antes, um erro dentro de
+// `desenhar` (o móvel que eu arrastava sumiu porque outra pessoa o apagou)
+// pulava o `requestAnimationFrame` e a tela congelava para sempre: boneco
+// parado, chat funcionando, só o F5 resolvia. O erro continua aparecendo no
+// console (relançado fora do laço), mas o próximo quadro sempre é pedido.
+let ultimoErroDeQuadro = 0;
+
 function quadro() {
-  atualizar();
-  desenhar();
-  requestAnimationFrame(quadro);
+  try {
+    atualizar();
+    desenhar();
+  } catch (e) {
+    if (Date.now() - ultimoErroDeQuadro > 2000) {       // um por vez, não 60 por segundo
+      ultimoErroDeQuadro = Date.now();
+      setTimeout(() => { throw e; }, 0);
+    }
+  } finally {
+    requestAnimationFrame(quadro);
+  }
 }
 
 function atualizar() {
@@ -1245,8 +1347,14 @@ function cuidarDasChamadas() {
   for (const p of Jogo.pessoas.values()) {
     const conectado = Midia.pares.has(p.id);
     const deve = podemConversar(eu, p, conectado);
-    if (deve && !conectado) Midia.garantirPar(p.id);
-    else if (!deve && conectado) Midia.fechar(p.id);
+    if (deve && !conectado) {
+      Midia.garantirPar(p.id);
+      // O cartão de vídeo nascia só quando chegava uma faixa de mídia. Quem
+      // chegava sem microfone e sem câmera não ganhava cartão no outro lado
+      // — e sem cartão não entrava na grade da reunião. O cartão é de quem
+      // está NA CONVERSA, com ou sem mídia.
+      montarTiles();
+    } else if (!deve && conectado) Midia.fechar(p.id);
     else if (deve) Midia.ajustarVolume(p.id, volumeEntre(eu, p));
   }
   desenharListaPessoas();
@@ -1478,6 +1586,10 @@ function desenhar() {
     if (Editor.ativo) Editor.desenhar(ctx, x0, y0, x1, y1);
     else if (Editor.movendo && Editor.cursor) Editor.desenharNaMao(ctx);
     Editor.avisoNaMao();   // vale com o editor aberto ou fechado
+    // O menu do móvel/da sala é HTML por cima do canvas: quando a câmera anda
+    // (zoom, teclado, janela) o mapa se move embaixo dele e ele ficava parado
+    // apontando para o nada. Aqui ele acompanha o alvo a cada quadro.
+    Editor.ancorarMenu();
   }
 }
 
@@ -1780,6 +1892,15 @@ if (NO_CELULAR) {
   if (d) d.innerHTML = 'Toque no chão para andar · toque numa pessoa para conversar';
 }
 
+// Clique de MOUSE num botão da barra devolve o teclado ao jogo. Sem isto o foco
+// ficava no botão: o Enter seguinte apertava o botão de novo em vez de abrir o
+// chat, e o Tab andava pela barra em vez de rebater o painel. A ativação pelo
+// teclado (`detail` = 0) mantém o foco, que é o que quem navega por Tab espera.
+document.getElementById('app').addEventListener('click', (e) => {
+  const botao = e.target.closest('.barra button, .zoom button, .puxador');
+  if (botao && e.detail > 0) botao.blur();
+});
+
 document.getElementById('btn-reacao').onclick = reagir;
 document.getElementById('btn-reuniao').onclick = () => alternarReuniao();
 document.getElementById('btn-fechar-reuniao').onclick = fecharReuniao;
@@ -1796,6 +1917,13 @@ document.getElementById('btn-sair').onclick = () => {
 let editorSala = null;
 
 function abrirEditor() {
+  // B com o modal já aberto fecha, como o E faz com o editor do escritório.
+  // Antes B "reabria": a aparência voltava à salva e a escolha em andamento
+  // (cabelo, roupa) se perdia sem aviso.
+  if (!document.getElementById('modal-boneco').classList.contains('oculto')) {
+    fecharEditor();
+    return;
+  }
   if (!editorSala) {
     editorSala = criarEditor(document.getElementById('previa-editar'),
                              document.getElementById('opcoes-editar'), Jogo.eu.aparencia);
@@ -1973,6 +2101,11 @@ function atualizarDestaque() {
   Reuniao.destaque = alvo;
   for (const t of tiles) t.classList.toggle('destaque', t.dataset.id === alvo);
   caixa.classList.toggle('com-destaque', !!alvo && tiles.length > 1);
+  // Quantas fileiras a tira lateral tem: o CSS abre uma linha da grade para
+  // cada cartão e o palco ocupa todas. Era um "span 99" fixo — 99 linhas
+  // davam um palco de 980px numa janela de 820, e os cartões da tira, com
+  // 10px de linha cada, se empilhavam uns por cima dos outros.
+  caixa.style.setProperty('--fileiras', Math.max(1, tiles.length - 1));
 }
 
 function encolherTiles() {
@@ -1989,19 +2122,42 @@ setInterval(() => {
 
 /* ==================== pessoas e chat ==================== */
 
+// A lista é pedida quatro vezes por segundo (o vigia das chamadas). Refazer o
+// HTML toda vez engolia o clique lento nos botões de calar e expulsar (o botão
+// apertado já não era o botão solto) e derrubava o foco de quem navega pelo
+// teclado. Só é refeita quando o que ela mostra mudou.
+let assinaturaDaLista = '';
+
 function desenharListaPessoas() {
   if (!Jogo.eu) return;
   const ul = document.getElementById('lista-pessoas');
   const lista = [Jogo.eu, ...Jogo.pessoas.values()];
-  ul.innerHTML = '';
-  for (const p of lista) {
+  const linhas = lista.map((p) => {
     const souEu = p.id === Jogo.eu.id;
     const perto = !souEu && Midia.pares.has(p.id);
     const zona = zonaDe(p.x, p.y);
+    const tela = !!(souEu ? Midia.telaStream : p.tela);
+    return { p, souEu, perto, zona, tela,
+             marca: [p.id, p.nome, p.silenciado ? 1 : 0, perto ? 1 : 0, zona ? zona.nome : '',
+                     tela ? 1 : 0, p.cor, JSON.stringify(p.aparencia || null)].join('\x1f') };
+  });
+  const assinatura = (Jogo.admin ? 'admin|' : '') + linhas.map((l) => l.marca).join('\x1e');
+  if (assinatura === assinaturaDaLista) return;
+  assinaturaDaLista = assinatura;
+
+  // quem estava com um botão focado continua com ele depois da troca
+  const focado = document.activeElement && ul.contains(document.activeElement)
+    ? { id: document.activeElement.closest('li').dataset.id,
+        indice: [...document.activeElement.closest('li').querySelectorAll('button')].indexOf(document.activeElement) }
+    : null;
+
+  ul.innerHTML = '';
+  for (const { p, souEu, perto, zona, tela: mostraTela } of linhas) {
     const li = document.createElement('li');
+    li.dataset.id = p.id;
     li.innerHTML = `<img class="bolinha" src="${Boneco.retrato(p.aparencia)}" alt="">
       <span>${escapar(p.nome)}${souEu ? ' (você)' : ''}${p.silenciado ? ' <b class="calado">calado</b>' : ''}</span>
-      <span class="onde ${perto ? 'perto' : ''}">${(souEu ? Midia.telaStream : p.tela) ? '🖥️ ' : ''}${perto ? '🔊 perto' : (zona ? escapar(zona.nome) : 'corredor')}</span>`;
+      <span class="onde ${perto ? 'perto' : ''}">${mostraTela ? '🖥️ ' : ''}${perto ? '🔊 perto' : (zona ? escapar(zona.nome) : 'corredor')}</span>`;
     if (Jogo.admin && !souEu) {
       // as duas ferramentas de dono de sala: calar e tirar de dentro
       const acoes = document.createElement('span');
@@ -2022,6 +2178,11 @@ function desenharListaPessoas() {
     }
     ul.appendChild(li);
   }
+  if (focado) {
+    const li = ul.querySelector(`li[data-id="${CSS.escape(focado.id)}"]`);
+    const botao = li && li.querySelectorAll('button')[focado.indice];
+    if (botao) botao.focus();
+  }
   document.getElementById('pessoas-total').textContent = lista.length;
   document.getElementById('contagem').textContent =
     lista.length === 1 ? '1 na sala' : `${lista.length} na sala`;
@@ -2034,6 +2195,10 @@ function escapar(s) {
 
 function escreverChat(msg) {
   const caixa = document.getElementById('mensagens');
+  // Quem rolou para cima para reler uma mensagem era puxado de volta para o
+  // fim a cada mensagem nova. A rolagem só acompanha quem já estava no fim
+  // (ou quem acabou de mandar a própria mensagem).
+  const noFim = caixa.scrollHeight - caixa.scrollTop - caixa.clientHeight < 40;
   const div = document.createElement('div');
   if (msg.sistema) {
     div.className = 'msg sistema';
@@ -2045,8 +2210,8 @@ function escreverChat(msg) {
       <span class="marca">${marca}${msg.proprio && msg.escopo === 'perto' ? ' · ' + msg.ouviram + ' ouviram' : ''}</span><br>${escapar(msg.texto)}`;
   }
   caixa.appendChild(div);
-  caixa.scrollTop = caixa.scrollHeight;
   while (caixa.children.length > 200) caixa.removeChild(caixa.firstChild);
+  if (noFim || msg.proprio) caixa.scrollTop = caixa.scrollHeight;
 }
 
 document.getElementById('form-chat').addEventListener('submit', (e) => {

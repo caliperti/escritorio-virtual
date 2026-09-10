@@ -2,6 +2,7 @@
 móvel, o menu nunca sai da tela e dá para largar a peça que está na mão."""
 import asyncio, os, sys, time
 from playwright.async_api import async_playwright
+END = os.environ.get("ENDERECO", "http://127.0.0.1:8400")
 ADMIN = os.environ.get("ADMIN_EMAIL", "gulisboa5@hotmail.com")
 SENHA = os.environ.get("ADMIN_SENHA", "")
 provas=[]; falhas=[]
@@ -12,7 +13,7 @@ async def m():
     async with async_playwright() as p:
         nav=await p.chromium.launch(); ctx=await nav.new_context(viewport={"width":1280,"height":800})
         pg=await ctx.new_page(); erros=[]; pg.on("pageerror", lambda e: erros.append(str(e)[:180]))
-        await pg.goto("http://127.0.0.1:8400"); await asyncio.sleep(1.5)
+        await pg.goto(END); await asyncio.sleep(1.5)
         await pg.fill("#campo-email", ADMIN); await pg.fill("#campo-senha", SENHA)
         await pg.evaluate("() => entrar(false)")
         await pg.wait_for_function("() => typeof Jogo!=='undefined' && !!Jogo.eu", timeout=40000)
