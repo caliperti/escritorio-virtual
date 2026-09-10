@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Arsenal — mostruário</title>
+<link rel="icon" href="/static/assets/favicon.png">
+<style>
+  body { margin: 0; background: #fbf6f1; color: #2c2521;
+         font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 22px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .aviso { color: #8b7b6d; margin: 0 0 18px; }
+  h2 { font-size: 15px; margin: 26px 0 10px; color: #f4691f;
+       border-bottom: 1px solid #f0dfcd; padding-bottom: 6px; }
+  .grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; }
+  .peca { background: #fff; border: 1px solid #f0dfcd; border-radius: 12px; padding: 8px;
+          text-align: center; }
+  .peca canvas { display: block; margin: 0 auto 6px; image-rendering: auto; }
+  .peca b { display: block; font-size: 12px; font-weight: 600; }
+  .peca span { display: block; font-size: 11px; color: #8b7b6d; }
+  .peca.falta { border-color: #e0473c; background: #fff5f4; }
+  .peca.falta span { color: #e0473c; }
+</style>
+</head>
+<body>
+<h1>Arsenal — todas as peças</h1>
+<p class="aviso" id="resumo">carregando…</p>
+<p style="margin:0 0 18px"><a href="/static/mostruario-roupas.html" style="color:#f4691f;font-weight:600;text-decoration:none">→ ver o mostruário das roupas</a></p>
+<div id="tudo"></div>
+
+<script src="/static/objetos.js"></script>
+<script>
+/* Desenha o catálogo inteiro numa página só.
+ *
+ * Serve para duas coisas: o dono ver o que existe sem abrir o editor, e quem
+ * mexe no desenho conferir o resultado sem precisar caçar a peça dentro do
+ * escritório. Peça sem função de desenho aparece marcada em vermelho. */
+const T = 32;
+
+fetch('/catalogo').then((r) => r.json()).then((dados) => {
+  const cat = dados.catalogo;
+  const grupos = {};
+  for (const [tipo, info] of Object.entries(cat)) {
+    (grupos[info.grupo] = grupos[info.grupo] || []).push([tipo, info]);
+  }
+  let semDesenho = 0;
+  const tudo = document.getElementById('tudo');
+  for (const grupo of Object.keys(grupos).sort()) {
+    const h = document.createElement('h2');
+    h.textContent = grupo + ' · ' + grupos[grupo].length;
+    tudo.appendChild(h);
+    const grade = document.createElement('div');
+    grade.className = 'grade';
+    for (const [tipo, info] of grupos[grupo].sort((a, b) => a[0].localeCompare(b[0]))) {
+      const tem = !!Objetos.DESENHOS[tipo];
+      if (!tem) semDesenho++;
+      const cel = document.createElement('div');
+      cel.className = 'peca' + (tem ? '' : ' falta');
+      const c = document.createElement('canvas');
+      const l = Math.min(info.l, 6), a = Math.min(info.a, 4);
+      c.width = l * T; c.height = a * T;
+      const cx = c.getContext('2d');
+      cx.fillStyle = '#efe7dd';
+      cx.fillRect(0, 0, c.width, c.height);
+      Objetos.desenhar(cx, tipo, 0, 0, l * T, a * T, 0);
+      cel.appendChild(c);
+      const b = document.createElement('b'); b.textContent = info.nome; cel.appendChild(b);
+      const s = document.createElement('span');
+      s.textContent = tem ? `${info.l}×${info.a}` : 'sem desenho';
+      cel.appendChild(s);
+      grade.appendChild(cel);
+    }
+    tudo.appendChild(grade);
+  }
+  document.getElementById('resumo').textContent =
+    `${Object.keys(cat).length} peças em ${Object.keys(grupos).length} categorias` +
+    (semDesenho ? ` · ${semDesenho} ainda sem desenho próprio` : ' · todas desenhadas');
+});
+</script>
+</body>
+</html>

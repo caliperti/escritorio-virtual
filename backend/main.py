@@ -2,7 +2,9 @@ import logging
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from typing import Optional
+
+from fastapi import FastAPI, File, Form, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -10,6 +12,8 @@ import contas as mod_contas
 import mapa
 import nuvem
 from contas import contas
+import estudio as mod_estudio
+from estudio import estudio
 from mapa import escritorio
 from sala import RAIO_CONVERSA, RAIO_SILENCIO, CORES, cor_valida, limpar_aparencia, sala
 
@@ -26,10 +30,30 @@ SENHA = os.environ.get("SENHA", "").strip()
 # gratuito é apagado quando o serviço hiberna), depois carrega do arquivo.
 nuvem.restaurar([mod_contas.ARQUIVO, mapa.ARQUIVO])
 contas.carregar()
+estudio.carregar()
+# As peças que o admin criou entram POR CIMA do catálogo de fábrica. Se algo
+# aqui estiver torto, o escritório continua de pé — só falta a peça nova.
+mapa.CATALOGO.update({k: {**v} for k, v in estudio.pecas.items()})
 escritorio.carregar()
 
+class EstaticoSemCache(StaticFiles):
+    """Arquivo estático que o navegador SEMPRE confere antes de usar.
+
+    Sem `Cache-Control`, o navegador decide sozinho por quanto tempo guarda o
+    `app.js` — e o Safari guarda por horas. Resultado: a pessoa atualiza a
+    página depois de um deploy, vê a versão velha e conclui que o trabalho não
+    foi feito. Aconteceu aqui, duas vezes. `no-cache` não desliga o cache: com
+    o ETag, se o arquivo não mudou a resposta é um 304 vazio, que é barato.
+    """
+
+    def file_response(self, *a, **k):
+        resposta = super().file_response(*a, **k)
+        resposta.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return resposta
+
+
 app = FastAPI(title="Escritório Virtual")
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.mount("/static", EstaticoSemCache(directory=STATIC_DIR), name="static")
 
 
 @app.get("/")
@@ -39,7 +63,11 @@ async def raiz():
 
 @app.get("/config")
 async def config():
-    return {"protegido": bool(SENHA), "contas": True, "nuvem": nuvem.ligado}
+    """A tela de entrada pergunta isto antes de desenhar: se a sala tem código,
+    quantas vagas de membro sobraram e se dá para entrar como visitante."""
+    return {"protegido": bool(SENHA), "contas": True, "nuvem": nuvem.ligado,
+            "vagas": contas.vagas(), "total_membros": mod_contas.MAX_CONTAS,
+            "visitante": True}
 
 
 @app.post("/conta/registrar")
@@ -50,8 +78,12 @@ async def registrar(dados: dict):
     nome = (dados.get("nome") or "").strip()
     if contas.existe(nome):
         return {"erro": "Já existe alguém com esse nome. Escolha outro ou faça login."}
+    if contas.cheio():
+        return {"erro": "As %d vagas de membro já foram preenchidas. "
+                        "Você pode entrar como visitante." % mod_contas.MAX_CONTAS}
+    cor = dados.get("cor") if cor_valida(dados.get("cor")) else "#4f7fd9"
     token = contas.registrar(nome, dados.get("senha") or "",
-                             mod_contas_limpar(dados.get("aparencia")), dados.get("cor") or "#4f7fd9")
+                             limpar_aparencia(dados.get("aparencia")), cor)
     if not token:
         return {"erro": "Nome precisa de 2 letras e senha de 4."}
     nuvem.marcar(mod_contas.ARQUIVO)
@@ -78,8 +110,81 @@ def conta_publica(conta):
             "cor": conta.get("cor")} if conta else None
 
 
-def mod_contas_limpar(bruto):
-    return mapa.limpar_aparencia(bruto) if hasattr(mapa, "limpar_aparencia") else (bruto or {})
+def _admin_do_token(token: str):
+    """Devolve a conta se o token for de um administrador, senão None."""
+    conta = contas.por_token(token or "")
+    if conta and mod_contas.eh_admin(conta["nome"]):
+        return conta
+    return None
+
+
+@app.get("/estudio/pecas")
+async def estudio_listar(token: str = ""):
+    if not _admin_do_token(token):
+        return {"erro": "Só o administrador."}
+    return {"pecas": estudio.pecas, "roupas": estudio.roupas}
+
+
+@app.post("/estudio/peca")
+async def estudio_criar_peca(
+    token: str = Form(""), nome: str = Form(""), grupo: str = Form("Decoração"),
+    largura: int = Form(1), altura: int = Form(1), bloqueia: str = Form("1"),
+    camada: str = Form("chao"), imagem: UploadFile = File(...),
+):
+    if not _admin_do_token(token):
+        return {"erro": "Só o administrador cria peça."}
+    dados = await imagem.read()
+    peca, porque = estudio.criar_peca(dados, nome, grupo, largura, altura,
+                                      bloqueia not in ("0", "false", ""), camada)
+    if not peca:
+        return {"erro": porque}
+    mapa.CATALOGO[peca["id"]] = {k: v for k, v in peca.items() if k != "id"}
+    nuvem.marcar(mod_estudio.ARQUIVO)
+    await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(),
+                         "por": "estúdio"})
+    return {"peca": peca}
+
+
+@app.post("/estudio/roupa")
+async def estudio_criar_roupa(
+    token: str = Form(""), nome: str = Form(""), grupo: str = Form("camisaTipo"),
+    andando: UploadFile = File(...), sentado: Optional[UploadFile] = File(None),
+):
+    if not _admin_do_token(token):
+        return {"erro": "Só o administrador cria roupa."}
+    bytes_sentado = await sentado.read() if sentado is not None else None
+    roupa, porque = estudio.criar_roupa(await andando.read(), bytes_sentado or None,
+                                        nome, grupo)
+    if not roupa:
+        return {"erro": porque}
+    return {"roupa": roupa}
+
+
+@app.post("/estudio/remover")
+async def estudio_remover(dados: dict):
+    if not _admin_do_token(dados.get("token") or ""):
+        return {"erro": "Só o administrador."}
+    chave = str(dados.get("id") or "")
+    if dados.get("roupa"):
+        return {"ok": estudio.remover_roupa(chave)}
+    if estudio.remover_peca(chave):
+        mapa.CATALOGO.pop(chave, None)
+        # tira do mapa o que já tinha sido colocado com essa peça
+        escritorio.objetos = [o for o in escritorio.objetos if o["tipo"] != chave]
+        escritorio._recalcular()
+        escritorio.salvar()
+        await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(),
+                             "por": "estúdio"})
+        return {"ok": True}
+    return {"erro": "Peça não encontrada."}
+
+
+@app.get("/catalogo")
+async def catalogo():
+    """O arsenal inteiro, sem precisar abrir WebSocket. Serve o painel de móveis
+    do editor e a página de mostruário."""
+    return {"catalogo": mapa.CATALOGO, "pisos": mapa.PISOS, "tile": mapa.TAMANHO_TILE,
+            "roupas": estudio.roupas}
 
 
 @app.get("/saude")
@@ -96,22 +201,46 @@ async def websocket_sala(ws: WebSocket):
         if entrada.get("tipo") != "entrar":
             await ws.close(code=4000)
             return
-        conta = contas.por_token(entrada.get("token") or "")
-        if not conta:
-            await ws.send_json({"tipo": "recusado", "texto": "Faça login para entrar."})
-            await ws.close(code=4003)
-            return
-        entrada = {**entrada, "nome": conta["nome"],
-                   "aparencia": conta.get("aparencia") or {},
-                   "cor": conta.get("cor") or entrada.get("cor")}
+        # Visitante entra sem cadastro: precisa do código da sala e de um nome.
+        # Ele anda, vê e conversa, mas nada do que ele faz muda o escritório.
+        visitante = bool(entrada.get("visitante"))
+        if visitante:
+            if SENHA and (entrada.get("convite") or "") != SENHA:
+                await ws.send_json({"tipo": "recusado", "texto": "Código da sala errado."})
+                await ws.close(code=4003)
+                return
+            nome = (entrada.get("nome") or "").strip()[:24] or "Visitante"
+            # Nome de membro é do membro: visitante com o mesmo nome aparecia
+            # na lista e no mapa igualzinho ao dono da conta.
+            if contas.existe(nome):
+                await ws.send_json({"tipo": "recusado",
+                                    "texto": "Esse nome é de um membro. Escolha outro."})
+                await ws.close(code=4003)
+                return
+            entrada = {**entrada, "nome": nome}
+            conta = None
+        else:
+            conta = contas.por_token(entrada.get("token") or "")
+            if not conta:
+                await ws.send_json({"tipo": "recusado", "texto": "Faça login para entrar."})
+                await ws.close(code=4003)
+                return
+            entrada = {**entrada, "nome": conta["nome"],
+                       "aparencia": conta.get("aparencia") or {},
+                       "cor": conta.get("cor") or entrada.get("cor")}
 
         eu = await sala.entrar(ws, entrada)
-        eu.token = entrada.get("token")
+        eu.visitante = visitante
+        eu.token = entrada.get("token") if not visitante else ""
+        eu.conta = "" if visitante else mod_contas._chave(conta["nome"])
+        eu.admin = (not visitante) and mod_contas.eh_admin(conta["nome"])
         log.info("entrou: %s (%s) — %d na sala", eu.nome, eu.id, len(sala.participantes))
 
         await ws.send_json({
             "tipo": "bemvindo",
             "voce": eu.publico(),
+            "visitante": eu.visitante,
+            "admin": eu.admin,
             "mapa": escritorio.para_cliente(),
             "config": {
                 "raio_conversa": RAIO_CONVERSA,
@@ -128,7 +257,19 @@ async def websocket_sala(ws: WebSocket):
 
             if tipo == "mover":
                 if not sala.mover(eu, msg.get("x"), msg.get("y"), msg.get("direcao")):
-                    await ws.send_json({"tipo": "corrigir", "x": eu.x, "y": eu.y})
+                    volta = {"tipo": "corrigir", "x": eu.x, "y": eu.y}
+                    # Se o que barrou foi sala de alguém, o cliente precisa saber
+                    # QUAL — senão a pessoa fica batendo na parede sem entender.
+                    try:
+                        z = sala.zona_trancada_para(eu, float(msg.get("x")), float(msg.get("y")))
+                    except (TypeError, ValueError):
+                        z = None
+                    if z is not None:
+                        volta["trancada"] = {"id": z["id"], "nome": z["nome"],
+                                             "dono": z.get("dono_nome", ""),
+                                             "online": any(p.conta == z.get("dono")
+                                                           for p in sala.participantes.values())}
+                    await ws.send_json(volta)
                     continue
                 await sala.publicar({
                     "tipo": "mover", "id": eu.id,
@@ -162,37 +303,215 @@ async def websocket_sala(ws: WebSocket):
                 await sala.publicar({"tipo": "reacao", "id": eu.id, "emoji": emoji}, exceto=eu.id)
 
             elif tipo == "perfil":
-                eu.nome = (msg.get("nome") or eu.nome).strip()[:24] or eu.nome
+                nome_novo = (msg.get("nome") or eu.nome).strip()[:24] or eu.nome
                 if cor_valida(msg.get("cor")):
                     eu.cor = msg["cor"]
                 eu.emoji = (msg.get("emoji") or eu.emoji)[:4]
                 if msg.get("aparencia"):
                     eu.aparencia = limpar_aparencia(msg["aparencia"])
-                contas.atualizar(getattr(eu, "token", ""), nome=eu.nome,
-                                 aparencia=eu.aparencia, cor=eu.cor)
-                nuvem.marcar(mod_contas.ARQUIVO)
+                if eu.visitante:
+                    if nome_novo != eu.nome and contas.existe(nome_novo):
+                        await ws.send_json({"tipo": "erro",
+                                            "texto": "Esse nome é de um membro. Escolha outro."})
+                    else:
+                        eu.nome = nome_novo
+                else:
+                    # Quem manda no nome é a conta: se o novo já for de outra
+                    # pessoa (ou for nome reservado de administrador), fica o
+                    # de antes — e a sessão tem de refletir o que foi gravado.
+                    contas.atualizar(eu.token, nome=nome_novo,
+                                     aparencia=eu.aparencia, cor=eu.cor)
+                    nuvem.marcar(mod_contas.ARQUIVO)
+                    conta = contas.por_token(eu.token) or {"nome": eu.nome}
+                    antiga = eu.conta
+                    eu.nome = conta["nome"]
+                    eu.conta = mod_contas._chave(eu.nome)
+                    if eu.nome != nome_novo:
+                        await ws.send_json({"tipo": "erro",
+                                            "texto": "Não deu para usar esse nome. Ficou o de antes."})
+                    # A sala é da CHAVE da conta. Trocar o nome trocava a chave
+                    # e deixava a sala órfã: nem o dono conseguia mais soltá-la.
+                    mudou = False
+                    for z in escritorio.zonas:
+                        if z.get("dono") == antiga and (z["dono"], z.get("dono_nome")) != (eu.conta, eu.nome):
+                            z["dono"], z["dono_nome"] = eu.conta, eu.nome
+                            mudou = True
+                    if mudou:
+                        escritorio.salvar()
+                        nuvem.marcar(mapa.ARQUIVO)
+                        await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(),
+                                             "por": ""})
                 await sala.publicar({"tipo": "perfil", "participante": eu.publico()})
+
+            elif tipo == "moderar":
+                # Expulsar e calar são do administrador. Silenciar não é só
+                # pedido bonito ao navegador de quem fala: o servidor para de
+                # encaminhar o sinal de WebRTC dessa pessoa, então chamada nova
+                # com ela nem se forma, e quem já está na chamada corta o som.
+                if not eu.admin:
+                    await ws.send_json({"tipo": "erro", "texto": "Só o administrador faz isso."})
+                    continue
+                alvo = sala.participantes.get(str(msg.get("id") or ""))
+                acao = msg.get("acao")
+                if alvo is None or alvo.id == eu.id:
+                    await ws.send_json({"tipo": "erro", "texto": "Não achei essa pessoa."})
+                    continue
+                if acao == "expulsar":
+                    await sala.enviar(alvo, {"tipo": "recusado",
+                                             "texto": "%s tirou você do escritório." % eu.nome})
+                    try:
+                        await alvo.ws.close(code=4004)
+                    except Exception:
+                        pass
+                    await sala.publicar({"tipo": "sistema",
+                                         "texto": "%s tirou %s do escritório." % (eu.nome, alvo.nome)})
+                elif acao in ("silenciar", "devolver_voz"):
+                    alvo.silenciado = acao == "silenciar"
+                    if alvo.silenciado:
+                        alvo.mudo = True
+                    await sala.enviar(alvo, {"tipo": "moderado", "acao": acao, "por": eu.nome})
+                    await sala.publicar({"tipo": "perfil", "participante": alvo.publico()})
+                    await sala.publicar({"tipo": "sistema", "texto": "%s %s %s." % (
+                        eu.nome, "calou" if alvo.silenciado else "devolveu a voz de", alvo.nome)})
 
             elif tipo == "sinal":
                 # Encaminhamento cru de WebRTC (offer/answer/ICE). O servidor não
                 # entende nem toca no conteúdo — áudio e vídeo vão direto P2P.
                 destino = sala.participantes.get(msg.get("para"))
+                if eu.silenciado or (destino is not None and destino.silenciado):
+                    continue                      # calado não abre nem recebe chamada
                 if destino:
                     await sala.enviar(destino, {"tipo": "sinal", "de": eu.id,
                                                 "dados": msg.get("dados")})
 
+            elif tipo == "editar" and eu.visitante:
+                await ws.send_json({"tipo": "erro",
+                                    "texto": "Visitante não edita o escritório."})
+
+            elif tipo == "sala" and eu.visitante:
+                await ws.send_json({"tipo": "erro",
+                                    "texto": "Só membros reivindicam e trancam sala."})
+
             elif tipo == "editar":
-                # O editor de mapa é aberto a todo mundo (é ferramenta interna).
                 # O servidor valida a ação, grava e devolve o mapa inteiro: são
                 # ~20 KB e as edições são esporádicas, então não vale a pena
                 # sincronizar diferença por diferença e arriscar divergir.
-                if escritorio.editar(msg.get("acao") or {}):
+                #
+                # Quem pode o quê está em `mapa.pode_editar`: admin mexe em tudo,
+                # membro mexe só dentro da sala que reivindicou.
+                acao = msg.get("acao") or {}
+                permitido, porque = escritorio.pode_editar(acao, eu.conta, eu.admin)
+                if not permitido:
+                    await ws.send_json({"tipo": "erro", "texto": porque})
+                    continue
+                if escritorio.editar(acao):
                     escritorio.salvar()
                     nuvem.marcar(mapa.ARQUIVO)
                     await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(),
                                          "por": eu.nome})
                 else:
                     await ws.send_json({"tipo": "erro", "texto": "Edição recusada."})
+
+            elif tipo == "sala":
+                # Reivindicar, soltar, bater na porta e responder a quem bateu.
+                # Quem decide é sempre o servidor: o cliente só pede.
+                acao = msg.get("acao")
+                zid = str(msg.get("id") or "")
+
+                if acao == "reivindicar":
+                    z = escritorio.zona_por_id(zid)
+                    dentro = z and mapa.zona_de(eu.x, eu.y) and mapa.zona_de(eu.x, eu.y)["id"] == zid
+                    if not dentro:
+                        await ws.send_json({"tipo": "erro", "texto": "Entre na sala para reivindicar."})
+                        continue
+                    ok, porque = escritorio.reivindicar(zid, eu.conta, eu.nome)
+                    if not ok:
+                        await ws.send_json({"tipo": "erro", "texto": porque})
+                        continue
+                    escritorio.salvar()
+                    nuvem.marcar(mapa.ARQUIVO)
+                    await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(),
+                                         "por": eu.nome})
+
+                elif acao == "liberar":
+                    z = escritorio.zona_por_id(zid)
+                    dono = (z or {}).get("dono")
+                    ok, porque = escritorio.liberar(zid, dono if eu.admin else eu.conta)
+                    if not ok:
+                        await ws.send_json({"tipo": "erro", "texto": porque})
+                        continue
+                    sala.convidados_da(zid).clear()
+                    escritorio.salvar()
+                    nuvem.marcar(mapa.ARQUIVO)
+                    await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(),
+                                         "por": eu.nome})
+
+                elif acao in ("trancar", "destrancar"):
+                    ok, porque = escritorio.trancar(zid, eu.conta, acao == "trancar")
+                    if not ok:
+                        await ws.send_json({"tipo": "erro", "texto": porque})
+                        continue
+                    if acao == "destrancar":
+                        sala.convidados_da(zid).clear()   # porta aberta, convite não faz falta
+                    escritorio.salvar()
+                    nuvem.marcar(mapa.ARQUIVO)
+                    await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(),
+                                         "por": eu.nome})
+
+                elif acao == "liberar_tudo":
+                    if not eu.admin:
+                        await ws.send_json({"tipo": "erro", "texto": "Só o administrador faz isso."})
+                        continue
+                    soltas = 0
+                    for z in escritorio.zonas:
+                        if z.get("dono"):
+                            escritorio.liberar(z["id"], z["dono"])
+                            sala.convidados_da(z["id"]).clear()
+                            soltas += 1
+                    escritorio.salvar()
+                    nuvem.marcar(mapa.ARQUIVO)
+                    await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(),
+                                         "por": eu.nome})
+                    await ws.send_json({"tipo": "erro",
+                                        "texto": "%d sala(s) ficaram sem dono." % soltas})
+
+                elif acao == "bater":
+                    z = escritorio.zona_por_id(zid)
+                    if not z or not z.get("dono"):
+                        await ws.send_json({"tipo": "erro", "texto": "Essa sala não tem dono."})
+                        continue
+                    if not z.get("trancada"):
+                        await ws.send_json({"tipo": "erro", "texto": "A porta está aberta, é só entrar."})
+                        continue
+                    dono = next((p for p in sala.participantes.values()
+                                 if p.conta == z["dono"]), None)
+                    if dono is None:
+                        await ws.send_json({"tipo": "erro",
+                                            "texto": "%s não está no escritório agora." % z.get("dono_nome", "O dono")})
+                        continue
+                    await sala.enviar(dono, {"tipo": "sala", "acao": "bateram", "id": zid,
+                                             "nome_sala": z["nome"], "de": eu.id, "quem": eu.nome})
+                    await ws.send_json({"tipo": "sala", "acao": "bateu", "id": zid,
+                                        "dono": z.get("dono_nome", "")})
+
+                elif acao == "responder":
+                    z = escritorio.zona_por_id(zid)
+                    if not z or z.get("dono") != eu.conta:
+                        continue                       # só o dono responde
+                    visita = sala.participantes.get(str(msg.get("para") or ""))
+                    if visita is None:
+                        continue
+                    if msg.get("aceita"):
+                        sala.convidar(zid, visita.id)
+                    await sala.enviar(visita, {"tipo": "sala", "acao": "resposta", "id": zid,
+                                               "nome_sala": z["nome"], "aceita": bool(msg.get("aceita")),
+                                               "dono": eu.nome})
+
+                elif acao == "expulsar":
+                    z = escritorio.zona_por_id(zid)
+                    if not z or z.get("dono") != eu.conta:
+                        continue
+                    sala.esquecer_convite(zid, str(msg.get("para") or ""))
 
             elif tipo == "ping":
                 await ws.send_json({"tipo": "pong"})

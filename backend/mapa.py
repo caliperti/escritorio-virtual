@@ -67,6 +67,7 @@ _item("planta", "Sala", "Planta", 1, 1, True)
 _item("planta_alta", "Sala", "Planta alta", 1, 2, True)
 _item("estante", "Sala", "Estante", 2, 1, True)
 _item("armario", "Sala", "Armário", 1, 1, True)
+_item("aparador", "Sala", "Aparador", 2, 1, True)
 _item("divisoria", "Sala", "Divisória", 1, 1, True)   # separa as baias
 _item("quadro", "Sala", "Quadro branco", 3, 1, True)
 _item("tv", "Sala", "TV", 2, 1, True)
@@ -84,6 +85,8 @@ _item("palco", "Sala", "Palco", 6, 2, True)
 _item("pebolim", "Sala", "Pebolim", 3, 2, True)
 # ---- café ----
 _item("cafeteira", "Café", "Cafeteira", 1, 1, True)
+_item("microondas", "Café", "Micro-ondas", 1, 1, False, "mesa")   # vai em cima da bancada
+_item("frutas", "Café", "Fruteira", 1, 1, False, "mesa")
 _item("geladeira", "Café", "Geladeira", 1, 2, True)
 _item("bebedouro", "Café", "Bebedouro", 1, 1, True)
 _item("pia", "Café", "Pia", 2, 1, True)
@@ -112,6 +115,129 @@ _item("vasinho", "Na mesa", "Vasinho", 1, 1, False, "mesa")
 _item("livros", "Na mesa", "Livros", 1, 1, False, "mesa")
 _item("bolo", "Na mesa", "Bolo", 1, 1, False, "mesa")
 
+# ---------------------------------------------------------------------------
+# ARSENAL: a biblioteca de peças que o editor oferece.
+#
+# Os grupos abaixo são as categorias que aparecem no painel. Peça nova entra
+# aqui (tamanho, se bloqueia passagem e em que camada mora) e ganha um desenho
+# de mesmo id em `static/objetos.js` — se faltar o desenho, ela vira um bloco
+# genérico, o que é feio mas não quebra nada.
+# ---------------------------------------------------------------------------
+
+# ---- mesas ----
+_item("mesa_branca", "Mesas", "Mesa branca", 4, 2, True)
+_item("mesa_madeira", "Mesas", "Mesa de madeira", 4, 2, True)
+_item("mesa_preta", "Mesas", "Mesa preta", 4, 2, True)
+_item("mesa_l", "Mesas", "Mesa em L", 4, 3, True)
+_item("mesa_gamer", "Mesas", "Mesa gamer", 6, 2, True)
+_item("mesa_curva", "Mesas", "Mesa curva", 6, 2, True)
+_item("mesa_dupla", "Mesas", "Mesa para dois", 6, 3, True)
+_item("bancada_trabalho", "Mesas", "Bancada de trabalho", 8, 1, True)
+_item("mesa_quadrada", "Mesas", "Mesa quadrada", 2, 2, True)
+# ---- mesas de reunião ----
+_item("mesa_reuniao_p", "Mesas de Reunião", "Mesa de reunião pequena", 4, 2, True)
+_item("mesa_reuniao_oval", "Mesas de Reunião", "Mesa de reunião oval", 6, 3, True)
+# ---- mesas de centro ----
+_item("mesa_centro_redonda", "Mesas de Centro", "Mesa de centro redonda", 2, 2, True)
+# ---- cadeiras ----
+_item("cadeira_branca", "Cadeiras", "Cadeira branca", 1, 1, False)
+_item("cadeira_cinza", "Cadeiras", "Cadeira cinza", 1, 1, False)
+_item("cadeira_bege", "Cadeiras", "Cadeira bege", 1, 1, False)
+_item("cadeira_azul", "Cadeiras", "Cadeira azul", 1, 1, False)
+_item("cadeira_verde", "Cadeiras", "Cadeira verde", 1, 1, False)
+_item("cadeira_laranja", "Cadeiras", "Cadeira laranja", 1, 1, False)
+_item("cadeira_executiva", "Cadeiras", "Cadeira executiva", 1, 1, False)
+_item("cadeira_couro", "Cadeiras", "Cadeira de couro", 1, 1, False)
+_item("cadeira_visita", "Cadeiras", "Cadeira de visitante", 1, 1, False)
+_item("banco_espera", "Cadeiras", "Banco de espera", 3, 1, True)
+# ---- cadeiras gamer ----
+_item("gamer_azul", "Cadeiras Gamer", "Gamer azul", 1, 1, False)
+_item("gamer_preta", "Cadeiras Gamer", "Gamer toda preta", 1, 1, False)
+_item("gamer_branca", "Cadeiras Gamer", "Gamer branca", 1, 1, False)
+_item("gamer_rosa", "Cadeiras Gamer", "Gamer rosa", 1, 1, False)
+_item("gamer_verde", "Cadeiras Gamer", "Gamer verde", 1, 1, False)
+# ---- sofás ----
+_item("sofa_2", "Sofás", "Sofá de 2 lugares", 2, 1, True)
+_item("sofa_bege", "Sofás", "Sofá bege", 3, 1, True)
+_item("sofa_azul", "Sofás", "Sofá azul", 3, 1, True)
+_item("sofa_verde", "Sofás", "Sofá verde", 3, 1, True)
+_item("sofa_caramelo", "Sofás", "Sofá caramelo", 3, 1, True)
+# ---- poltronas ----
+_item("poltrona_caramelo", "Poltronas", "Poltrona caramelo", 1, 1, True)
+_item("poltrona_preta", "Poltronas", "Poltrona preta", 1, 1, True)
+_item("poltrona_verde", "Poltronas", "Poltrona verde", 1, 1, True)
+_item("poltrona_redonda", "Poltronas", "Poltrona redonda", 2, 2, True)
+_item("puff", "Poltronas", "Puff", 1, 1, True)
+# ---- monitores ----
+_item("monitor_ultra", "Monitores", "Ultrawide grande", 3, 1, False, "mesa")
+_item("monitor_branco", "Monitores", "Monitor branco", 1, 1, False, "mesa")
+_item("braco_monitor", "Monitores", "Braço articulado", 1, 1, False, "mesa")
+# ---- computadores ----
+_item("notebook_fechado", "Computadores", "Notebook fechado", 1, 1, False, "mesa")
+_item("torre_gamer", "Computadores", "Gabinete gamer", 1, 1, False, "mesa")
+_item("dock", "Computadores", "Docking station", 1, 1, False, "mesa")
+# ---- eletrônicos ----
+_item("tv_grande", "Eletrônicos", "TV grande", 3, 1, True)
+_item("webcam", "Eletrônicos", "Webcam", 1, 1, False, "mesa")
+_item("caixa_som", "Eletrônicos", "Caixa de som", 1, 1, False, "mesa")
+# ---- acessórios ----
+_item("teclado_gamer", "Acessórios", "Teclado gamer", 1, 1, False, "mesa")
+_item("teclado_branco", "Acessórios", "Teclado branco", 1, 1, False, "mesa")
+_item("mouse_gamer", "Acessórios", "Mouse gamer", 1, 1, False, "mesa")
+_item("mousepad", "Acessórios", "Mousepad", 2, 1, False, "mesa")
+_item("fone_branco", "Acessórios", "Headset branco", 1, 1, False, "mesa")
+_item("bloco_notas", "Acessórios", "Bloco de notas", 1, 1, False, "mesa")
+_item("canetas", "Acessórios", "Porta-canetas", 1, 1, False, "mesa")
+_item("copo", "Acessórios", "Copo", 1, 1, False, "mesa")
+# ---- decoração ----
+_item("quadro_abstrato", "Decoração", "Quadro abstrato", 2, 1, True)
+_item("mural", "Decoração", "Mural de recados", 3, 1, True)
+_item("porta_documentos", "Decoração", "Porta-documentos", 1, 1, False, "mesa")
+_item("aromatizador", "Decoração", "Aromatizador", 1, 1, False, "mesa")
+# ---- plantas ----
+_item("monstera", "Plantas", "Monstera", 1, 2, True)
+_item("espada", "Plantas", "Espada-de-são-jorge", 1, 1, True)
+_item("bonsai", "Plantas", "Bonsai", 1, 1, False, "mesa")
+_item("palmeira", "Plantas", "Palmeira", 2, 2, True)
+_item("jardineira", "Plantas", "Jardineira", 3, 1, True)
+# ---- iluminação ----
+_item("pendente", "Iluminação", "Pendente", 1, 1, False, "mesa")
+_item("luminaria_comprida", "Iluminação", "Luminária comprida", 3, 1, False, "mesa")
+_item("fita_led", "Iluminação", "Fita de LED", 3, 1, False, "mesa")
+# ---- escritório ----
+_item("arquivo", "Escritório", "Arquivo de gavetas", 1, 1, True)
+_item("estante_alta", "Escritório", "Estante alta", 2, 1, True)
+# ---- portas ----
+_item("porta_madeira", "Portas", "Porta de madeira", 2, 1, False, "mesa")
+_item("porta_branca", "Portas", "Porta branca", 2, 1, False, "mesa")
+_item("porta_vidro", "Portas", "Porta de vidro", 2, 1, False, "mesa")
+_item("porta_dupla", "Portas", "Porta dupla", 4, 1, False, "mesa")
+# ---- paredes e divisórias ----
+_item("meia_parede", "Paredes", "Meia parede", 3, 1, True)
+_item("painel_vidro", "Paredes", "Painel de vidro", 3, 1, True)
+_item("painel_madeira", "Paredes", "Painel de madeira", 3, 1, True)
+_item("janela_grande", "Paredes", "Janela grande", 4, 1, False, "mesa")
+# ---- copa ----
+_item("frigobar", "Café", "Frigobar", 1, 1, True)
+_item("armario_aereo", "Café", "Armário aéreo", 3, 1, True)
+_item("maquina_cafe", "Café", "Máquina de café", 1, 1, True)
+_item("copos", "Café", "Copos", 1, 1, False, "mesa")
+# ---- convivência ----
+_item("tapete_azul", "Convivência", "Tapete azul", 3, 2, False, "piso")
+_item("tapete_verde", "Convivência", "Tapete verde", 3, 2, False, "piso")
+_item("tapete_cinza", "Convivência", "Tapete cinza", 3, 2, False, "piso")
+_item("tapete_grande", "Convivência", "Tapete grande", 5, 3, False, "piso")
+# ---- narguilés ----
+_item("narguile_azul", "Narguilés", "Narguilé azul e dourado", 1, 2, True)
+_item("narguile_preto", "Narguilés", "Narguilé preto e dourado", 1, 2, True)
+_item("narguile_moderno", "Narguilés", "Narguilé moderno", 1, 2, True)
+_item("narguile_pequeno", "Narguilés", "Narguilé pequeno", 1, 1, True)
+_item("narguile_premium", "Narguilés", "Narguilé premium", 1, 2, True)
+
+# Os ids de fábrica. O estúdio soma peças POR CIMA deste catálogo e precisa
+# saber quais ids já são da casa para não atropelar nenhum.
+FABRICA = frozenset(CATALOGO)
+
 
 # Coisas que ficam em pé (monitor, gabinete, caneca): girar muda só para onde
 # elas olham, não o espaço que ocupam — senão um gabinete 1x2 viraria uma caixa
@@ -122,8 +248,13 @@ EM_PE = {
     "monitor_vertical", "imac", "torre", "torre_grande", "notebook", "tablet",
     "microfone", "impressora", "luminaria_mesa", "fone_mesa", "teclado", "mouse",
     "caneca", "papeis", "telefone", "vasinho", "livros", "bolo",
+    # arsenal — a mesma lista vive em `static/objetos.js:EM_PE`, os dois têm de bater
+    "monitor_ultra", "monitor_branco", "braco_monitor", "notebook_fechado", "torre_gamer",
+    "dock", "webcam", "caixa_som", "teclado_gamer", "teclado_branco", "mouse_gamer",
+    "fone_branco", "bloco_notas", "canetas", "copo", "copos", "porta_documentos",
+    "aromatizador", "bonsai",
 }
-FILEIRA = {"monitor_duplo", "monitor_curvo", "monitor_triplo"}
+FILEIRA = {"monitor_duplo", "monitor_curvo", "monitor_triplo", "monitor_ultra"}
 
 
 def medida(objeto: Dict) -> Tuple[int, int]:
@@ -233,6 +364,128 @@ class Escritorio:
         if not achadas:
             return None
         return min(achadas, key=lambda z: (z["x2"] - z["x1"] + 1) * (z["y2"] - z["y1"] + 1))
+
+    # ---------- dono da sala ----------
+    # Cada pessoa pode reivindicar UMA sala individual, como no Gather. A sala
+    # reivindicada fica trancada: quem chega na porta bate, e o dono decide.
+    # O dono é guardado pela CHAVE da conta (nome sem acento, minúsculo), não
+    # pelo nome mostrado — senão trocar o nome no perfil soltaria a sala.
+
+    # ---------- quem pode editar o quê ----------
+    # Regra do Gather, e a que o dono pediu: membro mexe só DENTRO da sala que
+    # reivindicou; admin mexe em tudo. O que muda a planta (parede, zona,
+    # tamanho, entrada, desfazer, restaurar) é só de admin, porque uma parede
+    # movida do lado de fora muda a sala do vizinho.
+    ACOES_SO_ADMIN = {"desfazer", "parede", "montar_sala", "zona", "zona_remover",
+                      "nascimento", "padrao", "tamanho"}
+
+    def _tiles_do_objeto(self, o: Dict, tipo: Optional[str] = None,
+                         giro: Optional[int] = None) -> List[Tuple[int, int]]:
+        alvo = dict(o)
+        if tipo is not None:
+            alvo["tipo"] = tipo
+        if giro is not None:
+            alvo["g"] = giro
+        lg, ag = medida(alvo)
+        return [(alvo["x"] + dx, alvo["y"] + dy) for dy in range(ag) for dx in range(lg)]
+
+    def tiles_da_acao(self, acao: Dict) -> Optional[List[Tuple[int, int]]]:
+        """Os tiles que a edição encosta. `None` quer dizer "não dá para saber",
+        e nesse caso a edição vira coisa de admin — nunca o contrário."""
+        tipo = acao.get("acao")
+        try:
+            if tipo == "objeto":
+                if acao.get("tipo") not in CATALOGO:
+                    return None
+                falso = {"tipo": acao["tipo"], "x": int(acao["x"]), "y": int(acao["y"]),
+                         "g": int(acao.get("g", 0)) % 4}
+                return self._tiles_do_objeto(falso)
+            if tipo in ("mover", "girar", "trocar", "remover"):
+                alvo = next((o for o in self.objetos if o["id"] == int(acao["id"])), None)
+                if not alvo:
+                    return None
+                tiles = self._tiles_do_objeto(alvo)
+                if tipo == "mover":                       # origem E destino contam
+                    destino = {**alvo, "x": int(acao["x"]), "y": int(acao["y"])}
+                    tiles += self._tiles_do_objeto(destino)
+                elif tipo == "girar":
+                    g = acao.get("g")
+                    g = (int(alvo.get("g", 0)) + 1) % 4 if g is None else int(g) % 4
+                    tiles += self._tiles_do_objeto(alvo, giro=g)
+                elif tipo == "trocar":
+                    if acao.get("tipo") not in CATALOGO:
+                        return None
+                    tiles += self._tiles_do_objeto(alvo, tipo=acao["tipo"])
+                return tiles
+            if tipo == "piso":
+                return [(int(x), int(y)) for x, y in acao.get("tiles", [])]
+        except (KeyError, TypeError, ValueError):
+            return None
+        return None
+
+    def pode_editar(self, acao: Dict, chave: str, admin: bool) -> Tuple[bool, str]:
+        if admin:
+            return True, ""
+        tipo = acao.get("acao")
+        if tipo in self.ACOES_SO_ADMIN:
+            return False, "Só o administrador muda a planta do escritório."
+        minha = self.sala_do_dono(chave)
+        if minha is None:
+            return False, "Reivindique uma sala para poder decorar."
+        tiles = self.tiles_da_acao(acao)
+        if tiles is None:
+            return False, "Não consegui saber onde essa mudança cai."
+        for x, y in tiles:
+            if not (minha["x1"] <= x <= minha["x2"] and minha["y1"] <= y <= minha["y2"]):
+                return False, "Isso está fora da %s, que é a sua sala." % minha["nome"]
+        return True, ""
+
+    def zona_por_id(self, id_: str) -> Optional[Dict]:
+        return next((z for z in self.zonas if z["id"] == id_), None)
+
+    def sala_do_dono(self, chave: str) -> Optional[Dict]:
+        if not chave:
+            return None
+        return next((z for z in self.zonas if z.get("dono") == chave), None)
+
+    def reivindicar(self, id_: str, chave: str, nome: str) -> Tuple[bool, str]:
+        z = self.zona_por_id(id_)
+        if not z or not z.get("privada"):
+            return False, "Essa área não é uma sala fechada."
+        if z.get("dono") and z["dono"] != chave:
+            return False, "Essa sala já é de %s." % z.get("dono_nome", "outra pessoa")
+        outra = self.sala_do_dono(chave)
+        if outra is not None and outra["id"] != id_:
+            return False, "Você já é dono da %s. Solte ela primeiro." % outra["nome"]
+        z["dono"] = chave
+        z["dono_nome"] = nome
+        return True, ""
+
+    def liberar(self, id_: str, chave: str) -> Tuple[bool, str]:
+        z = self.zona_por_id(id_)
+        if not z:
+            return False, "Sala não encontrada."
+        if z.get("dono") != chave:
+            return False, "Essa sala não é sua."
+        z.pop("dono", None)
+        z.pop("dono_nome", None)
+        z.pop("trancada", None)              # solta a sala, solta a porta junto
+        return True, ""
+
+    def trancar(self, id_: str, chave: str, fechar: bool) -> Tuple[bool, str]:
+        """Trancar por dentro. Ter a sala e trancar a sala são coisas diferentes:
+        a sala continua sua com a porta aberta, e aí qualquer um entra. Só com a
+        porta trancada é que o visitante precisa bater."""
+        z = self.zona_por_id(id_)
+        if not z:
+            return False, "Sala não encontrada."
+        if z.get("dono") != chave:
+            return False, "Só o dono da sala tranca a porta."
+        if fechar:
+            z["trancada"] = True
+        else:
+            z.pop("trancada", None)
+        return True, ""
 
     def ponto_de_nascimento(self) -> Tuple[float, float]:
         """Se puserem um móvel em cima da entrada, quem chega nasce dentro dele e
@@ -409,6 +662,17 @@ class Escritorio:
                 # fim, a linha pularia embaixo do olho de quem está editando.
                 antigos = [i for i, x in enumerate(self.zonas) if x["id"] == z["id"]]
                 if antigos:
+                    # renomear ou redesenhar a sala NÃO solta o dono dela: o
+                    # editor reescreve a zona inteira, e sem isto quem mexesse
+                    # na plaquinha tirava a sala de alguém sem querer
+                    velha = self.zonas[antigos[0]]
+                    if velha.get("dono"):
+                        z["dono"] = velha["dono"]
+                        z["dono_nome"] = velha.get("dono_nome", "")
+                        if velha.get("trancada"):
+                            z["trancada"] = True
+                    if velha.get("porta"):
+                        z["porta"] = velha["porta"]
                     self.zonas[antigos[0]] = z
                 else:
                     self.zonas.append(z)

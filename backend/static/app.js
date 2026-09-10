@@ -5,8 +5,13 @@
 
 // Zoom da tela. Fica em variável porque a pessoa aproxima e afasta em tempo
 // real; `Jogo.escala` acompanha para o editor posicionar os menus certo.
-const ZOOM_MIN = 0.9, ZOOM_MAX = 3.2;
-let ESCALA = Number(localStorage.getItem('escritorio:zoom')) || 1.5;
+// O escritório passou de 64x40 para 84x48 tiles: com o mínimo em 0,9 não cabia
+// mais uma ala inteira na tela, e a pessoa perdia a noção de onde estava.
+const ZOOM_MIN = 0.5, ZOOM_MAX = 3.2;
+// No celular a tela é estreita: começando em 1.5 cabia meia sala. 1.05 mostra
+// o corredor inteiro e ainda dá para ler o nome de quem está por perto.
+let ESCALA = Number(localStorage.getItem('escritorio:zoom'))
+  || (matchMedia('(max-width: 760px)').matches ? 1.05 : 1.5);
 if (!(ESCALA >= ZOOM_MIN && ESCALA <= ZOOM_MAX)) ESCALA = 1.5;
 const VELOCIDADE = 3.2;             // pixels por quadro (~190 px/s)
 const INTERVALO_ENVIO = 66;         // ms entre atualizações de posição
@@ -40,7 +45,8 @@ const Jogo = {
 const ABAS = [
   ['Corpo', ['corpo', 'pele']],
   ['Cabelo', ['cabelo', 'corCabelo', 'barba']],
-  ['Roupa', ['corCamisa', 'corCalca']],
+  ['Roupa', ['camisaTipo', 'corCamisa', 'calcaTipo', 'corCalca']],
+  ['Calçado', ['sapatoTipo', 'corSapato', 'chapeuTipo']],
 ];
 
 function criarEditor(canvas, container, aparenciaInicial) {
@@ -65,6 +71,28 @@ function criarEditor(canvas, container, aparenciaInicial) {
     barra.appendChild(aba);
   });
 
+  /** Acrescenta os botões que ainda não existem. Roupa criada no estúdio chega
+   *  depois que a tela já montou, então em vez de refazer tudo a gente só
+   *  completa a fileira — assim a escolha atual da pessoa não se perde. */
+  function completarBotoes() {
+    for (const chave of Object.keys(botoes)) {
+      const jaTem = new Set(botoes[chave].map(([, v]) => v));
+      const fileira = grupos[chave] && grupos[chave].querySelector('.fileira');
+      if (!fileira) continue;
+      for (const valor of Boneco.CATALOGO[chave]) {
+        if (jaTem.has(valor)) continue;
+        const b = document.createElement('button');
+        b.type = 'button';
+        const pintar = botoes[chave][0] ? botoes[chave][0][2] : null;
+        if (pintar) pintar(b, valor);
+        b.onclick = () => { ap = { ...ap, [chave]: valor }; marcar(); };
+        fileira.appendChild(b);
+        botoes[chave].push([b, valor, pintar]);
+      }
+    }
+    marcar();
+  }
+
   for (const chave of Object.keys(Boneco.CATALOGO)) {
     const grupo = document.createElement('div');
     grupo.className = 'grupo';
@@ -83,7 +111,11 @@ function criarEditor(canvas, container, aparenciaInicial) {
         b.className = 'cor';
         b.style.background = valor;
       } else if (mini) {
-        b.className = 'retrato';
+        // Roupa e calçado precisam do corpo inteiro e GRANDE: a diferença entre
+        // gola V e gola redonda são três pixels, e num quadradinho de 40 todas
+        // as camisas viravam a mesma camisa.
+        const corpoInteiro = ['camisaTipo', 'calcaTipo', 'sapatoTipo'].includes(chave);
+        b.className = corpoInteiro ? 'retrato corpo' : 'retrato';
         b.innerHTML = `<img src="${mini}" alt=""><span>${Boneco.ROTULOS[valor] || valor}</span>`;
       } else {
         b.textContent = Boneco.ROTULOS[valor] || valor;
@@ -129,6 +161,13 @@ function criarEditor(canvas, container, aparenciaInicial) {
     ver: () => ap,
     definir: (nova) => { ap = Boneco.normalizar(nova); marcar(); },
     sortear: () => { ap = Boneco.aleatoria(); marcar(); },
+    remontar: () => {
+      completarBotoes();
+      for (const chave of Object.keys(botoes)) {
+        for (const [b, valor, redesenhar] of botoes[chave]) if (redesenhar) redesenhar(b, valor);
+      }
+      marcar();
+    },
   };
 }
 
@@ -142,31 +181,100 @@ function aparenciaSalva() {
 
 /* ==================== tela de entrada: conta e login ==================== */
 
+/* Os dois bonecos do visitante. São fixos: um de corpo largo e um esguio, cada
+   um com uma cara própria, para dois visitantes na sala não ficarem idênticos
+   ao ponto de ninguém distinguir quem é quem. */
+const BONECOS_VISITANTE = {
+  homem: { corpo: 'm', pele: '#e5b487', cabelo: 'parted', corCabelo: '#4a2f1b',
+           barba: '5oclock_shadow', corCamisa: '#4f7fd9', corCalca: '#3d4457' },
+  mulher: { corpo: 'f', pele: '#e5b487', cabelo: 'bob', corCabelo: '#241a12',
+            barba: 'nenhuma', corCamisa: '#d94f5c', corCalca: '#2f3a52' },
+};
+let bonecoVisitante = 'homem';
+
+function montarBonecosVisitante() {
+  const caixa = document.getElementById('bonecos-visitante');
+  if (!caixa) return;
+  for (const b of caixa.querySelectorAll('button')) {
+    const qual = b.dataset.boneco;
+    const img = b.querySelector('img');
+    const pintar = () => { img.src = Boneco.retrato(BONECOS_VISITANTE[qual]) || ''; };
+    Boneco.quandoCarregar(pintar);
+    pintar();
+    b.onclick = () => {
+      bonecoVisitante = qual;
+      for (const o of caixa.querySelectorAll('button')) {
+        o.setAttribute('aria-pressed', o === b);
+      }
+    };
+  }
+}
+
+// As roupas criadas no estúdio entram antes de a tela de personagem montar.
+fetch('/catalogo').then((r) => r.json()).then((d) => {
+  if (d && d.roupas && Boneco.acrescentarRoupas(d.roupas)) {
+    Boneco.quandoCarregar(() => {
+      if (typeof editorEntrada !== 'undefined' && editorEntrada.remontar) editorEntrada.remontar();
+      montarBonecosVisitante();
+    });
+  }
+}).catch(() => {});
+
 const editorEntrada = criarEditor(
   document.getElementById('previa'), document.getElementById('opcoes'),
   localStorage.getItem('escritorio:aparencia') ? aparenciaSalva() : Boneco.aleatoria());
 
 document.getElementById('btn-sortear').onclick = () => editorEntrada.sortear();
+montarBonecosVisitante();
 
 const campoNome = document.getElementById('campo-nome');
 const campoSenha = document.getElementById('campo-senha');
 const aviso = document.getElementById('aviso-entrada');
-let modo = 'entrar';                       // 'entrar' | 'criar'
+let modo = 'entrar';                       // 'entrar' | 'criar' | 'visitante'
 let sessao = { token: localStorage.getItem('escritorio:token') || '', conta: null };
 
 function usarModo(novoModo) {
   modo = novoModo;
-  document.getElementById('aba-entrar').setAttribute('aria-pressed', modo === 'entrar');
-  document.getElementById('aba-criar').setAttribute('aria-pressed', modo === 'criar');
-  document.getElementById('linha-convite').hidden = modo !== 'criar';
+  for (const [aba, valor] of [['aba-entrar', 'entrar'], ['aba-criar', 'criar'],
+                              ['aba-visitante', 'visitante']]) {
+    document.getElementById(aba).setAttribute('aria-pressed', modo === valor);
+  }
+  // O código da sala vale para criar conta E para entrar de visitante: é ele
+  // que separa quem foi convidado de quem só achou o endereço.
+  document.getElementById('linha-convite').hidden = !(modo === 'criar' || modo === 'visitante');
+  // Membro monta o boneco que quiser; visitante escolhe entre dois prontos.
   document.querySelector('.editor').hidden = modo !== 'criar';
+  const dois = document.getElementById('bonecos-visitante');
+  if (dois) dois.hidden = modo !== 'visitante';
+  campoSenha.parentElement.hidden = modo === 'visitante';
   campoSenha.setAttribute('autocomplete', modo === 'criar' ? 'new-password' : 'current-password');
   aviso.textContent = modo === 'criar'
     ? 'Escolha seu personagem: ele fica salvo na sua conta.'
-    : '';
+    : modo === 'visitante'
+      ? 'Visitante anda, vê e conversa. Não mexe no escritório nem pega sala.'
+      : '';
 }
 document.getElementById('aba-entrar').onclick = () => usarModo('entrar');
 document.getElementById('aba-criar').onclick = () => usarModo('criar');
+document.getElementById('aba-visitante').onclick = () => usarModo('visitante');
+
+/** Quantas vagas de membro sobraram. Cheio, a aba de criar conta sai de cena. */
+async function conferirVagas() {
+  try {
+    const c = await (await fetch('/config')).json();
+    const linha = document.getElementById('vagas');
+    if (!linha || typeof c.vagas !== 'number') return;
+    if (c.vagas > 0) {
+      linha.innerHTML = `<b>${c.vagas}</b> de ${c.total_membros} vagas de membro livres`;
+    } else {
+      linha.className = 'vagas cheio';
+      linha.innerHTML = `As <b>${c.total_membros} vagas de membro</b> acabaram — entre como visitante`;
+      document.getElementById('aba-criar').hidden = true;
+      if (modo === 'criar') usarModo('visitante');
+    }
+  } catch (e) { /* offline: a tela continua servindo */ }
+}
+conferirVagas();
 
 /** Sessão guardada: entra direto, sem digitar nada. */
 async function conferirSessao() {
@@ -199,11 +307,14 @@ document.getElementById('btn-sair-conta').onclick = () => {
 };
 
 document.getElementById('btn-entrar').onclick = () => entrar(true);
-document.getElementById('btn-entrar-mudo').onclick = () => entrar(false);
+// O botão "entrar só olhando" saiu da tela: agora todo mundo entra pedindo
+// câmera e microfone. Quem recusar a permissão continua entrando — o `entrar`
+// avisa e segue sem mídia —, então ninguém fica de fora por causa disso.
 campoSenha.addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar(true); });
 
 /** Cria a conta ou faz login, e só então abre a sala. */
 async function autenticar() {
+  if (modo === 'visitante') return true;     // visitante não tem conta para autenticar
   if (sessao.token && sessao.conta) return true;
   const nome = campoNome.value.trim();
   const senha = campoSenha.value;
@@ -242,6 +353,15 @@ async function entrar(comMidia) {
     }
   }
   aviso.textContent = 'Conectando…';
+  if (modo === 'visitante') {
+    const nome = campoNome.value.trim();
+    if (!nome) { aviso.textContent = 'Escreva seu nome.'; return; }
+    const visual = BONECOS_VISITANTE[bonecoVisitante];
+    conectar({ visitante: true, nome,
+               convite: document.getElementById('campo-convite').value,
+               aparencia: visual, cor: visual.corCamisa });
+    return;
+  }
   conectar({ token: sessao.token });
 }
 
@@ -342,6 +462,53 @@ function enviar(msg) {
   if (Jogo.ws && Jogo.ws.readyState === WebSocket.OPEN) Jogo.ws.send(JSON.stringify(msg));
 }
 
+/* Cartão flutuante de pedido: bater na porta, aceitar, recusar. É pequeno de
+ * propósito — some sozinho e não rouba o teclado de quem está no chat. */
+function painelPedido({ texto, botoes, segundos }) {
+  const antigo = document.getElementById('pedido-sala');
+  if (antigo) antigo.remove();
+  const caixa = document.createElement('div');
+  caixa.id = 'pedido-sala';
+  caixa.className = 'pedido-sala';
+  caixa.innerHTML = `<p>${texto}</p><div class="acoes"></div>`;
+  for (const b of botoes || []) {
+    const bt = document.createElement('button');
+    bt.textContent = b.texto;
+    if (b.classe) bt.className = b.classe;
+    bt.onclick = () => { caixa.remove(); b.fazer && b.fazer(); };
+    caixa.querySelector('.acoes').appendChild(bt);
+  }
+  (document.querySelector('.palco') || document.body).appendChild(caixa);
+  if (segundos) setTimeout(() => caixa.remove(), segundos * 1000);
+  return caixa;
+}
+
+// Bater na porta não pode virar metralhadora: o servidor corrige a posição a
+// cada empurrão na parede, e sem esta trava o aviso piscaria sem parar.
+const ultimoAvisoTrancada = {};
+
+function avisarSalaTrancada(t) {
+  if (Date.now() - (ultimoAvisoTrancada[t.id] || 0) < 6000) return;
+  ultimoAvisoTrancada[t.id] = Date.now();
+  // Nome de sala e de pessoa entram em HTML: sem escapar, um visitante chamado
+  // <svg onload=…> rodava script na tela de quem esbarrasse na porta dele.
+  const dono = escapar(t.dono || 'alguém');
+  const nome = escapar(t.nome);
+  if (!t.online) {
+    painelPedido({ texto: `<b>${nome}</b> é de ${dono}, que não está no escritório agora.`,
+                   botoes: [{ texto: 'Entendi' }], segundos: 6 });
+    return;
+  }
+  painelPedido({
+    texto: `<b>${nome}</b> é de ${dono}. Quer bater na porta?`,
+    botoes: [
+      { texto: 'Bater na porta', classe: 'ok', fazer: () => enviar({ tipo: 'sala', acao: 'bater', id: t.id }) },
+      { texto: 'Agora não' },
+    ],
+    segundos: 12,
+  });
+}
+
 function receber(msg) {
   switch (msg.tipo) {
     case 'bemvindo': iniciarSala(msg); break;
@@ -370,7 +537,14 @@ function receber(msg) {
     case 'perfil': {
       const alvo = msg.participante.id === Jogo.eu.id
         ? Jogo.eu : Jogo.pessoas.get(msg.participante.id);
+      const eraCalado = !!(alvo && alvo.silenciado);
       if (alvo) Object.assign(alvo, msg.participante);
+      // Calou? derruba a chamada que já estava aberta com essa pessoa. O
+      // servidor barra chamada NOVA, mas a que já existe é ponto a ponto e
+      // continuaria passando som direto entre os dois navegadores.
+      if (alvo && alvo.silenciado && !eraCalado && alvo.id !== Jogo.eu.id) {
+        Midia.fechar(alvo.id);
+      }
       desenharListaPessoas();
       montarTiles();
       break;
@@ -400,6 +574,44 @@ function receber(msg) {
     case 'corrigir':                 // o servidor recusou a posição: volta para o lugar dele
       Jogo.eu.x = msg.x; Jogo.eu.y = msg.y;
       Jogo.eu.xr = msg.x; Jogo.eu.yr = msg.y;
+      Jogo.caminho = null;           // parar de empurrar a porta trancada
+      if (msg.trancada) avisarSalaTrancada(msg.trancada);
+      break;
+
+    case 'sistema':
+      escreverChat({ sistema: true, texto: msg.texto });
+      break;
+
+    case 'moderado':
+      if (msg.acao === 'silenciar') {
+        if (Midia.ligado('audio')) alternarMic();
+        escreverChat({ sistema: true,
+          texto: `${msg.por} calou seu microfone. Fale com ${msg.por} para voltar a falar.` });
+      } else {
+        escreverChat({ sistema: true, texto: `${msg.por} devolveu sua voz. Aperte M para falar.` });
+      }
+      break;
+
+    case 'sala':
+      if (msg.acao === 'bateram') {
+        painelPedido({
+          texto: `<b>${escapar(msg.quem)}</b> quer entrar na ${escapar(msg.nome_sala)}.`,
+          botoes: [
+            { texto: 'Deixar entrar', classe: 'ok',
+              fazer: () => enviar({ tipo: 'sala', acao: 'responder', id: msg.id, para: msg.de, aceita: true }) },
+            { texto: 'Agora não',
+              fazer: () => enviar({ tipo: 'sala', acao: 'responder', id: msg.id, para: msg.de, aceita: false }) },
+          ],
+          segundos: 40,
+        });
+      } else if (msg.acao === 'bateu') {
+        escreverChat({ sistema: true, texto: `Você bateu na porta. Esperando ${msg.dono} responder…` });
+      } else if (msg.acao === 'resposta') {
+        escreverChat({ sistema: true, texto: msg.aceita
+          ? `${msg.dono} deixou você entrar na ${msg.nome_sala}.`
+          : `${msg.dono} não pode receber você agora.` });
+        if (msg.aceita) delete ultimoAvisoTrancada[msg.id];
+      }
       break;
 
     case 'mapa':
@@ -438,6 +650,8 @@ function prepararPessoa(p) {
 }
 
 function receberMapa(mapa) {
+  // o desenhador precisa saber quais peças são imagem, e isso vem no catálogo
+  Objetos.CATALOGO_EXTRA = mapa && mapa.catalogo ? mapa.catalogo : null;
   Jogo.mapa = mapa;
   Jogo.zonas = mapa.zonas;
   Jogo.tile = mapa.tile;
@@ -469,6 +683,34 @@ function iniciarSala(msg) {
   Jogo.eu = { ...msg.voce, xr: msg.voce.x, yr: msg.voce.y, bolha: null, reacao: null };
   receberMapa(msg.mapa);
   Jogo.config = msg.config;
+  Jogo.visitante = !!msg.visitante;
+  Jogo.admin = !!msg.admin;
+  if (Jogo.admin) {
+    const chip = document.getElementById('contagem');
+    if (chip && !document.getElementById('chip-admin')) {
+      const selo = document.createElement('span');
+      selo.id = 'chip-admin';
+      selo.className = 'chip admin';
+      selo.textContent = 'admin';
+      selo.title = 'Você manda no escritório inteiro.';
+      chip.after(selo);
+    }
+  }
+  if (Jogo.visitante) {
+    // Visitante não edita o escritório: o botão sai da barra em vez de ficar
+    // ali dando erro a cada clique.
+    const b = document.getElementById('btn-editor');
+    if (b) b.remove();
+    const chip = document.getElementById('contagem');
+    if (chip && !document.getElementById('chip-visitante')) {
+      const selo = document.createElement('span');
+      selo.id = 'chip-visitante';
+      selo.className = 'chip visitante';
+      selo.textContent = 'visitante';
+      selo.title = 'Você anda, vê e conversa. Para mexer no escritório, peça uma conta.';
+      chip.after(selo);
+    }
+  }
   Jogo.pessoas.clear();                        // a lista antiga é de outra sessão
   msg.participantes.forEach((p) => Jogo.pessoas.set(p.id, prepararPessoa(p)));
 
@@ -572,14 +814,22 @@ document.addEventListener('keydown', (e) => {
   if (e.key.toLowerCase() === 'v') alternarCam();
   if (e.key.toLowerCase() === 't') alternarTela();
   if (e.key.toLowerCase() === 'b') abrirEditor();
-  if (e.key.toLowerCase() === 'e') Editor.alternar();
+  if (e.key.toLowerCase() === 'e' && !Jogo.visitante) Editor.alternar();
   if (e.key === '+' || e.key === '=') { ajustarZoom(1.15); e.preventDefault(); }
   if (e.key === '-' || e.key === '_') { ajustarZoom(1 / 1.15); e.preventDefault(); }
   if (e.key === '0') definirZoom(1.5);
   if ((e.key === 'Delete' || e.key === 'Backspace') && Editor.ativo) Editor.removerSelecionado();
   // G gira o móvel: o que está na mão, o selecionado, ou o próximo a ser posto
   if (e.key.toLowerCase() === 'g' && (Editor.ativo || Editor.movendo)) Editor.girar();
+  if (e.key === 'Tab') { alternarLateral(); e.preventDefault(); }
   if (e.key.toLowerCase() === 'r') reagir();
+  // P liga e desliga a profundidade na hora, para dar para comparar sem recarregar
+  if (e.key.toLowerCase() === 'p') {
+    profundidade(!PROFUNDIDADE);
+    escreverChat({ sistema: true, texto: PROFUNDIDADE
+      ? 'Profundidade LIGADA (parede em pé e móvel com corpo). Aperte P para desligar.'
+      : 'Profundidade DESLIGADA — é como era antes. Aperte P para ligar.' });
+  }
   if (e.key.toLowerCase() === 'c') alternarReuniao();
 });
 
@@ -625,14 +875,20 @@ tela.addEventListener('pointerup', (e) => {
   // Clique na plaquinha da sala abre o menu dela (nome, cor, área, áudio).
   const etiqueta = (Jogo.etiquetas || []).find((e) =>
     c.ponto.x >= e.x && c.ponto.x <= e.x + e.w && c.ponto.y >= e.y && c.ponto.y <= e.y + e.h);
-  if (etiqueta) { Editor.abrirMenuSala(etiqueta.id); return; }
+  if (etiqueta && !Jogo.visitante) { Editor.abrirMenuSala(etiqueta.id); return; }
+  if (etiqueta) return;
 
-  // Clique em cima de um móvel abre o menu dele (mover, trocar, remover) —
-  // tapete e afins ficam de fora, senão não dava para andar em cima deles.
+  // Clique em cima de um móvel abre o menu dele (mover, trocar, remover).
+  //
+  // Tapete é o caso chato: ele mora na camada do piso e a gente ANDA em cima
+  // dele, então clicar num tapete tem de andar. A saída é o modo: com o editor
+  // aberto, clique em tapete abre o menu dele; com o editor fechado, clique em
+  // tapete é passo, como em qualquer chão.
   const t = Editor._tile(c.ponto);
   const alvo = Editor.objetoEm(t.x, t.y);
   const info = alvo && Jogo.mapa.catalogo[alvo.tipo];
-  if (alvo && info && info.camada !== 'piso') {
+  const soNoEditor = info && info.camada === 'piso';
+  if (alvo && info && !Jogo.visitante && (!soNoEditor || Editor.ativo)) {
     Editor.abrirMenu(alvo.id);
     return;
   }
@@ -783,16 +1039,23 @@ function atualizar() {
   }
 }
 
-/** Assentos: pisar em cima de um deles senta a pessoa (como no Gather). */
+/** Assentos: pisar em cima de um deles senta a pessoa (como no Gather).
+ *  Os de fábrica estão na lista; os do arsenal entram pela categoria — eram
+ *  15 cadeiras novas em que ninguém sentava. */
 const ASSENTOS = new Set(['cadeira', 'cadeira_gamer', 'poltrona', 'banqueta', 'sofa']);
+const GRUPOS_ASSENTO = new Set(['Assentos', 'Cadeiras', 'Cadeiras Gamer', 'Sofás', 'Poltronas']);
+
+function ehAssento(tipo, info) {
+  return ASSENTOS.has(tipo) || !!(info && GRUPOS_ASSENTO.has(info.grupo));
+}
 
 function assentoEm(px, py) {
   if (!Jogo.mapa) return null;
   const t = Jogo.tile;
   const tx = Math.floor(px / t), ty = Math.floor(py / t);
   for (const o of Jogo.mapa.objetos) {
-    if (!ASSENTOS.has(o.tipo)) continue;
     const info = Jogo.mapa.catalogo[o.tipo];
+    if (!info || !ehAssento(o.tipo, info)) continue;
     const m = Objetos.medida(o.tipo, info, o.g);
     if (tx >= o.x && tx < o.x + m.l && ty >= o.y && ty < o.y + m.a) return o;
   }
@@ -868,7 +1131,7 @@ function desenhar() {
     : Math.max(0, Math.min(Jogo.alturaPx - alt, Jogo.eu.y - alt / 2));
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = '#0e1526';
+  ctx.fillStyle = '#efe7dd';           // fora do mapa: bege da marca, não preto
   ctx.fillRect(0, 0, tela.width / dpr, tela.height / dpr);
   ctx.setTransform(ESCALA * dpr, 0, 0, ESCALA * dpr,
                    -Jogo.camera.x * ESCALA * dpr, -Jogo.camera.y * ESCALA * dpr);
@@ -898,60 +1161,32 @@ function desenhar() {
     }
   }
 
-  // ---------- salas ----------
-  // O que marca a área é o carpete no chão; a sala se anuncia por uma plaquinha
-  // flutuante no topo, como no Gather. Retângulo tingido deixava tudo embarrado.
-  Jogo.etiquetas = [];
-  for (const z of mapa.zonas) {
-    const zx = z.x1 * t, zy = z.y1 * t;
-    const zw = (z.x2 - z.x1 + 1) * t;
-    const texto = (z.privada ? '🔒 ' : '') + z.nome;
-    ctx.font = '600 12px -apple-system, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const larg = ctx.measureText(texto).width + 20;
-    const px = zx + zw / 2 - larg / 2, py = zy + 6;
-    ctx.fillStyle = 'rgba(38,34,52,.72)';
-    arredondado(px, py, larg, 20, 10);
-    ctx.fill();
-    ctx.fillStyle = z.cor;
-    ctx.beginPath();
-    ctx.arc(px + 9, py + 10, 3.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#f6f4ef';
-    ctx.fillText(texto, px + larg / 2 + 4, py + 10);
-    Jogo.etiquetas.push({ id: z.id, x: px, y: py, w: larg, h: 20 });
-  }
-
   // ---------- paredes ----------
-  // Parede clara com topo iluminado, rodapé e sombra caindo no chão: é o que
-  // dá a sensação de altura sem sair da vista de cima.
+  // A parede ocupa um quadradinho inteiro para efeito de passagem, mas é
+  // DESENHADA mais fina: o miolo do tile é dela, e sobra uma folga de cada lado
+  // que não tem vizinho de parede. Assim o muro fica com a espessura de um muro
+  // e não de um corredor, e as quinas continuam fechando sozinhas.
   const ehParede = (x, y) => y >= 0 && y < mapa.altura && x >= 0 && x < mapa.largura
     && mapa.paredes[y][x] === '1';
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
       if (!ehParede(x, y)) continue;
       const px = x * t, py = y * t;
-      if (!ehParede(x, y + 1)) {                       // sombra projetada no piso
-        ctx.fillStyle = 'rgba(90,80,110,.16)';
-        ctx.fillRect(px, py + t, t, 6);
+      const ce = ehParede(x - 1, y) ? 0 : FOLGA_PAREDE;
+      const cd = ehParede(x + 1, y) ? 0 : FOLGA_PAREDE;
+      const cc = ehParede(x, y - 1) ? 0 : FOLGA_PAREDE;
+      const cb = ehParede(x, y + 1) ? 0 : FOLGA_PAREDE;
+      const bx = px + ce, by = py + cc, bw = t - ce - cd, bh = t - cc - cb;
+      ctx.fillStyle = '#f7f4ee';                       // topo: pega a luz de cima
+      ctx.fillRect(bx, by, bw, bh);
+      if (cc) {                                        // quina de cima, iluminada
+        ctx.fillStyle = '#fdfbf6';
+        ctx.fillRect(bx, by, bw, 3);
+        ctx.fillStyle = '#e2dbcc';
+        ctx.fillRect(bx, by + 3, bw, 1.5);
       }
-      ctx.fillStyle = '#efebe3';
-      ctx.fillRect(px, py, t, t);
-      if (!ehParede(x, y - 1)) {                       // topo da parede
-        ctx.fillStyle = '#fbf9f4';
-        ctx.fillRect(px, py, t, 6);
-        ctx.fillStyle = '#d9d2c4';
-        ctx.fillRect(px, py + 6, t, 2);
-      }
-      if (!ehParede(x, y + 1)) {                       // rodapé
-        ctx.fillStyle = '#cfc7b7';
-        ctx.fillRect(px, py + t - 5, t, 5);
-        ctx.fillStyle = '#b3a998';
-        ctx.fillRect(px, py + t - 2, t, 2);
-      }
-      if (!ehParede(x - 1, y)) { ctx.fillStyle = 'rgba(180,170,150,.5)'; ctx.fillRect(px, py, 2, t); }
-      if (!ehParede(x + 1, y)) { ctx.fillStyle = 'rgba(150,140,120,.35)'; ctx.fillRect(px + t - 2, py, 2, t); }
+      if (ce) { ctx.fillStyle = 'rgba(180,170,150,.45)'; ctx.fillRect(bx, by, 1.5, bh); }
+      if (cd) { ctx.fillStyle = 'rgba(150,140,120,.35)'; ctx.fillRect(bx + bw - 1.5, by, 1.5, bh); }
     }
   }
 
@@ -990,6 +1225,37 @@ function desenhar() {
   // que já estava ali. O peso desempata sempre do mesmo jeito: superfície
   // embaixo, o que se apoia nela em cima.
   const fila = [];
+
+  // ---------- a face da parede ----------
+  // O tile da parede é o TOPO dela, visto de cima. A parte que a gente vê em pé
+  // é a face virada para o sul, e ela desce por cima do piso da frente. Entra na
+  // fila com a base no fim do tile: assim tudo que está mais para baixo na tela
+  // (móvel, pessoa) passa na frente, e o que está atrás some — que é o que dá a
+  // sensação de estar DENTRO da sala, e não olhando um mapa.
+  for (let y = y0; y < y1; y++) {
+    let inicio = -1;
+    for (let x = x0; x <= x1; x++) {
+      const face = PROFUNDIDADE && x < x1 && ehParede(x, y) && !ehParede(x, y + 1);
+      if (face && inicio < 0) inicio = x;
+      if (!face && inicio >= 0) {
+        const px = inicio * t, largura = (x - inicio) * t, base = (y + 1) * t - FOLGA_PAREDE;
+        fila.push({ base, peso: PESO_PAREDE,
+                    desenhar: () => desenharFaceParede(px, base, largura) });
+        inicio = -1;
+      }
+    }
+  }
+
+  // ---------- as portas das salas ----------
+  for (const z of mapa.zonas) {
+    if (!z.porta) continue;
+    const p = z.porta;
+    if (p.x + 2 < x0 || p.x > x1 || p.y + 2 < y0 || p.y > y1) continue;
+    const deitada = p.lado === 'baixo' || p.lado === 'cima';
+    fila.push({ base: (p.y + (deitada ? 1 : 2)) * t, peso: PESO_PAREDE + 0.5,
+                desenhar: () => desenharPorta(z, p, deitada) });
+  }
+
   for (const o of visiveis) {
     const info = mapa.catalogo[o.tipo];
     if (!info || info.camada !== 'chao') continue;
@@ -1019,6 +1285,34 @@ function desenhar() {
     }
   }
 
+  // ---------- plaquinhas das salas ----------
+  // Vêm depois de tudo de propósito: agora a parede tem altura e cobriria a
+  // plaquinha da sala que fica logo abaixo dela.
+  // O que marca a área é o carpete no chão; a sala se anuncia por uma plaquinha
+  // flutuante no topo, como no Gather. Retângulo tingido deixava tudo embarrado.
+  Jogo.etiquetas = [];
+  for (const z of mapa.zonas) {
+    const zx = z.x1 * t, zy = z.y1 * t;
+    const zw = (z.x2 - z.x1 + 1) * t;
+    const texto = (z.privada ? '🔒 ' : '') + z.nome + (z.dono_nome ? ' · ' + z.dono_nome : '');
+    ctx.font = '600 12px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const larg = ctx.measureText(texto).width + 20;
+    const px = zx + zw / 2 - larg / 2, py = zy + 6;
+    ctx.fillStyle = 'rgba(38,34,52,.72)';
+    arredondado(px, py, larg, 20, 10);
+    ctx.fill();
+    ctx.fillStyle = z.cor;
+    ctx.beginPath();
+    ctx.arc(px + 9, py + 10, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#f6f4ef';
+    ctx.fillText(texto, px + larg / 2 + 4, py + 10);
+    Jogo.etiquetas.push({ id: z.id, x: px, y: py, w: larg, h: 20 });
+  }
+
+
   for (const pes of gente) desenharBolha(pes);
 
   if (typeof Editor !== 'undefined') {
@@ -1029,13 +1323,118 @@ function desenhar() {
 
 // Ordem de empate no chão: superfície primeiro (fica embaixo), depois o que se
 // apoia nela, e a pessoa por último. Vale para móveis que terminam na mesma linha.
+const PESO_PAREDE = -1;      // a face da parede é o fundo da linha: tudo passa na frente
 const PESO_SUPERFICIE = 0;   // mesas, balcões, palco — coisas em que se apoia algo
 const PESO_MOVEL = 1;        // cadeiras, plantas, armários…
 const PESO_PESSOA = 2;       // gente sempre por cima do móvel que divide a linha
 
+// Superfície é qualquer coisa em que se apoia outra coisa. Antes isto olhava
+// só o grupo "Mesas"; com o arsenal os grupos viraram vários (Mesas, Mesas de
+// Reunião, Mesas de Centro), então o teste passou a ser pelo NOME do grupo.
+const GRUPOS_SUPERFICIE = new Set(['Mesas', 'Mesas de Reunião', 'Mesas de Centro']);
+
 function pesoDeEmpate(tipo, info) {
-  if (info.grupo === 'Mesas' || tipo === 'palco') return PESO_SUPERFICIE;
+  if (GRUPOS_SUPERFICIE.has(info.grupo) || tipo === 'palco') return PESO_SUPERFICIE;
   return PESO_MOVEL;
+}
+
+/** A face da parede: o pedaço em pé que a gente vê. Claro no alto, mais fundo
+ *  embaixo, rodapé escuro no pé e a sombra caindo no chão. É esse degradê que
+ *  faz o olho ler altura — parede de cor chapada volta a parecer piso. */
+let PROFUNDIDADE = true;             // dá para desligar e comparar: profundidade(false)
+function profundidade(v) { PROFUNDIDADE = !!v; Objetos.usarAltura = !!v; }
+// Meia altura de tile. Já foi 42 e a face descia sobre a primeira fileira da
+// sala inteira — a mesa encostada na parede ficava desenhada EM CIMA do muro.
+// A parede tem de dar altura sem roubar chão de quem está dentro.
+const ALTURA_PAREDE = 15;
+// Quanto a parede encolhe de cada lado que não tem parede vizinha. O tile tem
+// 32; com 7 de folga dos dois lados, o muro fica com 18 de espessura.
+const FOLGA_PAREDE = 7;
+
+function desenharFaceParede(px, base, largura) {
+  // A face é MAIS ESCURA que o topo: a luz vem de cima, então a superfície
+  // deitada recebe mais luz que a em pé. Estava ao contrário, e por isso a
+  // parede parecia grossa em vez de alta.
+  const g = ctx.createLinearGradient(0, base, 0, base + ALTURA_PAREDE);
+  g.addColorStop(0, '#e9e2d4');
+  g.addColorStop(0.45, '#cfc5b1');
+  g.addColorStop(1, '#ada08a');
+  ctx.fillStyle = g;
+  ctx.fillRect(px, base, largura, ALTURA_PAREDE);
+  ctx.fillStyle = '#fdfbf6';                           // quina do teto, batida de luz
+  ctx.fillRect(px, base - 2, largura, 2);
+  ctx.fillStyle = 'rgba(255,255,255,.5)';
+  ctx.fillRect(px, base, largura, 1);
+  ctx.fillStyle = '#b0a48e';                           // rodapé
+  ctx.fillRect(px, base + ALTURA_PAREDE - 5, largura, 5);
+  ctx.fillStyle = '#8f8470';
+  ctx.fillRect(px, base + ALTURA_PAREDE - 1.5, largura, 1.5);
+  // A sombra no chão é o que mais conta altura: quanto mais longa, mais alta a
+  // parede parece. Vai longa e some devagar, como sombra de verdade.
+  const s = ctx.createLinearGradient(0, base + ALTURA_PAREDE, 0, base + ALTURA_PAREDE + 10);
+  s.addColorStop(0, 'rgba(62,52,82,.28)');
+  s.addColorStop(1, 'rgba(62,52,82,0)');
+  ctx.fillStyle = s;
+  ctx.fillRect(px, base + ALTURA_PAREDE, largura, 10);
+}
+
+/** A porta da sala. Trancada, ela fecha o vão e mostra o cadeado; destrancada,
+ *  a folha fica encostada no batente, como porta aberta de verdade. É por ela
+ *  que a pessoa entende de longe se pode entrar ou se precisa bater. */
+function desenharPorta(z, p, deitada) {
+  const t = Jogo.tile;
+  const x = p.x * t, y = p.y * t;
+  const comp = 2 * t;                                  // o vão tem 2 tiles
+  const trancada = !!z.trancada;
+  const madeira = '#b98a5c', escura = '#8d6440';
+
+  ctx.fillStyle = '#cfc7b7';                           // batentes dos dois lados
+  if (deitada) {
+    ctx.fillRect(x - 3, y + t - 6, 3, 12);
+    ctx.fillRect(x + comp, y + t - 6, 3, 12);
+  } else {
+    ctx.fillRect(x + t - 6, y - 3, 12, 3);
+    ctx.fillRect(x + t - 6, y + comp, 12, 3);
+  }
+
+  if (!trancada) {                                     // folha encostada, porta aberta
+    ctx.fillStyle = escura;
+    if (deitada) ctx.fillRect(x + 1, y + t - 5, 9, 4);
+    else ctx.fillRect(x + t - 5, y + 1, 4, 9);
+    return;
+  }
+
+  // trancada: a folha fecha o vão inteiro
+  if (deitada) {
+    ctx.fillStyle = escura;
+    ctx.fillRect(x, y + t - 9, comp, 12);
+    ctx.fillStyle = madeira;
+    ctx.fillRect(x + 1, y + t - 8, comp - 2, 9);
+    ctx.fillStyle = 'rgba(255,255,255,.25)';
+    ctx.fillRect(x + 1, y + t - 8, comp - 2, 2);
+    ctx.fillStyle = '#e8e2d4';                         // maçaneta
+    ctx.fillRect(x + comp / 2 - 8, y + t - 4, 5, 3);
+  } else {
+    ctx.fillStyle = escura;
+    ctx.fillRect(x + t - 9, y, 12, comp);
+    ctx.fillStyle = madeira;
+    ctx.fillRect(x + t - 8, y + 1, 9, comp - 2);
+    ctx.fillStyle = 'rgba(255,255,255,.25)';
+    ctx.fillRect(x + t - 8, y + 1, 2, comp - 2);
+    ctx.fillStyle = '#e8e2d4';
+    ctx.fillRect(x + t - 4, y + comp / 2 - 8, 3, 5);
+  }
+  // cadeado, para não depender de o desenho da folha ser óbvio
+  const cx = x + (deitada ? comp / 2 : t), cy = y + (deitada ? t : comp / 2);
+  ctx.fillStyle = 'rgba(38,34,52,.85)';
+  ctx.beginPath();
+  ctx.arc(cx, cy - 10, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ffd79a';
+  ctx.fillText('🔒', cx, cy - 9);
 }
 
 function arredondado(x, y, w, h, r) {
@@ -1119,7 +1518,7 @@ function desenharBolha(p) {
   ctx.lineTo(p.xr + 5, y + 24);
   ctx.lineTo(p.xr, y + 31);
   ctx.fill();
-  ctx.fillStyle = '#0b1120';
+  ctx.fillStyle = '#efe7dd';
   ctx.textBaseline = 'middle';
   ctx.fillText(texto, p.xr, y + 12);
 }
@@ -1172,8 +1571,8 @@ function atualizarBotoesMidia() {
   cam.classList.toggle('desligado', !Midia.ligado('video'));
   mic.title = Midia.ligado('audio') ? 'Desligar o microfone (M)' : 'Ligar o microfone (M)';
   cam.title = Midia.ligado('video') ? 'Desligar a câmera (V)' : 'Ligar a câmera (V)';
-  mic.textContent = Midia.ligado('audio') ? '🎤' : '🔇';
-  cam.textContent = Midia.ligado('video') ? '📹' : '🚫';
+  // o ícone de ligado e o de cortado moram os dois dentro do botão; quem
+  // escolhe qual aparece é a classe `desligado`, no CSS
   const btn = document.getElementById('btn-tela');
   btn.classList.toggle('ligado', !!Midia.telaStream);
   btn.title = Midia.telaStream ? 'Parar de compartilhar (T)' : 'Compartilhar tela (T)';
@@ -1193,6 +1592,34 @@ document.getElementById('btn-boneco').onclick = abrirEditor;
 document.getElementById('btn-editor').onclick = () => Editor.alternar();
 document.getElementById('zoom-mais').onclick = () => ajustarZoom(1.15);
 document.getElementById('zoom-menos').onclick = () => ajustarZoom(1 / 1.15);
+// No celular a gaveta começa FECHADA: o mapa é o que importa numa tela de mão.
+const NO_CELULAR = matchMedia('(max-width: 760px)').matches
+  || ('ontouchstart' in window && innerWidth < 900);
+
+// Painel da direita rebatível: o mapa cresce quando ele some. A escolha fica
+// guardada no navegador, senão a pessoa reabriria a página e teria de esconder
+// tudo de novo.
+const CHAVE_LATERAL = 'escritorio:lateral';
+function alternarLateral(mostrar) {
+  const app = document.getElementById('app');
+  const escondido = mostrar === undefined ? !app.classList.contains('sem-lateral') : !mostrar;
+  app.classList.toggle('sem-lateral', escondido);
+  const b = document.getElementById('btn-lateral');
+  if (b) b.title = escondido ? 'Mostrar o painel (Tab)' : 'Esconder o painel (Tab)';
+  localStorage.setItem(CHAVE_LATERAL, escondido ? 'fechado' : 'aberto');
+  if (typeof ajustarTela === 'function') ajustarTela();
+  window.dispatchEvent(new Event('resize'));
+}
+document.getElementById('btn-lateral').onclick = () => alternarLateral();
+const guardado = localStorage.getItem(CHAVE_LATERAL);
+if (guardado === 'fechado' || (!guardado && NO_CELULAR)) alternarLateral(false);
+
+// dedo não tem teclado: a dica muda de texto
+if (NO_CELULAR) {
+  const d = document.getElementById('dica');
+  if (d) d.innerHTML = 'Toque no chão para andar · toque numa pessoa para conversar';
+}
+
 document.getElementById('btn-reacao').onclick = reagir;
 document.getElementById('btn-reuniao').onclick = () => alternarReuniao();
 document.getElementById('btn-fechar-reuniao').onclick = fecharReuniao;
@@ -1413,8 +1840,26 @@ function desenharListaPessoas() {
     const zona = zonaDe(p.x, p.y);
     const li = document.createElement('li');
     li.innerHTML = `<img class="bolinha" src="${Boneco.retrato(p.aparencia)}" alt="">
-      <span>${escapar(p.nome)}${souEu ? ' (você)' : ''}</span>
+      <span>${escapar(p.nome)}${souEu ? ' (você)' : ''}${p.silenciado ? ' <b class="calado">calado</b>' : ''}</span>
       <span class="onde ${perto ? 'perto' : ''}">${(souEu ? Midia.telaStream : p.tela) ? '🖥️ ' : ''}${perto ? '🔊 perto' : (zona ? escapar(zona.nome) : 'corredor')}</span>`;
+    if (Jogo.admin && !souEu) {
+      // as duas ferramentas de dono de sala: calar e tirar de dentro
+      const acoes = document.createElement('span');
+      acoes.className = 'moderar';
+      const bt = (rotulo, titulo, fazer) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.textContent = rotulo; b.title = titulo;
+        b.onclick = fazer; acoes.appendChild(b);
+      };
+      bt(p.silenciado ? '🔈' : '🔇', p.silenciado ? 'Devolver a voz' : 'Calar',
+         () => enviar({ tipo: 'moderar', acao: p.silenciado ? 'devolver_voz' : 'silenciar', id: p.id }));
+      bt('⨯', 'Tirar do escritório', () => {
+        if (confirm(`Tirar ${p.nome} do escritório?`)) {
+          enviar({ tipo: 'moderar', acao: 'expulsar', id: p.id });
+        }
+      });
+      li.appendChild(acoes);
+    }
     ul.appendChild(li);
   }
   document.getElementById('pessoas-total').textContent = lista.length;

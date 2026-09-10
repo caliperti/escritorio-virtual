@@ -31,13 +31,22 @@ def cor_valida(valor: Any) -> bool:
     return isinstance(valor, str) and bool(HEX.match(valor))
 
 
+# O boneco tem 12 escolhas (corpo, pele, cabelo, barba, 4 peças de roupa e 4
+# cores) e o estúdio pode criar roupa com id comprido. O teto era 10 chaves de
+# 24 letras: cortava `corCalca` e `barba` de TODO mundo — a calça voltava na
+# cor padrão e a barba sumia, tanto para os outros quanto na conta salva.
+MAX_CHAVES_APARENCIA = 20
+MAX_VALOR_APARENCIA = 48
+
+
 def limpar_aparencia(bruto: Any) -> Dict[str, str]:
     """O catálogo de peles, cabelos e roupas vive no cliente (boneco.js) — aqui
     o servidor só garante que é um dicionário pequeno de texto curto. Valor
     desconhecido não quebra nada: o cliente cai no padrão sozinho."""
     if not isinstance(bruto, dict):
         return {}
-    return {str(c)[:16]: str(v)[:24] for i, (c, v) in enumerate(bruto.items()) if i < 10}
+    return {str(c)[:16]: str(v)[:MAX_VALOR_APARENCIA]
+            for i, (c, v) in enumerate(bruto.items()) if i < MAX_CHAVES_APARENCIA}
 
 
 @dataclass
@@ -55,6 +64,10 @@ class Participante:
     reacao: str = ""
     aparencia: Dict[str, str] = field(default_factory=dict)
     token: str = ""
+    conta: str = ""                      # chave da conta: é ela que possui a sala
+    visitante: bool = False              # entrou sem cadastro: olha, anda e conversa
+    admin: bool = False                  # manda no escritório inteiro
+    silenciado: bool = False             # calado pelo admin: não conecta áudio
     ws: Any = field(default=None, repr=False)
 
     def publico(self) -> Dict:
@@ -64,6 +77,9 @@ class Participante:
             "x": round(self.x, 1), "y": round(self.y, 1), "direcao": self.direcao,
             "mudo": self.mudo, "sem_camera": self.sem_camera, "tela": self.tela,
             "aparencia": self.aparencia,
+            "visitante": self.visitante,
+            "admin": self.admin,
+            "silenciado": self.silenciado,
             "zona": zona["id"] if zona else None,
         }
 
@@ -85,6 +101,8 @@ def se_ouvem(a: Participante, b: Participante) -> bool:
 class Sala:
     def __init__(self) -> None:
         self.participantes: Dict[str, Participante] = {}
+        # convite para entrar na sala de alguém, por sala: {zona_id: {id, ...}}
+        self._convidados: Dict[str, set] = {}
         self._trava = asyncio.Lock()
 
     # ---------- entrada e saída ----------
@@ -132,6 +150,8 @@ class Sala:
     async def sair(self, id_: str) -> None:
         async with self._trava:
             self.participantes.pop(id_, None)
+        for convidados in self._convidados.values():   # o convite morre com a sessão
+            convidados.discard(id_)
 
     # ---------- envio ----------
 
@@ -151,6 +171,34 @@ class Sala:
         await asyncio.gather(*(self.enviar(p, mensagem) for p in alvos))
         return [p.id for p in alvos]
 
+    # ---------- quem pode entrar na sala de alguém ----------
+    # O convite vale só enquanto a pessoa está conectada: some quando ela sai,
+    # e some quando o dono solta a sala. Não vira lista de permissões guardada
+    # em disco de propósito — bater na porta de novo custa um clique.
+
+    def convidados_da(self, zona_id: str) -> set:
+        return self._convidados.setdefault(zona_id, set())
+
+    def convidar(self, zona_id: str, id_participante: str) -> None:
+        self.convidados_da(zona_id).add(id_participante)
+
+    def esquecer_convite(self, zona_id: str, id_participante: str) -> None:
+        self.convidados_da(zona_id).discard(id_participante)
+
+    def zona_trancada_para(self, p: Participante, x: float, y: float) -> Optional[Dict]:
+        """A sala em (x, y) barra esta pessoa? Devolve a zona, ou None se pode
+        entrar. O que barra é a PORTA TRANCADA, não o fato de ter dono: sala com
+        dono e porta aberta é como uma sala de verdade com a porta encostada —
+        entra quem quiser."""
+        z = escritorio.zona_de(x, y)
+        if not z or not z.get("privada") or not z.get("dono") or not z.get("trancada"):
+            return None
+        if z["dono"] == p.conta:
+            return None
+        if p.id in self.convidados_da(z["id"]):
+            return None
+        return z
+
     # ---------- movimento ----------
 
     def mover(self, p: Participante, x: float, y: float, direcao: str) -> bool:
@@ -169,6 +217,11 @@ class Sala:
         # Quem ficou preso porque alguém colocou uma mesa em cima dele pode sair
         # andando; senão a única saída seria recarregar a página.
         if not mapa.livre(x, y) and mapa.livre(p.x, p.y):
+            return False
+        # Sala reivindicada é trancada: quem não é dono nem convidado esbarra na
+        # porta. Quem JÁ está dentro pode sair andando — senão o dono soltando o
+        # convite prenderia a visita lá dentro para sempre.
+        if self.zona_trancada_para(p, x, y) and not self.zona_trancada_para(p, p.x, p.y):
             return False
         p.x, p.y = x, y
         if direcao in ("cima", "baixo", "esquerda", "direita"):

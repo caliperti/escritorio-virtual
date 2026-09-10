@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Personagem — mostruário</title>
+<link rel="icon" href="/static/assets/favicon.png">
+<style>
+  body { margin: 0; background: #fbf6f1; color: #2c2521;
+         font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 22px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .aviso { color: #8b7b6d; margin: 0 0 6px; }
+  .atalho { margin: 0 0 18px; }
+  .atalho a { color: #f4691f; font-weight: 600; text-decoration: none; }
+  h2 { font-size: 15px; margin: 26px 0 10px; color: #f4691f;
+       border-bottom: 1px solid #f0dfcd; padding-bottom: 6px; }
+  .grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+  /* Modelos vêm GRANDES: a diferença entre gola V e gola redonda são uns poucos
+     pixels, e na miniatura pequena tudo parecia a mesma camiseta. */
+  .grade.grande { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; }
+  .grade.grande img { width: 112px; height: 217px; }
+  .peca { background: #fff; border: 1px solid #f0dfcd; border-radius: 12px; padding: 8px;
+          text-align: center; }
+  .peca img { display: block; margin: 0 auto 6px; image-rendering: pixelated;
+              width: 48px; height: 93px; }
+  .peca b { display: block; font-size: 12px; font-weight: 600; }
+  .peca span { display: block; font-size: 11px; color: #8b7b6d; }
+</style>
+</head>
+<body>
+<h1>Personagem — todas as roupas</h1>
+<p class="aviso" id="resumo">carregando…</p>
+<p class="atalho"><a href="/static/mostruario.html">→ ver o mostruário dos móveis</a></p>
+<div id="tudo"></div>
+
+<script src="/static/boneco.js"></script>
+<script>
+/* Mostra o guarda-roupa inteiro: cada tipo de roupa em cada cor, os cortes de
+ * cabelo, as barbas e os tons de pele. Serve para escolher sem ficar clicando
+ * peça por peça na tela de entrada. */
+const C = Boneco.CATALOGO, R = Boneco.ROTULOS;
+const BASE = { corpo: 'm', pele: C.pele[1], cabelo: 'parted', corCabelo: '#4a2f1b',
+               barba: 'nenhuma', camisaTipo: 'camisa', corCamisa: '#4f7fd9',
+               calcaTipo: 'calca', corCalca: '#3d4457',
+               sapatoTipo: 'sapato', corSapato: '#3a3a42', chapeuTipo: 'nenhum' };
+
+function rotulo(v) { return R[v] || v; }
+
+function secao(titulo, itens, grande) {
+  const h = document.createElement('h2');
+  h.textContent = titulo + ' · ' + itens.length;
+  document.getElementById('tudo').appendChild(h);
+  const g = document.createElement('div');
+  g.className = 'grade' + (grande ? ' grande' : '');
+  for (const { ap, nome, sub } of itens) {
+    const cel = document.createElement('div');
+    cel.className = 'peca';
+    const img = document.createElement('img');
+    img.src = Boneco.retratoCorpo(ap);
+    cel.appendChild(img);
+    const b = document.createElement('b'); b.textContent = nome; cel.appendChild(b);
+    if (sub) { const s = document.createElement('span'); s.textContent = sub; cel.appendChild(s); }
+    g.appendChild(cel);
+  }
+  document.getElementById('tudo').appendChild(g);
+  return itens.length;
+}
+
+Boneco.quandoCarregar(() => {
+  let n = 0;
+  // primeiro os modelos lado a lado, que é o que se quer comparar
+  n += secao('Roupa de cima — modelos',
+    C.camisaTipo.map((t) => ({ ap: { ...BASE, camisaTipo: t }, nome: rotulo(t) })), true);
+  n += secao('Roupa de baixo — modelos',
+    C.calcaTipo.map((t) => ({ ap: { ...BASE, calcaTipo: t }, nome: rotulo(t) })), true);
+  n += secao('Calçado — modelos',
+    C.sapatoTipo.map((t) => ({ ap: { ...BASE, sapatoTipo: t }, nome: rotulo(t) })), true);
+  n += secao('Cor do calçado',
+    C.corSapato.map((cor) => ({ ap: { ...BASE, sapatoTipo: 'sapato_tenis', corSapato: cor },
+                                nome: 'Tênis', sub: cor })));
+  n += secao('Cabeça — modelos',
+    C.chapeuTipo.map((t) => ({ ap: { ...BASE, chapeuTipo: t }, nome: rotulo(t) })), true);
+  n += secao('Cores de camisa', C.corCamisa.map((cor) => ({
+    ap: { ...BASE, corCamisa: cor }, nome: 'Camiseta', sub: cor })));
+  n += secao('Cores de calça', C.corCalca.map((cor) => ({
+    ap: { ...BASE, corCalca: cor }, nome: 'Calça', sub: cor })));
+  // depois cada modelo em todas as cores
+  for (const tipo of C.camisaTipo) {
+    n += secao('Roupa de cima — ' + rotulo(tipo),
+      C.corCamisa.map((cor) => ({ ap: { ...BASE, camisaTipo: tipo, corCamisa: cor },
+                                  nome: rotulo(tipo), sub: cor })));
+  }
+  for (const tipo of C.calcaTipo) {
+    n += secao('Roupa de baixo — ' + rotulo(tipo),
+      C.corCalca.map((cor) => ({ ap: { ...BASE, calcaTipo: tipo, corCalca: cor },
+                                 nome: rotulo(tipo), sub: cor })));
+  }
+  n += secao('Cortes de cabelo',
+    C.cabelo.map((k) => ({ ap: { ...BASE, cabelo: k }, nome: rotulo(k) })));
+  n += secao('Cores de cabelo',
+    C.corCabelo.map((cor) => ({ ap: { ...BASE, corCabelo: cor }, nome: cor })));
+  n += secao('Barbas',
+    C.barba.map((k) => ({ ap: { ...BASE, barba: k }, nome: rotulo(k) })));
+  n += secao('Tons de pele',
+    C.pele.map((cor) => ({ ap: { ...BASE, pele: cor }, nome: cor })));
+  n += secao('Tipo de corpo',
+    C.corpo.map((k) => ({ ap: { ...BASE, corpo: k }, nome: rotulo(k) })));
+
+  const combos = C.camisaTipo.length * C.corCamisa.length
+               * C.calcaTipo.length * C.corCalca.length
+               * C.sapatoTipo.length * C.corSapato.length * C.chapeuTipo.length
+               * C.cabelo.length * C.corCabelo.length * C.barba.length
+               * C.pele.length * C.corpo.length;
+  document.getElementById('resumo').textContent =
+    n + ' variações desenhadas nesta página · ' + combos.toLocaleString('pt-BR')
+    + ' personagens diferentes possíveis somando tudo';
+});
+</script>
+</body>
+</html>

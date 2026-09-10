@@ -9,6 +9,7 @@ Senha nunca é guardada: fica só o hash PBKDF2 com sal por conta.
 """
 
 import hashlib
+import os
 import json
 import logging
 import secrets
@@ -20,8 +21,27 @@ from typing import Dict, Optional
 log = logging.getLogger("escritorio.contas")
 
 ARQUIVO = Path(__file__).parent / "contas.json"
+# Quantas contas de MEMBRO a sala aceita. Passou disso, quem chega entra como
+# visitante: anda, vê e conversa, mas não mexe no escritório.
+MAX_CONTAS = 10
+
+# Quem manda no escritório. É a CHAVE da conta (nome sem acento, minúsculo), e
+# fica no código de propósito: administrador não se ganha por cadastro, se ganha
+# por decisão de quem é dono da sala. Dá para acrescentar pelo ambiente também.
+# SÓ o e-mail completo. O apelido curto ficou de fora de propósito: qualquer
+# pessoa com o código da sala podia se cadastrar com ele e entrar como
+# administrador, porque admin é decidido pelo nome. E-mail completo ninguém
+# adivinha por acaso, e a conta já está criada.
+ADMINS = {"gulisboa5@hotmail.com"}
+
 ITERACOES = 120_000
 VALIDADE_TOKEN = 60 * 60 * 24 * 30          # 30 dias logado
+
+
+def eh_admin(nome_ou_chave: str) -> bool:
+    chave = _chave(nome_ou_chave or "")
+    extras = {_chave(n) for n in os.environ.get("ADMINS", "").split(",") if n.strip()}
+    return chave in ADMINS or chave in extras
 
 
 def _chave(nome: str) -> str:
@@ -61,9 +81,18 @@ class Contas:
     def existe(self, nome: str) -> bool:
         return _chave(nome) in self.contas
 
+    def cheio(self) -> bool:
+        return len(self.contas) >= MAX_CONTAS
+
+    def vagas(self) -> int:
+        return max(0, MAX_CONTAS - len(self.contas))
+
     def registrar(self, nome: str, senha: str, aparencia: Dict, cor: str) -> Optional[str]:
         nome = nome.strip()[:24]
-        if len(nome) < 2 or len(senha) < 4 or self.existe(nome):
+        # A chave também precisa de 2 letras: nome só de emoji ou de ideograma
+        # virava chave vazia, e duas contas assim eram a mesma conta.
+        if (len(nome) < 2 or len(_chave(nome)) < 2 or len(senha) < 4
+                or self.existe(nome) or self.cheio()):
             return None
         sal = secrets.token_hex(16)
         self.contas[_chave(nome)] = {
@@ -107,7 +136,12 @@ class Contas:
         if nome:
             novo = nome.strip()[:24]
             outra = _chave(novo)
-            if novo and (outra == chave or outra not in self.contas):
+            # Trocar o nome não pode dar poder: o administrador é reconhecido
+            # pela chave, então um membro que se renomeasse para um nome de
+            # ADMINS (livre) virava administrador na próxima entrada.
+            reservado = eh_admin(outra) and not eh_admin(chave)
+            if (novo and len(outra) >= 2 and not reservado
+                    and (outra == chave or outra not in self.contas)):
                 if outra != chave:                    # mudou de nome: muda a chave
                     self.contas[outra] = self.contas.pop(chave)
                     for t, c in list(self.tokens.items()):

@@ -6,3 +6,4 @@ __pycache__/
 endereco.txt
 endereco.log
 backend/contas.json
+backend/pecas.json

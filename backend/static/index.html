@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Escritório Virtual</title>
+<title>Gather da Shopee</title>
+<link rel="icon" href="/static/assets/favicon.png">
 <link rel="stylesheet" href="/static/estilo.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏢</text></svg>">
 </head>
@@ -12,13 +13,16 @@
 <!-- ---------- tela de entrada ---------- -->
 <div id="entrada" class="entrada">
   <div class="cartao">
-    <h1>🏢 Escritório Virtual</h1>
-    <p class="sub">Ande pelo escritório. Chegou perto de alguém, a conversa abre sozinha.</p>
+    <div class="marca">
+      <img src="/static/assets/logo.png" alt="Gather da Shopee" width="200" height="200">
+    </div>
 
     <div class="abas-conta">
       <button id="aba-entrar" type="button" aria-pressed="true">Entrar</button>
       <button id="aba-criar" type="button" aria-pressed="false">Criar conta</button>
+      <button id="aba-visitante" type="button" aria-pressed="false">Visitante</button>
     </div>
+    <p id="vagas" class="vagas"></p>
 
     <label>Seu nome
       <input id="campo-nome" maxlength="24" placeholder="Como te chamam" autocomplete="username">
@@ -29,10 +33,19 @@
              placeholder="mínimo 4 caracteres">
     </label>
 
-    <label id="linha-convite" hidden>Código de convite
+    <label id="linha-convite" hidden>Código da sala
       <input id="campo-convite" type="password" autocomplete="off"
              placeholder="o código que te mandaram">
     </label>
+
+    <div id="bonecos-visitante" class="bonecos-visitante" hidden>
+      <button type="button" data-boneco="homem" aria-pressed="true">
+        <img alt=""><span>Homem</span>
+      </button>
+      <button type="button" data-boneco="mulher" aria-pressed="false">
+        <img alt=""><span>Mulher</span>
+      </button>
+    </div>
 
     <div class="editor">
       <div class="previa">
@@ -43,7 +56,6 @@
     </div>
 
     <button id="btn-entrar" class="principal">Entrar com câmera e microfone</button>
-    <button id="btn-entrar-mudo" class="secundario">Entrar só olhando</button>
     <button id="btn-sair-conta" class="secundario oculto">Sair desta conta</button>
     <p id="aviso-entrada" class="aviso"></p>
   </div>
@@ -53,19 +65,45 @@
 <div id="app" class="app oculto">
   <header class="barra">
     <div class="barra-esq">
-      <strong>🏢 Escritório</strong>
+      <img class="logo-barra" src="/static/assets/logo.png" alt="Gather da Shopee">
       <span id="zona-atual" class="chip">Recepção</span>
       <span id="contagem" class="chip fraco">1 na sala</span>
     </div>
     <div class="barra-dir">
-      <button id="btn-mic" class="icone" title="Microfone (M)">🎤</button>
-      <button id="btn-cam" class="icone" title="Câmera (V)">📹</button>
-      <button id="btn-tela" class="icone" title="Compartilhar tela (T)">🖥️</button>
-      <button id="btn-reuniao" class="icone" title="Modo reunião — todos em grade (C)">👥</button>
-      <button id="btn-boneco" class="icone" title="Editar meu boneco (B)">🧑‍🎨</button>
-      <button id="btn-editor" class="icone" title="Editar o escritório (E)">🏗️</button>
-      <button id="btn-reacao" class="icone" title="Reagir (R)">👋</button>
-      <button id="btn-sair" class="icone perigo" title="Sair">🚪</button>
+      <!-- Ícones desenhados em SVG, não emoji: emoji muda de cara em cada
+           sistema e não dá para pintar de laranja quando está ligado. -->
+      <div class="grupo-icones">
+        <button id="btn-mic" class="icone" title="Microfone (M)" aria-label="Microfone">
+          <svg class="on" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+          <svg class="off" viewBox="0 0 24 24"><path d="M9 9v3a3 3 0 0 0 4.9 2.3"/><path d="M15 11.4V6a3 3 0 0 0-5.7-1.3"/><path d="M5 11a7 7 0 0 0 10.5 6"/><path d="M19 11a7 7 0 0 1-.7 3"/><path d="M12 18v3"/><path d="M3 3l18 18"/></svg>
+        </button>
+        <button id="btn-cam" class="icone" title="Câmera (V)" aria-label="Câmera">
+          <svg class="on" viewBox="0 0 24 24"><rect x="3" y="6" width="12" height="12" rx="2"/><path d="M15 10.5l6-3.5v10l-6-3.5z"/></svg>
+          <svg class="off" viewBox="0 0 24 24"><path d="M15 10.5l6-3.5v10l-3-1.7"/><path d="M13 6H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-2"/><path d="M3 3l18 18"/></svg>
+        </button>
+        <button id="btn-tela" class="icone" title="Compartilhar tela (T)" aria-label="Compartilhar tela">
+          <svg viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8"/><path d="M12 8v5"/><path d="M9.5 10.5L12 8l2.5 2.5"/></svg>
+        </button>
+      </div>
+      <div class="grupo-icones">
+        <button id="btn-reuniao" class="icone" title="Modo reunião — todos em grade (C)" aria-label="Modo reunião">
+          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="3" y="13" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/></svg>
+        </button>
+        <button id="btn-boneco" class="icone" title="Editar meu boneco (B)" aria-label="Editar meu boneco">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+        </button>
+        <button id="btn-editor" class="icone" title="Editar o escritório (E)" aria-label="Editar o escritório">
+          <svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V9l7-5 7 5v12"/><path d="M10 21v-6h4v6"/></svg>
+        </button>
+      </div>
+      <div class="grupo-icones">
+        <button id="btn-reacao" class="icone" title="Reagir (R)" aria-label="Reagir">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01"/><path d="M15 9.5h.01"/></svg>
+        </button>
+        <button id="btn-sair" class="icone perigo" title="Sair" aria-label="Sair">
+          <svg viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/></svg>
+        </button>
+      </div>
     </div>
   </header>
 
@@ -84,7 +122,10 @@
     </div>
   </main>
 
-  <aside class="lateral">
+  <button id="btn-lateral" class="puxador" title="Esconder o painel (Tab)" aria-label="Esconder o painel">
+    <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+  </button>
+  <aside class="lateral" id="lateral">
     <section class="pessoas">
       <h2>Na sala <span id="pessoas-total">1</span></h2>
       <ul id="lista-pessoas"></ul>

@@ -10,3 +10,9 @@ o CREDITS.csv do projeto: Stephen Challener (Redshrike), Johannes Sjölund (wula
 Matthew Krohn (makrohn), Marcel van de Steeg (MadMarcel), Manuel Riecke (MrBeast),
 Joe White, Thane Brimhall (pennomi), bluecarrot16, Nila122, David Conway Jr. (JaidynReiman)
 e demais colaboradores do LPC.
+
+Roupas acrescentadas depois (manga longa, polo, calça social, jeans, bermuda e
+saia) vêm do mesmo repositório e da mesma licença, das pastas
+spritesheets/torso/clothes e spritesheets/legs. Só entraram as peças que têm as
+duas folhas de que precisamos, andando e sentado, para a roupa não trocar
+sozinha quando a pessoa senta.
