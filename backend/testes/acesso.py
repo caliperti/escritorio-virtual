@@ -1,4 +1,8 @@
-"""Quem entra e o que cada um pode: membro, visitante e o teto de 10 contas.
+"""Quem entra e o que cada um pode: membro, visitante e o teto de contas.
+
+O teto é opcional (MAX_CONTAS=0 é sem limite, o padrão). Este teste sobe o
+servidor com MAX_CONTAS=10 de propósito, para provar que o teto funciona
+quando alguém quiser usar.
 
     ../.venv/bin/python testes/acesso.py
 
@@ -147,7 +151,7 @@ if MAPA.exists():
 servidor = subprocess.Popen(
     [str(RAIZ / ".venv/bin/uvicorn"), "main:app", "--host", "127.0.0.1", "--port", str(PORTA)],
     cwd=str(RAIZ), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    env={**os.environ, "SENHA": CODIGO})
+    env={**os.environ, "SENHA": CODIGO, "MAX_CONTAS": "10"})
 try:
     for _ in range(60):
         try:

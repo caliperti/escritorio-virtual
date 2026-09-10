@@ -21,9 +21,14 @@ from typing import Dict, Optional
 log = logging.getLogger("escritorio.contas")
 
 ARQUIVO = Path(__file__).parent / "contas.json"
-# Quantas contas de MEMBRO a sala aceita. Passou disso, quem chega entra como
-# visitante: anda, vê e conversa, mas não mexe no escritório.
-MAX_CONTAS = 10
+# Quantas contas de MEMBRO a sala aceita. **0 quer dizer sem limite**, que é o
+# padrão: quem tem o código da sala se cadastra. Pondo um número em MAX_CONTAS
+# (variável de ambiente), quem chega depois de esgotar entra como visitante —
+# anda, vê e conversa, mas não mexe no escritório.
+try:
+    MAX_CONTAS = max(0, int(os.environ.get("MAX_CONTAS", "0")))
+except ValueError:
+    MAX_CONTAS = 0
 
 # Quem manda no escritório. É a CHAVE da conta (nome sem acento, minúsculo), e
 # fica no código de propósito: administrador não se ganha por cadastro, se ganha
@@ -82,10 +87,11 @@ class Contas:
         return _chave(nome) in self.contas
 
     def cheio(self) -> bool:
-        return len(self.contas) >= MAX_CONTAS
+        return MAX_CONTAS > 0 and len(self.contas) >= MAX_CONTAS
 
-    def vagas(self) -> int:
-        return max(0, MAX_CONTAS - len(self.contas))
+    def vagas(self) -> Optional[int]:
+        """Quantas sobram, ou None quando não há limite."""
+        return None if MAX_CONTAS == 0 else max(0, MAX_CONTAS - len(self.contas))
 
     def registrar(self, nome: str, senha: str, aparencia: Dict, cor: str) -> Optional[str]:
         nome = nome.strip()[:24]

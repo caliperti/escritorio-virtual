@@ -263,7 +263,9 @@ async function conferirVagas() {
   try {
     const c = await (await fetch('/config')).json();
     const linha = document.getElementById('vagas');
-    if (!linha || typeof c.vagas !== 'number') return;
+    if (!linha) return;
+    // vagas nulo = sem limite: a linha some, não faz sentido contar o infinito
+    if (c.vagas === null || c.vagas === undefined) { linha.textContent = ''; return; }
     if (c.vagas > 0) {
       linha.innerHTML = `<b>${c.vagas}</b> de ${c.total_membros} vagas de membro livres`;
     } else {
