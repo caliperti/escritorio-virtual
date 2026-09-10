@@ -494,9 +494,14 @@ body.editando #tela { cursor: crosshair; }
 .menu-movel .cabeca img { width: 34px; height: 34px; }
 .menu-movel .cabeca div { display: grid; }
 .menu-movel .cabeca span { font-size: 11px; color: var(--fraco); }
-.menu-movel .acoes { display: flex; gap: 5px; }
+/* Cinco botoes com icone + texto nao cabem nos 292px do cartao. Sem quebra de
+   linha e com `min-width` automatico o flex nao encolhe ninguem, e o ultimo
+   botao (Remover) saia PARA FORA do cartao, solto em cima do mapa. Quebrar em
+   duas linhas mantem o rotulo inteiro; `min-width: 0` deixa a linha apertar
+   quando o cartao encolhe no celular. */
+.menu-movel .acoes { display: flex; gap: 5px; flex-wrap: wrap; }
 .menu-movel .acoes button {
-  flex: 1; background: var(--painel-2); border: 1px solid var(--borda); color: var(--texto);
+  flex: 1 1 auto; min-width: 0; background: var(--painel-2); border: 1px solid var(--borda); color: var(--texto);
   border-radius: 8px; padding: 6px 4px; font-size: 11.5px; cursor: pointer;
 }
 .menu-movel .acoes button:hover { background: var(--acento-claro); }
