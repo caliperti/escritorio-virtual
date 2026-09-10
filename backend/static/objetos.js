@@ -111,6 +111,52 @@ const Objetos = {
   VISTAS: ['frente', 'direita', 'tras', 'esquerda'],
   _vista: 'frente',
 
+  /** Coisas de mesa que ficam DEITADAS (teclado, mouse, papel): estas giram de
+   *  verdade — teclado virado para a esquerda é teclado em pé no desenho.
+   *  Continuam em EM_PE para o espaço no mapa (são todas 1x1), só o desenho
+   *  roda. Sem isto, girar o teclado no editor não mudava nada na tela. */
+  DEITADOS: new Set(['teclado', 'teclado_gamer', 'teclado_branco', 'mouse', 'mouse_gamer',
+                     'papeis', 'bloco_notas', 'porta_documentos', 'dock', 'notebook_fechado',
+                     'livros', 'telefone', 'caneca']),
+
+  /** Telas de chão: giram como os monitores — de lado viram perfil, de costas
+   *  mostram a traseira. Rodar a arte punha a TV de ponta-cabeça no giro 2 e
+   *  deitada no chão nos giros 1 e 3. O espaço no mapa continua trocando de
+   *  lado (não estão em EM_PE), então de perfil a TV ocupa 1x2. */
+  VIRA_VISTA: new Set(['tv', 'tv_grande']),
+
+  /** Peças que ficam EM PÉ no chão: a arte nunca deita. Girada, entra em pé
+   *  na caixa que o giro dá (a estante vira uma estante estreita, a geladeira
+   *  uma geladeira larga) e de 180° em diante fica espelhada. Rodar a arte
+   *  punha a geladeira deitada no chão, o abajur de lado e a planta com o
+   *  vaso para cima. */
+  NAO_DEITA: new Set(['armario', 'arquivo', 'estante', 'estante_alta', 'aparador', 'geladeira',
+                      'frigobar', 'bebedouro', 'cafeteira', 'maquina_cafe', 'luminaria',
+                      'planta', 'planta_alta', 'monstera', 'espada', 'palmeira', 'arvore',
+                      'arbusto', 'microondas', 'frutas', 'relogio',
+                      'mesa_redonda', 'mesa_centro_redonda',
+                      'narguile', 'narguile_azul', 'narguile_preto', 'narguile_moderno',
+                      'narguile_premium', 'narguile_pequeno']),
+
+  /** Das peças em pé, as altas e finas: numa caixa deitada (1x2 virou 2x1) o
+   *  desenho mantém a proporção, centrado, em vez de esticar — o narguilé
+   *  esticado para 2x1 virava uma pilha de discos. */
+  PROPORCAO_FIXA: new Set(['narguile', 'narguile_azul', 'narguile_preto', 'narguile_moderno',
+                           'narguile_premium']),
+
+  /** O que roda INTEIRO em qualquer giro (inclusive 180°): o que é rente ao
+   *  chão ou é uma placa — tapete, palco, biombo — e o que está em `DEITADOS`.
+   *  O resto espelha no 180°, porque rodar punha a faceta da frente em cima. */
+  RODA_INTEIRO: new Set(['tapete', 'tapete_redondo', 'tapete_azul', 'tapete_verde', 'tapete_cinza',
+                         'tapete_grande', 'mousepad', 'palco', 'divisoria']),
+
+  /** Assento roda de verdade: nele o encosto é que diz para onde a pessoa
+   *  olha, e um sofá de 180° tem de ficar de costas para quem vê. */
+  _assento(tipo) { return /^(cadeira|gamer_|sofa|poltrona|banco|banqueta|puff)/.test(tipo); },
+  _roda(tipo) {
+    return this._assento(tipo) || this.DEITADOS.has(tipo) || this.RODA_INTEIRO.has(tipo);
+  },
+
   /** Fileiras de monitor: as únicas peças de ficar em pé que se enfileiram no
    *  outro eixo quando a mesa está deitada. */
   // `monitor_ultra` estava no servidor e faltava aqui: girado, o cliente desenhava
@@ -220,6 +266,11 @@ const Objetos = {
     narguile_moderno: { e: 5, c: '#b9bdc6', i: 11 },
     narguile_premium: { e: 5, c: '#b9bdc6', i: 11 },
     narguile_pequeno: { e: 3, c: '#b9bdc6', i: 11 },
+    // faltavam: o aparador é um armário baixo, o pebolim e o banco têm a
+    // altura de uma mesa e de um sofá — sem corpo ficavam rentes ao chão
+    aparador:     { e: 5, c: '#caa274', i: 3 },
+    pebolim:      { e: 3, c: '#a9835a', i: 3 },
+    banco:        { e: 2, c: '#caa274', i: 4 },
   },
 
   /* ---------- peças de imagem, criadas no estúdio ----------
@@ -268,15 +319,29 @@ const Objetos = {
     if (!this.SEM_SOMBRA.has(tipo)) this.sombraChao(c, x, y, w, h);
     const alto = this.usarAltura === false ? null : this.ALTOS[tipo];
     if (alto) {
-      // o corpo: a lateral da peça, do chão até onde a arte sobe
+      // o corpo: a lateral da peça, do chão até onde a arte sobe. Acompanha a
+      // largura da ARTE, não da caixa: o narguilé girado é mais fino que ela.
+      const arte = this._caixaDaArte(tipo, x, y, w, h, giro);
       const i = alto.i === undefined ? 3 : alto.i;
-      this.ret(c, x + i, y + h - alto.e - 5, w - i * 2, alto.e + 3, 3, this.traco(alto.c));
-      this.ret(c, x + i + 1, y + h - alto.e - 4, w - i * 2 - 2, alto.e + 1, 2, this.sombra(alto.c, .3));
+      this.ret(c, arte.x + i, y + h - alto.e - 5, arte.w - i * 2, alto.e + 3, 3, this.traco(alto.c));
+      this.ret(c, arte.x + i + 1, y + h - alto.e - 4, arte.w - i * 2 - 2, alto.e + 1, 2,
+               this.sombra(alto.c, .3));
       c.save();
       c.translate(0, -alto.e);
     }
     this._pintar(c, tipo, x, y, w, h, giro);
     if (alto) c.restore();
+  },
+
+  /** Onde a arte cai dentro da caixa ocupada. Só muda para as peças de
+   *  `PROPORCAO_FIXA` numa caixa deitada: elas ficam altas e finas no meio. */
+  _caixaDaArte(tipo, x, y, w, h, giro) {
+    const g = (((giro | 0) % 4) + 4) % 4;
+    if ((g % 2) && w > h && this.PROPORCAO_FIXA.has(tipo)) {
+      const lw = h / 2;
+      return { x: x + (w - lw) / 2, y, w: lw, h };
+    }
+    return { x, y, w, h };
   },
 
   _pintar(c, tipo, x, y, w, h, giro) {
@@ -286,19 +351,32 @@ const Objetos = {
       if (f) f.call(this, c, px, py, pw, ph);
       else this.bloco(c, px + 2, py + 2, pw - 4, ph - 4, this.TAMPO);
     };
+    // espelho horizontal: a peça "virada para o outro lado" sem sair do 3/4
+    const espelhar = (px, py, pw, ph) => {
+      c.save(); c.translate(px + pw, py); c.scale(-1, 1);
+      pintar(0, 0, pw, ph);
+      c.restore();
+    };
     if (!g) { pintar(x, y, w, h); return; }
-    if (this.EM_PE.has(tipo)) {
+    if ((this.EM_PE.has(tipo) && !this.DEITADOS.has(tipo)) || this.VIRA_VISTA.has(tipo)) {
       // fica de pé: muda para onde olha, não a inclinação. A caixa já vem
       // girada, então o desenho só precisa se acomodar nela.
       this._vista = this.VISTAS[g];
-      if (this._vista === 'esquerda') {          // o perfil do outro lado é o espelho
-        c.save(); c.translate(x + w, y); c.scale(-1, 1);
-        pintar(0, 0, w, h);
-        c.restore();
-      } else {
-        pintar(x, y, w, h);
-      }
+      if (this._vista === 'esquerda') espelhar(x, y, w, h);   // o perfil do outro lado é o espelho
+      else pintar(x, y, w, h);
       this._vista = 'frente';
+      return;
+    }
+    if (this.NAO_DEITA.has(tipo)) {
+      // em pé no chão: entra em pé na caixa do giro; de 180° em diante, espelhada
+      const a = this._caixaDaArte(tipo, x, y, w, h, g);
+      if (g >= 2) espelhar(a.x, a.y, a.w, a.h); else pintar(a.x, a.y, a.w, a.h);
+      return;
+    }
+    if (g === 2 && !this._roda(tipo)) {
+      // 180° é espelho, não cambalhota: rodar a arte punha a faceta da frente
+      // em cima e a luz de cima embaixo — a mesa ficava de ponta-cabeça.
+      espelhar(x, y, w, h);
       return;
     }
     const lw = (g % 2) ? h : w;                  // tamanho do desenho sem girar
@@ -336,13 +414,18 @@ const Objetos = {
       this.ret(c, x + 10, y + 9, w - 20, h - 22, 6, this.luz(cor, 0.18));
     },
     mesa_redonda(c, x, y, w, h) {
-      const cor = this.TAMPO;
-      const cx = x + w / 2, cy = y + h / 2 + 2, rx = w / 2 - 5, ry = h / 2 - 9;
+      // Tampo redondo em 3/4: elipse achatada com a faceta da frente embaixo,
+      // como a mesa oval. A versão anterior era quase um círculo com brilho de
+      // esfera — parecia uma bola de bilhar em cima de um pé.
+      const cor = this.TAMPO, f = this.FRENTE, cx = x + w / 2, cy = y + h * 0.5;
+      const rx = w / 2 - 5, ry = h * 0.3;
       this.ret(c, cx - 3, cy, 6, h / 2 - 6, 2, this.PE);                  // pé
-      this.elipse(c, cx, cy + h / 4, rx * 0.4, 3, this.sombra(cor, 0.3));
-      this.elipse(c, cx, cy + 3, rx, ry, this.traco(cor));
-      this.elipse(c, cx, cy, rx - 1, ry - 1, cor);
-      this.elipse(c, cx - rx * 0.3, cy - ry * 0.35, rx * 0.35, ry * 0.28, this.luz(cor, 0.5));
+      this.elipse(c, cx, y + h - 6, rx * 0.45, 3, this.traco(this.PE));   // base do pé
+      this.elipse(c, cx, y + h - 7, rx * 0.45 - 1, 2.5, this.PE);
+      this.elipse(c, cx, cy, rx, ry, this.traco(cor));
+      this.elipse(c, cx, cy, rx - 1, ry - 1, this.sombra(cor, 0.28));      // faceta da frente
+      this.elipse(c, cx, cy - f / 2, rx - 1, ry - 1 - f / 2, cor);        // tampo
+      this.elipse(c, cx - rx * 0.35, cy - ry * 0.6, rx * 0.25, 3, this.luz(cor, 0.5));
     },
     balcao(c, x, y, w, h) {
       this.bloco(c, x + 1, y + 2, w - 2, h - 4, this.MADEIRA, 3);
@@ -437,8 +520,10 @@ const Objetos = {
     },
     mesa_centro_redonda(c, x, y, w, h) {
       // Mesa de centro redonda e baixa: tampo de madeira num pé de metal.
+      // `ry` bem menor que `rx`: com os dois quase iguais o tampo virava uma
+      // bola de madeira, e não um tampo visto em 3/4.
       const cor = this.MADEIRA, f = 5, cx = x + w / 2, cy = y + h / 2;
-      const rx = w / 2 - 8, ry = h / 2 - 9;
+      const rx = w / 2 - 8, ry = h * 0.27;
       this.elipse(c, cx, y + h - 6, rx * 0.5, 3, this.traco(this.METAL));          // base do pé
       this.elipse(c, cx, y + h - 7, rx * 0.5 - 1, 2.5, this.METAL);
       this.elipse(c, cx, cy + 1, rx, ry, this.traco(cor));
@@ -629,12 +714,15 @@ const Objetos = {
       this.ret(c, x + 5, y + h - 11, w - 10, 4, 2, '#8f887b');
     },
     tv(c, x, y, w, h) {
-      this.ret(c, x + w / 2 - 9, y + h - 9, 18, 4, 2, this.ESCURO);
+      // Gira como os monitores (VIRA_VISTA): de lado é o perfil, de costas a
+      // traseira sai de `_tela`. Antes a arte rodava e a TV ficava de cabeça
+      // para baixo no giro 2.
+      if (this._vista === 'direita' || this._vista === 'esquerda') {
+        this._perfil(c, x + 2, y + 3, w - 4, h - 9, this.ESCURO); return;
+      }
+      this.ret(c, x + w / 2 - 9, y + h - 9, 18, 4, 2, this.ESCURO);           // pé
       this.ret(c, x + 3, y + 3, w - 6, h - 13, 3, this.ESCURO);
-      this.ret(c, x + 6, y + 6, w - 12, h - 19, 2, this.mix(this.TELA, this.ESCURO, 0.45));
-      c.save(); c.globalAlpha = 0.5;
-      this.ret(c, x + 8, y + 8, (w - 16) * 0.45, h - 23, 1, this.luz(this.TELA, 0.4));
-      c.restore();
+      this._tela(c, x + 6, y + 6, w - 12, h - 19, 'video');
     },
     tapete(c, x, y, w, h) { this._tapete(c, x, y, w, h, '#c9bcd8'); },
     tapete_azul(c, x, y, w, h) { this._tapete(c, x, y, w, h, '#a8c4e8'); },
@@ -692,9 +780,11 @@ const Objetos = {
       this._narguile(c, x, y, w, h, { ouro: '#c8ccd4', ouroEsc: '#8d939e', vidro: '#3a7f77' });
     },
     narguile_pequeno(c, x, y, w, h) {
-      // o pequeno é o mesmo desenho numa caixa mais baixa e centrada
-      c.save(); c.translate(x + w * 0.14, y + h * 0.08);
-      this._narguile(c, 0, 0, w * 0.72, h * 1.5, { vidro: '#8a4a7a', semFumaca: true });
+      // O mesmo desenho numa caixa de UM tile: o grande é 1x2, então aqui ele
+      // entra com metade da largura e a altura do tile. A versão anterior
+      // desenhava com h*1.5 e o vaso caía inteiro no tile de baixo.
+      c.save(); c.translate(x + w * 0.22, y + 1);
+      this._narguile(c, 0, 0, w * 0.56, h - 2, { vidro: '#8a4a7a', semFumaca: true });
       c.restore();
     },
     narguile_premium(c, x, y, w, h) {
@@ -1036,7 +1126,7 @@ const Objetos = {
         this._perfil(c, x, y, w, h, '#e6e4df'); return;
       }
       const cor = '#eceae5';
-      this.ret(c, x + w / 2 - 6, y + h - 3, 12, 4, 2, this.sombra(cor, 0.2));
+      this.ret(c, x + w / 2 - 6, y + h - 4, 12, 4, 2, this.sombra(cor, 0.2));   // base rente ao tile
       this.ret(c, x + w / 2 - 2.5, y + h - 7, 5, 5, 1, this.sombra(cor, 0.12));
       this.ret(c, x + 2, y + 1, w - 4, h - 7, 3, this.traco(cor));
       this.ret(c, x + 3, y + 2, w - 6, h - 9, 2, cor);
@@ -1086,6 +1176,9 @@ const Objetos = {
     },
     tv_grande(c, x, y, w, h) {
       const cor = this.ESCURO;
+      if (this._vista === 'direita' || this._vista === 'esquerda') {        // de lado: perfil
+        this._perfil(c, x + 2, y + 3, w - 4, h - 9, cor); return;
+      }
       this.ret(c, x + 2, y + h * 0.18, w - 4, h * 0.6, 3, this.traco(cor));
       this.ret(c, x + 3, y + h * 0.2, w - 6, h * 0.56, 2, cor);
       this._tela(c, x + 5, y + h * 0.24, w - 10, h * 0.48, 'video');
@@ -1240,7 +1333,8 @@ const Objetos = {
       const cx = x + w / 2, base = y + h - 8;
       this._vaso(c, cx, base, 8);
       const v = this.VERDE;
-      for (const [dx, dy, r, ang] of [[-8, 0.42, 10, -0.5], [8, 0.4, 10, 0.5],
+      // folhas laterais em ±6 com raio 9.5: em ±8 com raio 10 saíam 2px do tile
+      for (const [dx, dy, r, ang] of [[-6, 0.42, 9.5, -0.5], [6, 0.4, 9.5, 0.5],
                                       [0, 0.24, 11, 0], [-5, 0.6, 8, -0.3], [6, 0.62, 8, 0.3]]) {
         const fx = cx + dx, fy = y + h * dy;
         this.elipse(c, fx, fy, r, r * 0.82, this.traco(v));
@@ -1258,8 +1352,11 @@ const Objetos = {
     espada(c, x, y, w, h) {
       const cx = x + w / 2, base = y + h - 7;
       this._vaso(c, cx, base, 6.5);
-      for (const [dx, alt, incl] of [[-4, 20, -0.22], [-1.5, 25, -0.08],
-                                     [1.5, 27, 0.06], [4, 21, 0.2], [0, 23, 0]]) {
+      // as folhas nascem em base-6 = y+19: com 19px de altura a mais alta
+      // encosta no topo do tile e não invade o de cima (antes iam a 27px e
+      // saíam 8px do tile, cortadas na miniatura)
+      for (const [dx, alt, incl] of [[-4, 14, -0.22], [-1.5, 17, -0.08],
+                                     [1.5, 19, 0.06], [4, 15, 0.2], [0, 16, 0]]) {
         c.save();
         c.translate(cx + dx, base - 6);
         c.rotate(incl);
@@ -1467,40 +1564,6 @@ const Objetos = {
 
   /* ---------- peças auxiliares ---------- */
 
-  /** Tapete: três camadas rasas, sem volume — ele mora na camada do piso.
-   *  `luxo` acrescenta a borda dupla do tapete grande. */
-  _tapete(c, x, y, w, h, cor, luxo) {
-    this.ret(c, x + 2, y + 2, w - 4, h - 4, 8, this.sombra(cor, 0.18));
-    this.ret(c, x + 4, y + 4, w - 8, h - 8, 6, cor);
-    this.ret(c, x + 12, y + 10, w - 24, h - 20, 4, this.luz(cor, 0.35));
-    if (luxo) this.ret(c, x + 18, y + 15, w - 36, h - 30, 3, this.sombra(cor, 0.1));
-  },
-
-  /** Porta vista de cima: batente, folha e maçaneta. `opc.vidro` deixa a folha
-   *  translúcida; `opc.mao` (+1 ou -1) diz de que lado fica a dobradiça, que é o
-   *  que faz a porta dupla abrir para os dois lados. */
-  _porta(c, x, y, w, h, cor, opc) {
-    opc = opc || {};
-    const mao = opc.mao || 1;
-    const topo = y + h * 0.3, alt = h * 0.42;
-    this.ret(c, x, topo - 2, 2.5, alt + 4, 1, this.TAMPO_ESC);              // batentes
-    this.ret(c, x + w - 2.5, topo - 2, 2.5, alt + 4, 1, this.TAMPO_ESC);
-    this.ret(c, x + 2, topo, w - 4, alt, 2, this.traco(cor));
-    this.ret(c, x + 3, topo + 1, w - 6, alt - 2, 2, opc.vidro ? 'rgba(188,214,232,.7)' : cor);
-    if (opc.vidro) {
-      c.save(); c.globalAlpha = 0.45;
-      this.ret(c, x + 5, topo + 3, w * 0.28, alt - 6, 1, '#ffffff');
-      c.restore();
-    } else {
-      this.ret(c, x + 6, topo + 3, w - 12, alt - 6, 1.5, this.sombra(cor, 0.16));  // almofada
-      this.ret(c, x + 4, topo + 1, w - 8, 1.5, 0.5, this.luz(cor, 0.35));
-    }
-    const mx = mao > 0 ? x + w - 8 : x + 5;
-    this.ret(c, mx, topo + alt * 0.45, 3.5, 2, 1, this.METAL);              // maçaneta
-  },
-
-  /** Sofá: encosto alto atrás, dois braços e as almofadas do assento — quantas
-   *  couberem na largura (duas no de 2 lugares, três no de 3). */
   /** O narguilé inteiro, com a paleta trocável: é a mesma peça em seis cores.
    *  `p.vidro` é o vaso, `p.ouro`/`p.ouroEsc` o metal, `p.corpo` o corpo preto,
    *  `p.barro` o fornilho. `p.semFumaca` tira a fumaça, para o modelo pequeno. */
@@ -1517,7 +1580,9 @@ const Objetos = {
       c.lineCap = 'round';
       c.beginPath();
       c.moveTo(cx + w * 0.22, y + h * 0.55);
-      c.bezierCurveTo(cx + w * 0.75, y + h * 0.53, cx + w * 0.68, y + h * 0.84,
+      // pontos de controle em 0.62/0.56 da largura: em 0.75/0.68 a mangueira
+      // saía 4px do tile pela direita
+      c.bezierCurveTo(cx + w * 0.62, y + h * 0.53, cx + w * 0.56, y + h * 0.84,
                       cx + w * 0.12, y + h * 0.9);
       c.stroke();
       c.strokeStyle = 'rgba(255,255,255,.14)';
@@ -1743,7 +1808,8 @@ const Objetos = {
    *  Serve para qualquer tela — é a silhueta que muda, não o conteúdo. */
   _perfil(c, x, y, w, h, cor) {
     const meio = x + w / 2;
-    this.ret(c, meio - 7, y + h - 3, 14, 4, 2, this.mix(cor, this.METAL, 0.35));   // base
+    // base termina em y+h, não 1px abaixo: o ultrawide e o branco chamam sem recuo
+    this.ret(c, meio - 7, y + h - 4, 14, 4, 2, this.mix(cor, this.METAL, 0.35));   // base
     this.ret(c, meio - 2, y + h - 8, 4, 6, 1, this.mix(cor, this.METAL, 0.2));     // pescoço
     this.ret(c, meio + 0.5, y + 3, 4, h - 12, 2, this.sombra(cor, 0.3));           // corcova de trás
     this.ret(c, meio - 4, y + 1, 8, h - 8, 2, this.traco(cor));                    // painel de lado
@@ -1890,13 +1956,22 @@ const Objetos = {
    *  sai deitada. */
   miniatura(tipo, l, a, lado, giro) {
     const chave = tipo + l + a + lado + '/' + (giro | 0);
-    if (((giro | 0) % 2)) { const t = l; l = a; a = t; }
+    // a mesma conta do mapa: peça de ficar em pé não troca de lado ao girar
+    // (trocar sempre esmagava o gabinete grande girado no menu do móvel)
+    ({ l, a } = this.medida(tipo, { l, a }, giro));
     if (this._minis.has(chave)) return this._minis.get(chave);
     const c = document.createElement('canvas');
     c.width = c.height = lado;
     const cx = c.getContext('2d');
-    const escala = Math.min(lado / (l * 32), lado / (a * 32)) * 0.92;
-    cx.translate((lado - l * 32 * escala) / 2, (lado - a * 32 * escala) / 2);
+    // A arte não fica dentro da caixa: peça alta sobe `e` px (ALTOS) e a sombra
+    // do chão desce uns 6. Encaixar só a caixa cortava o topo do armário, da
+    // estante e da geladeira na paleta — a miniatura mostrava uma peça que
+    // não existia no mapa.
+    const alto = this.usarAltura === false ? null : this.ALTOS[tipo];
+    const sobe = (alto ? alto.e : 0) + 2, desce = 6;
+    const L = l * 32, A = a * 32 + sobe + desce;
+    const escala = Math.min(lado / L, lado / A) * 0.92;
+    cx.translate((lado - L * escala) / 2, (lado - A * escala) / 2 + sobe * escala);
     cx.scale(escala, escala);
     this.desenhar(cx, tipo, 0, 0, l * 32, a * 32, giro);
     const url = c.toDataURL();

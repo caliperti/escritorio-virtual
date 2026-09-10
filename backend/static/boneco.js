@@ -182,9 +182,17 @@ const Boneco = {
 
   /** Caixa da cabeça em cada quadro da folha, medida uma vez por corpo. */
   _caixasDaCabeca(corpo, prefixo, L, A) {
-    const chave = prefixo + corpo + L;
+    return this._caixasDaCamada(prefixo + 'cabeca_' + corpo, L, A);
+  },
+
+  /** Caixa (x, y, largura, altura) dos pixels de UMA camada em cada quadro da
+   *  folha, medida uma vez por folha. É a régua de tudo que precisa saber onde
+   *  a pessoa está de fato: o boné pintado e o encaixe das peças que só
+   *  existem na folha de andar (ver `_deslocamentoSentado`). */
+  _caixasDaCamada(nome, L, A) {
+    const chave = nome + '|' + L;
     if (this._caixas.has(chave)) return this._caixas.get(chave);
-    const img = this._imgs[prefixo + 'cabeca_' + corpo];
+    const img = this._imgs[nome];
     if (!img || !img.complete || !img.naturalWidth) return null;
     const c = document.createElement('canvas');
     c.width = L; c.height = A;
@@ -243,7 +251,8 @@ const Boneco = {
   },
 
   /** Peças que o acervo só publicou na folha de ANDAR. Sentado, elas usam a
-   *  pose parada dessa folha (ver `_folha`). */
+   *  pose parada dessa folha, deslocada para onde o corpo sentado está de fato
+   *  (ver `_folha` e `_deslocamentoSentado`). */
   SEM_SENTADO: new Set(['camisa_blazer', 'camisa_sobretudo', 'camisa_casacolongo',
                         'camisa_listrada', 'camisa_regata_listrada',
                         'chapeu_bone', 'chapeu_faixa', 'chapeu_bandana',
@@ -319,6 +328,36 @@ const Boneco = {
 
   _cache: new Map(),
 
+  /** Quanto a pose de cadeira desloca o corpo em relação à pose parada, numa
+   *  direção — MEDIDO nas folhas, não chutado. A pose sentada não cai no mesmo
+   *  lugar da pose de pé: de perfil a cabeça anda 3px para o lado que a pessoa
+   *  olha, e de frente sobe 2px. Sem esta correção o blazer, a cartola e o
+   *  capuz (que só existem na folha de andar) ficavam 3px fora da cabeça nos
+   *  perfis e 2px baixos de frente — medido antes do conserto.
+   *
+   *  O que vai na cabeça segue a cabeça (camada `cabeca_`). A roupa de cima
+   *  segue a linha do ombro, que é o topo da camiseta (`camisa_`): sentado o
+   *  tronco cai 2px e a cabeça não, e medir só a cabeça deixava o casaco 2px
+   *  alto. Cada folha é lida uma vez e fica em `_caixas`. */
+  _deslocamentoSentado(corpo, lin, naCabeca) {
+    const Q = this.QUADRO, A = Q * 4;
+    const dePe = (nome) => this._caixasDaCamada(nome, Q * this.QUADROS, A);
+    const sent = (nome) => this._caixasDaCamada('sit_' + nome, Q * this.QUADROS_SENTADO, A);
+    const nada = { dx: 0, dy: 0 };
+    const cabecaDePe = dePe('cabeca_' + corpo), cabecaSentada = sent('cabeca_' + corpo);
+    if (!cabecaDePe || !cabecaSentada) return nada;
+    const a = cabecaDePe[lin][0], s = cabecaSentada[lin][this.POSE_CADEIRA];
+    if (!a || !s) return nada;
+    const d = { dx: s.x - a.x, dy: s.y - a.y };
+    if (!naCabeca) {
+      const ombroDePe = dePe('camisa_' + corpo), ombroSentado = sent('camisa_' + corpo);
+      const oa = ombroDePe && ombroDePe[lin][0];
+      const os = ombroSentado && ombroSentado[lin][this.POSE_CADEIRA];
+      if (oa && os) d.dy = os.y - oa.y;
+    }
+    return d;
+  },
+
   _folha(ap, sentado) {
     const chave = Object.values(ap).join('|') + (sentado ? '|s' : '');
     if (this._cache.has(chave)) return this._cache.get(chave);
@@ -331,40 +370,51 @@ const Boneco = {
 
     // Ordem de empilhamento. Nesta versão do LPC o corpo vem sem rosto: olhos e
     // sobrancelha são camadas próprias — sem elas o personagem fica sem cara.
+    // O quarto campo diz o que a peça acompanha quando falta a folha de
+    // sentado: 'cabeca' segue a cabeça, 'tronco' segue o ombro.
     const camadas = [
       ['corpo_' + ap.corpo, ap.pele, true],
       ['cabeca_' + ap.corpo, ap.pele, true],      // no LPC o corpo vem sem cabeça
       ['olhos', null, false],
       ['sobrancelha', ap.corCabelo, false],
-      [ap.calcaTipo + '_' + ap.corpo, ap.corCalca, false],
-      [ap.sapatoTipo + '_' + ap.corpo, ap.corSapato, false],
-      [ap.camisaTipo + '_' + ap.corpo, ap.corCamisa, false],
-      ['cabelo_' + ap.cabelo, ap.corCabelo, false],
+      [ap.calcaTipo + '_' + ap.corpo, ap.corCalca, false, 'tronco'],
+      [ap.sapatoTipo + '_' + ap.corpo, ap.corSapato, false, 'tronco'],
+      [ap.camisaTipo + '_' + ap.corpo, ap.corCamisa, false, 'tronco'],
+      ['cabelo_' + ap.cabelo, ap.corCabelo, false, 'cabeca'],
     ];
-    if (ap.barba !== 'nenhuma') camadas.push(['barba_' + ap.barba, ap.corCabelo, false]);
+    if (ap.barba !== 'nenhuma') camadas.push(['barba_' + ap.barba, ap.corCabelo, false, 'cabeca']);
     // o que vai na cabeça entra por último: cobre o cabelo, como na vida
     if (ap.chapeuTipo !== 'nenhum' && ap.chapeuTipo !== 'bone_pintado') {
-      camadas.push([ap.chapeuTipo + '_' + ap.corpo, ap.corCamisa, false]);
+      camadas.push([ap.chapeuTipo + '_' + ap.corpo, ap.corCamisa, false, 'cabeca']);
     }
     const vale = (i) => !!(i && i.complete && i.naturalWidth);
-    for (const [nome, cor, preserva] of camadas) {
+    for (const [nome, cor, preserva, onde] of camadas) {
       let img = this._imgs[prefixo + nome];
       let dePe = false;
       // Muita roupa boa do acervo (jaqueta, boné, cartola) só existe na folha de
       // ANDAR. Em vez de deixar essas peças de fora, quando falta a folha de
-      // sentado a gente usa a pose parada da folha de pé: o tronco e a cabeça
-      // caem no mesmo lugar nas duas, então a peça encaixa. Conferido lado a
-      // lado antes de virar regra.
+      // sentado a gente usa a pose parada da folha de pé, na coluna da cadeira.
+      // Só que o corpo sentado NÃO cai no mesmo lugar do corpo de pé (de perfil
+      // ele anda 3px, de frente sobe 2px), então a pose de pé entra deslocada
+      // pelo que se mede nas folhas — sem isso a cartola ficava ao lado da
+      // cabeça e o blazer com um ombro no ar.
       if (sentado && !vale(img)) { img = this._imgs[nome]; dePe = vale(img); }
       if (!vale(img)) continue;
       const temp = document.createElement('canvas');
       temp.width = L; temp.height = A;
       const tc = temp.getContext('2d');
       if (dePe) {
+        const Q = this.QUADRO;
         for (let lin = 0; lin < 4; lin++) {
-          tc.drawImage(img, 0, lin * this.QUADRO, this.QUADRO, this.QUADRO,
-                       this.POSE_CADEIRA * this.QUADRO, lin * this.QUADRO,
-                       this.QUADRO, this.QUADRO);
+          const d = this._deslocamentoSentado(ap.corpo, lin, onde === 'cabeca');
+          // recorta no quadro: deslocada, a peça não pode vazar na coluna vizinha
+          tc.save();
+          tc.beginPath();
+          tc.rect(this.POSE_CADEIRA * Q, lin * Q, Q, Q);
+          tc.clip();
+          tc.drawImage(img, 0, lin * Q, Q, Q,
+                       this.POSE_CADEIRA * Q + d.dx, lin * Q + d.dy, Q, Q);
+          tc.restore();
         }
       } else {
         tc.drawImage(img, 0, 0);
@@ -456,20 +506,31 @@ const Boneco = {
   },
 
   /** Corpo inteiro, pequeno. O retrato normal é só cabeça e ombros, e com ele
-   *  não daria para escolher calça nenhuma — a peça fica fora do corte. */
-  retratoCorpo(aparencia) {
+   *  não daria para escolher calça nenhuma — a peça fica fora do corte.
+   *  `opc.direcao` ('baixo', 'cima', 'esquerda', 'direita') e `opc.sentado`
+   *  mostram a mesma pessoa de outro ângulo ou na cadeira — é o que o
+   *  mostruário usa para conferir toda roupa em toda pose, não só de frente. */
+  retratoCorpo(aparencia, opc) {
     const ap = this.normalizar(aparencia);
-    const chave = 'corpo|' + Object.values(ap).join('|');
+    const direcao = opc && this.LINHA[opc.direcao] !== undefined ? opc.direcao : 'baixo';
+    const sentado = !!(opc && opc.sentado);
+    const chave = 'corpo|' + direcao + (sentado ? '|s|' : '|') + Object.values(ap).join('|');
     if (this._retratos.has(chave)) return this._retratos.get(chave);
     if (!this._pronto) return '';
+    const Q = this.QUADRO;
     const c = document.createElement('canvas');
     c.width = 32; c.height = 62;
     const cx = c.getContext('2d');
     cx.imageSmoothingEnabled = false;
+    // parado, o quadro 2 da passada (postura natural); sentado, a pose de cadeira
+    const col = sentado ? this.POSE_CADEIRA : 2;
+    // sentado de frente o corpo termina no quadril, igual ao mapa (CORTE_SENTADO)
+    const corte = (sentado && this.CORTE_SENTADO[direcao]) || Q;
+    const alt = Math.min(62, corte - 2);
     // o QUADRO inteiro, dos cabelos aos pés: cortar na cintura fazia calça,
     // bermuda e saia ficarem idênticas na miniatura
-    cx.drawImage(this._folha(ap), 2 * this.QUADRO + 16, this.QUADRO * 2 + 2,
-                 32, 62, 0, 0, 32, 62);
+    cx.drawImage(this._folha(ap, sentado), col * Q + 16, this.LINHA[direcao] * Q + 2,
+                 32, alt, 0, 0, 32, alt);
     const url = c.toDataURL();
     this._retratos.set(chave, url);
     return url;

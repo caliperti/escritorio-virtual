@@ -8,13 +8,23 @@
   body { margin: 0; background: #fbf6f1; color: #2c2521;
          font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 22px; }
   h1 { font-size: 20px; margin: 0 0 4px; }
-  .aviso { color: #8b7b6d; margin: 0 0 18px; }
+  .aviso { color: #8b7b6d; margin: 0 0 8px; }
+  .controles { margin: 0 0 18px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .controles a { color: #f4691f; font-weight: 600; text-decoration: none; margin-left: 10px; }
+  .controles button { border: 1px solid #f0dfcd; background: #fff; border-radius: 8px;
+                      padding: 4px 10px; cursor: pointer; font: inherit; color: inherit; }
+  .controles button.ativo { background: #f4691f; border-color: #f4691f; color: #fff; }
   h2 { font-size: 15px; margin: 26px 0 10px; color: #f4691f;
        border-bottom: 1px solid #f0dfcd; padding-bottom: 6px; }
-  .grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; }
+  .grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
   .peca { background: #fff; border: 1px solid #f0dfcd; border-radius: 12px; padding: 8px;
-          text-align: center; }
-  .peca canvas { display: block; margin: 0 auto 6px; image-rendering: auto; }
+          text-align: center; position: relative; }
+  /* a peça larga ocupa mais colunas em vez de vazar da célula */
+  .peca canvas { display: block; margin: 0 auto 6px; max-width: 100%; image-rendering: auto; }
+  /* a miniatura da paleta do editor, no canto: tem de bater com o desenho grande */
+  .peca img { position: absolute; top: 6px; right: 6px; width: 34px; height: 34px;
+              image-rendering: pixelated; border: 1px solid #f0dfcd; border-radius: 6px;
+              background: #fff; }
   .peca b { display: block; font-size: 12px; font-weight: 600; }
   .peca span { display: block; font-size: 11px; color: #8b7b6d; }
   .peca.falta { border-color: #e0473c; background: #fff5f4; }
@@ -24,7 +34,14 @@
 <body>
 <h1>Arsenal — todas as peças</h1>
 <p class="aviso" id="resumo">carregando…</p>
-<p style="margin:0 0 18px"><a href="/static/mostruario-roupas.html" style="color:#f4691f;font-weight:600;text-decoration:none">→ ver o mostruário das roupas</a></p>
+<p class="controles">
+  <span>Giro:</span>
+  <button data-g="0" class="ativo">0°</button>
+  <button data-g="1">90°</button>
+  <button data-g="2">180°</button>
+  <button data-g="3">270°</button>
+  <a href="/static/mostruario-roupas.html">→ ver o mostruário das roupas</a>
+</p>
 <div id="tudo"></div>
 
 <script src="/static/objetos.js"></script>
@@ -33,8 +50,49 @@
  *
  * Serve para duas coisas: o dono ver o que existe sem abrir o editor, e quem
  * mexe no desenho conferir o resultado sem precisar caçar a peça dentro do
- * escritório. Peça sem função de desenho aparece marcada em vermelho. */
-const T = 32;
+ * escritório. Peça sem função de desenho aparece marcada em vermelho.
+ *
+ * Cada peça é desenhada com MEIO TILE de folga em volta da caixa que o
+ * catálogo promete (a área mais escura, com a grade dos tiles). É de
+ * propósito: desenhar a peça num canvas do tamanho exato da caixa escondia
+ * justamente o que se quer ver — o narguilé pequeno que vazava para o tile de
+ * baixo e o topo do armário que sumia. A folga mostra o que sai da caixa. No
+ * canto de cada cartão vai a miniatura que a paleta do editor usa, para
+ * conferir que ela mostra a mesma peça. Os botões de giro redesenham tudo no
+ * giro escolhido, que é como se confere se girar faz sentido. */
+const T = 32, M = 16;
+let giro = 0;
+const canvases = [];
+
+function pintar(c) {
+  const { tipo, info, mini } = c._peca;
+  const m = Objetos.medida(tipo, info, giro);
+  c.width = m.l * T + 2 * M;
+  c.height = m.a * T + 2 * M;
+  const cx = c.getContext('2d');
+  cx.fillStyle = '#f7f1ea';                                   // a folga
+  cx.fillRect(0, 0, c.width, c.height);
+  cx.fillStyle = '#e8dfd2';                                   // a caixa prometida
+  cx.fillRect(M, M, m.l * T, m.a * T);
+  cx.strokeStyle = '#d9cdbc';
+  cx.lineWidth = 1;
+  for (let i = 0; i <= m.l; i++) {
+    cx.beginPath(); cx.moveTo(M + i * T + 0.5, M); cx.lineTo(M + i * T + 0.5, M + m.a * T); cx.stroke();
+  }
+  for (let i = 0; i <= m.a; i++) {
+    cx.beginPath(); cx.moveTo(M, M + i * T + 0.5); cx.lineTo(M + m.l * T, M + i * T + 0.5); cx.stroke();
+  }
+  Objetos.desenhar(cx, tipo, M, M, m.l * T, m.a * T, giro);
+  mini.src = Objetos.miniatura(tipo, info.l, info.a, 34, giro);
+}
+
+for (const b of document.querySelectorAll('.controles button')) {
+  b.onclick = () => {
+    giro = +b.dataset.g;
+    for (const o of document.querySelectorAll('.controles button')) o.classList.toggle('ativo', o === b);
+    canvases.forEach(pintar);
+  };
+}
 
 fetch('/catalogo').then((r) => r.json()).then((dados) => {
   const cat = dados.catalogo;
@@ -55,17 +113,21 @@ fetch('/catalogo').then((r) => r.json()).then((dados) => {
       if (!tem) semDesenho++;
       const cel = document.createElement('div');
       cel.className = 'peca' + (tem ? '' : ' falta');
+      // peça larga toma mais colunas da grade (150px cada), senão vaza do cartão
+      const larguraMax = Math.max(info.l, info.a) * T + 2 * M + 16;
+      cel.style.gridColumn = 'span ' + Math.max(1, Math.ceil(larguraMax / 160));
       const c = document.createElement('canvas');
-      const l = Math.min(info.l, 6), a = Math.min(info.a, 4);
-      c.width = l * T; c.height = a * T;
-      const cx = c.getContext('2d');
-      cx.fillStyle = '#efe7dd';
-      cx.fillRect(0, 0, c.width, c.height);
-      Objetos.desenhar(cx, tipo, 0, 0, l * T, a * T, 0);
+      const mini = document.createElement('img');
+      mini.alt = '';
+      mini.title = 'miniatura da paleta do editor';
+      c._peca = { tipo, info, mini };
+      canvases.push(c);
+      pintar(c);
       cel.appendChild(c);
+      cel.appendChild(mini);
       const b = document.createElement('b'); b.textContent = info.nome; cel.appendChild(b);
       const s = document.createElement('span');
-      s.textContent = tem ? `${info.l}×${info.a}` : 'sem desenho';
+      s.textContent = tem ? `${tipo} · ${info.l}×${info.a}` : 'sem desenho';
       cel.appendChild(s);
       grade.appendChild(cel);
     }
@@ -73,7 +135,8 @@ fetch('/catalogo').then((r) => r.json()).then((dados) => {
   }
   document.getElementById('resumo').textContent =
     `${Object.keys(cat).length} peças em ${Object.keys(grupos).length} categorias` +
-    (semDesenho ? ` · ${semDesenho} ainda sem desenho próprio` : ' · todas desenhadas');
+    (semDesenho ? ` · ${semDesenho} ainda sem desenho próprio` : ' · todas desenhadas') +
+    ' · a área escura é a caixa que o catálogo promete; o que sair dela está errado';
 });
 </script>
 </body>

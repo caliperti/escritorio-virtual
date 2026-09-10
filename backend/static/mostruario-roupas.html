@@ -9,8 +9,11 @@
          font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 22px; }
   h1 { font-size: 20px; margin: 0 0 4px; }
   .aviso { color: #8b7b6d; margin: 0 0 6px; }
-  .atalho { margin: 0 0 18px; }
-  .atalho a { color: #f4691f; font-weight: 600; text-decoration: none; }
+  .controles { margin: 0 0 18px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .controles a { color: #f4691f; font-weight: 600; text-decoration: none; margin-left: 10px; }
+  .controles button { border: 1px solid #f0dfcd; background: #fff; border-radius: 8px;
+                      padding: 4px 10px; cursor: pointer; font: inherit; color: inherit; }
+  .controles button.ativo { background: #f4691f; border-color: #f4691f; color: #fff; }
   h2 { font-size: 15px; margin: 26px 0 10px; color: #f4691f;
        border-bottom: 1px solid #f0dfcd; padding-bottom: 6px; }
   .grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
@@ -29,19 +32,36 @@
 <body>
 <h1>Personagem — todas as roupas</h1>
 <p class="aviso" id="resumo">carregando…</p>
-<p class="atalho"><a href="/static/mostruario.html">→ ver o mostruário dos móveis</a></p>
+<p class="controles">
+  <span>Ver:</span>
+  <button data-d="baixo" class="ativo">de frente</button>
+  <button data-d="cima">de costas</button>
+  <button data-d="esquerda">esquerda</button>
+  <button data-d="direita">direita</button>
+  <button data-d="baixo" data-s="1">sentado de frente</button>
+  <button data-d="esquerda" data-s="1">sentado de lado</button>
+  <button data-d="cima" data-s="1">sentado de costas</button>
+  <a href="/static/mostruario.html">→ ver o mostruário dos móveis</a>
+</p>
 <div id="tudo"></div>
 
 <script src="/static/boneco.js"></script>
 <script>
 /* Mostra o guarda-roupa inteiro: cada tipo de roupa em cada cor, os cortes de
  * cabelo, as barbas e os tons de pele. Serve para escolher sem ficar clicando
- * peça por peça na tela de entrada. */
+ * peça por peça na tela de entrada.
+ *
+ * Os botões de "Ver" redesenham tudo de outro ângulo ou sentado: era só de
+ * frente, e os defeitos das roupas apareciam justamente de lado e na cadeira
+ * (a cartola 3px fora da cabeça, o blazer com um ombro no ar) — sem ver essas
+ * poses aqui, ninguém pegava. */
 const C = Boneco.CATALOGO, R = Boneco.ROTULOS;
 const BASE = { corpo: 'm', pele: C.pele[1], cabelo: 'parted', corCabelo: '#4a2f1b',
                barba: 'nenhuma', camisaTipo: 'camisa', corCamisa: '#4f7fd9',
                calcaTipo: 'calca', corCalca: '#3d4457',
                sapatoTipo: 'sapato', corSapato: '#3a3a42', chapeuTipo: 'nenhum' };
+let vista = { direcao: 'baixo', sentado: false };
+const imagens = [];
 
 function rotulo(v) { return R[v] || v; }
 
@@ -55,7 +75,9 @@ function secao(titulo, itens, grande) {
     const cel = document.createElement('div');
     cel.className = 'peca';
     const img = document.createElement('img');
-    img.src = Boneco.retratoCorpo(ap);
+    img._ap = ap;
+    img.src = Boneco.retratoCorpo(ap, vista);
+    imagens.push(img);
     cel.appendChild(img);
     const b = document.createElement('b'); b.textContent = nome; cel.appendChild(b);
     if (sub) { const s = document.createElement('span'); s.textContent = sub; cel.appendChild(s); }
@@ -63,6 +85,14 @@ function secao(titulo, itens, grande) {
   }
   document.getElementById('tudo').appendChild(g);
   return itens.length;
+}
+
+for (const b of document.querySelectorAll('.controles button')) {
+  b.onclick = () => {
+    vista = { direcao: b.dataset.d, sentado: !!b.dataset.s };
+    for (const o of document.querySelectorAll('.controles button')) o.classList.toggle('ativo', o === b);
+    for (const img of imagens) img.src = Boneco.retratoCorpo(img._ap, vista);
+  };
 }
 
 Boneco.quandoCarregar(() => {
