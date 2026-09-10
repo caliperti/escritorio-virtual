@@ -310,17 +310,24 @@ const Editor = {
     return { x: Math.floor(ponto.x / this.jogo.tile), y: Math.floor(ponto.y / this.jogo.tile) };
   },
 
-  objetoEm(tx, ty) {
+  objetoEm(tx, ty, camada) {
     const cat = this.jogo.mapa.catalogo;
     // de trás para frente: pega o que está por cima
     for (let i = this.jogo.mapa.objetos.length - 1; i >= 0; i--) {
       const o = this.jogo.mapa.objetos[i];
       const info = cat[o.tipo];
       if (!info) continue;
+      if (camada && (info.camada || 'chao') !== camada) continue;
       const m = Objetos.medida(o.tipo, info, o.g);
       if (tx >= o.x && tx < o.x + m.l && ty >= o.y && ty < o.y + m.a) return o;
     }
     return null;
+  },
+
+  /** Em que camada mora a peça escolhida na paleta. */
+  camadaDe(tipo) {
+    const info = this.jogo.mapa.catalogo[tipo];
+    return (info && info.camada) || 'chao';
   },
 
   aoApontar(e, ponto) {
@@ -339,7 +346,11 @@ const Editor = {
         this.soltarConjunto(t);
         return;
       }
-      const alvo = this.objetoEm(t.x, t.y);
+      // O móvel que o clique pega é o da MESMA camada da peça que está na mão.
+      // Antes pegava o de cima de qualquer camada, e por isso era impossível
+      // pôr um monitor em cima de uma mesa: o clique agarrava a mesa (ou os
+      // papéis que já estavam nela) em vez de colocar o monitor.
+      const alvo = this.objetoEm(t.x, t.y, this.camadaDe(this.tipoSel));
       if (alvo) {
         // guarda o arrasto, mas só vira movimento se a pessoa arrastar de fato:
         // um clique seco abre o menu do móvel.
