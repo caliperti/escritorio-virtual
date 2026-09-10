@@ -77,8 +77,8 @@ async def colocar_e_apagar(t_admin, peca_id):
 
 
 def principal():
-    t_admin = post_json("/conta/registrar", {"nome": "gulisboa5@hotmail.com", "senha": "segredo1", "convite": CODIGO})["token"]
-    t_membro = post_json("/conta/registrar", {"nome": "Zezinho", "senha": "segredo1", "convite": CODIGO})["token"]
+    t_admin = post_json("/conta/registrar", {"email": "gulisboa5@hotmail.com", "nome": "Chefe", "senha": "segredo1", "convite": CODIGO})["token"]
+    t_membro = post_json("/conta/registrar", {"email": "Zezinho@teste.local", "nome": "Zezinho", "senha": "segredo1", "convite": CODIGO})["token"]
     png = (RAIZ / "static/assets/logo-128.png").read_bytes()
     folha = (RAIZ / "static/assets/lpc/camisa_m.png").read_bytes()          # 576x256
     folha_sit = (RAIZ / "static/assets/lpc/sit_camisa_m.png").read_bytes()  # 192x256

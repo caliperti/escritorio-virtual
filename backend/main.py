@@ -97,17 +97,22 @@ async def config():
 
 @app.post("/conta/registrar")
 async def registrar(dados: dict):
-    """Cadastro: só entra quem tem o código de convite da sala."""
+    """Cadastro: e-mail é o login, nome é o que aparece em cima do boneco."""
     if SENHA and (dados.get("convite") or "") != SENHA:
         return {"erro": "Código de convite errado."}
+    email = (dados.get("email") or "").strip()
     nome = (dados.get("nome") or "").strip()
-    if contas.existe(nome):
-        return {"erro": "Já existe alguém com esse nome. Escolha outro ou faça login."}
+    if not mod_contas.email_valido(email):
+        return {"erro": "Escreva um e-mail de verdade."}
+    if contas.existe(email):
+        return {"erro": "Esse e-mail já tem conta. Use a aba Entrar."}
+    if contas.nome_em_uso(nome):
+        return {"erro": "Já tem alguém com esse nome no escritório. Escolha outro."}
     if contas.cheio():
         return {"erro": "As %d vagas de membro já foram preenchidas. "
                         "Você pode entrar como visitante." % mod_contas.MAX_CONTAS}
     cor = dados.get("cor") if cor_valida(dados.get("cor")) else "#4f7fd9"
-    token = contas.registrar(nome, dados.get("senha") or "",
+    token = contas.registrar(email, nome, dados.get("senha") or "",
                              limpar_aparencia(dados.get("aparencia")), cor)
     if not token:
         return {"erro": "Nome precisa de 2 letras e senha de 4."}
@@ -117,9 +122,11 @@ async def registrar(dados: dict):
 
 @app.post("/conta/entrar")
 async def entrar_conta(dados: dict):
-    token = contas.entrar((dados.get("nome") or ""), dados.get("senha") or "")
+    # `nome` ainda é aceito para não quebrar quem tem a página velha aberta
+    quem = (dados.get("email") or dados.get("nome") or "")
+    token = contas.entrar(quem, dados.get("senha") or "")
     if not token:
-        return {"erro": "Nome ou senha não conferem."}
+        return {"erro": "E-mail ou senha não conferem."}
     nuvem.marcar(mod_contas.ARQUIVO)
     return {"token": token, "conta": conta_publica(contas.por_token(token))}
 
@@ -131,14 +138,15 @@ async def conta_eu(token: str = ""):
 
 
 def conta_publica(conta):
-    return {"nome": conta["nome"], "aparencia": conta.get("aparencia") or {},
+    return {"nome": conta["nome"], "email": conta.get("email", ""),
+            "aparencia": conta.get("aparencia") or {},
             "cor": conta.get("cor")} if conta else None
 
 
 def _admin_do_token(token: str):
     """Devolve a conta se o token for de um administrador, senão None."""
     conta = contas.por_token(token or "")
-    if conta and mod_contas.eh_admin(conta["nome"]):
+    if conta and mod_contas.eh_admin(conta.get("email") or conta["nome"]):
         return conta
     return None
 
@@ -237,7 +245,9 @@ async def websocket_sala(ws: WebSocket):
             nome = (entrada.get("nome") or "").strip()[:24] or "Visitante"
             # Nome de membro é do membro: visitante com o mesmo nome aparecia
             # na lista e no mapa igualzinho ao dono da conta.
-            if contas.existe(nome):
+            # o nome que o visitante escolhe é o que aparece em cima do boneco:
+            # não pode ser o de um membro, senão ele se passa por outra pessoa
+            if contas.nome_em_uso(nome):
                 await ws.send_json({"tipo": "recusado",
                                     "texto": "Esse nome é de um membro. Escolha outro."})
                 await ws.close(code=4003)
@@ -257,8 +267,10 @@ async def websocket_sala(ws: WebSocket):
         eu = await sala.entrar(ws, entrada)
         eu.visitante = visitante
         eu.token = entrada.get("token") if not visitante else ""
-        eu.conta = "" if visitante else mod_contas._chave(conta["nome"])
-        eu.admin = (not visitante) and mod_contas.eh_admin(conta["nome"])
+        # A sala reivindicada é do E-MAIL, não do nome. Assim trocar o nome não
+        # deixa a sala órfã, que era um problema de verdade antes.
+        eu.conta = "" if visitante else mod_contas._chave(conta.get("email") or conta["nome"])
+        eu.admin = (not visitante) and mod_contas.eh_admin(conta.get("email") or conta["nome"])
         log.info("entrou: %s (%s) — %d na sala", eu.nome, eu.id, len(sala.participantes))
 
         await ws.send_json({
@@ -335,31 +347,28 @@ async def websocket_sala(ws: WebSocket):
                 if msg.get("aparencia"):
                     eu.aparencia = limpar_aparencia(msg["aparencia"])
                 if eu.visitante:
-                    if nome_novo != eu.nome and contas.existe(nome_novo):
+                    if nome_novo != eu.nome and contas.nome_em_uso(nome_novo):
                         await ws.send_json({"tipo": "erro",
                                             "texto": "Esse nome é de um membro. Escolha outro."})
                     else:
                         eu.nome = nome_novo
                 else:
-                    # Quem manda no nome é a conta: se o novo já for de outra
-                    # pessoa (ou for nome reservado de administrador), fica o
-                    # de antes — e a sessão tem de refletir o que foi gravado.
-                    contas.atualizar(eu.token, nome=nome_novo,
+                    # A conta é do e-mail, então trocar o nome não mexe em quem
+                    # a pessoa é: só muda o que está escrito em cima do boneco.
+                    # O que ainda importa é não repetir nome de outro membro.
+                    if nome_novo != eu.nome and contas.nome_em_uso(nome_novo, eu.conta):
+                        await ws.send_json({"tipo": "erro",
+                                            "texto": "Já tem alguém com esse nome. Ficou o de antes."})
+                    else:
+                        eu.nome = nome_novo
+                    contas.atualizar(eu.token, nome=eu.nome,
                                      aparencia=eu.aparencia, cor=eu.cor)
                     nuvem.marcar(mod_contas.ARQUIVO)
-                    conta = contas.por_token(eu.token) or {"nome": eu.nome}
-                    antiga = eu.conta
-                    eu.nome = conta["nome"]
-                    eu.conta = mod_contas._chave(eu.nome)
-                    if eu.nome != nome_novo:
-                        await ws.send_json({"tipo": "erro",
-                                            "texto": "Não deu para usar esse nome. Ficou o de antes."})
-                    # A sala é da CHAVE da conta. Trocar o nome trocava a chave
-                    # e deixava a sala órfã: nem o dono conseguia mais soltá-la.
+                    # a plaquinha da sala mostra o nome: acompanha a troca
                     mudou = False
                     for z in escritorio.zonas:
-                        if z.get("dono") == antiga and (z["dono"], z.get("dono_nome")) != (eu.conta, eu.nome):
-                            z["dono"], z["dono_nome"] = eu.conta, eu.nome
+                        if z.get("dono") == eu.conta and z.get("dono_nome") != eu.nome:
+                            z["dono_nome"] = eu.nome
                             mudou = True
                     if mudou:
                         escritorio.salvar()

@@ -228,6 +228,7 @@ document.getElementById('btn-sortear').onclick = () => editorEntrada.sortear();
 montarBonecosVisitante();
 
 const campoNome = document.getElementById('campo-nome');
+const campoEmail = document.getElementById('campo-email');
 const campoSenha = document.getElementById('campo-senha');
 const aviso = document.getElementById('aviso-entrada');
 let modo = 'entrar';                       // 'entrar' | 'criar' | 'visitante'
@@ -242,6 +243,12 @@ function usarModo(novoModo) {
   // O código da sala vale para criar conta E para entrar de visitante: é ele
   // que separa quem foi convidado de quem só achou o endereço.
   document.getElementById('linha-convite').hidden = !(modo === 'criar' || modo === 'visitante');
+  // Visitante não tem conta, então não tem e-mail. Entrar pede e-mail e senha;
+  // criar conta pede os dois mais o nome que vai aparecer em cima do boneco.
+  document.getElementById('linha-email').hidden = modo === 'visitante';
+  campoNome.parentElement.hidden = modo === 'entrar';
+  campoNome.placeholder = modo === 'visitante'
+    ? 'Como te chamam' : 'Como aparece em cima do boneco';
   // Membro monta o boneco que quiser; visitante escolhe entre dois prontos.
   document.querySelector('.editor').hidden = modo !== 'criar';
   const dois = document.getElementById('bonecos-visitante');
@@ -287,10 +294,13 @@ async function conferirSessao() {
     if (d.conta) {
       sessao.conta = d.conta;
       campoNome.value = d.conta.nome;
+      if (campoEmail) campoEmail.value = d.conta.email || '';
       editorEntrada.definir(d.conta.aparencia);
       document.querySelector('.abas-conta').hidden = true;
       document.querySelector('.editor').hidden = true;
       campoSenha.parentElement.hidden = true;
+      document.getElementById('linha-email').hidden = true;
+      campoNome.parentElement.hidden = true;
       document.getElementById('linha-convite').hidden = true;
       document.getElementById('btn-sair-conta').classList.remove('oculto');
       aviso.textContent = `Bem-vindo de volta, ${d.conta.nome.split(' ')[0]}.`;
@@ -318,14 +328,16 @@ campoSenha.addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar(tr
 async function autenticar() {
   if (modo === 'visitante') return true;     // visitante não tem conta para autenticar
   if (sessao.token && sessao.conta) return true;
+  const email = (campoEmail.value || '').trim();
   const nome = campoNome.value.trim();
   const senha = campoSenha.value;
-  if (!nome || !senha) { aviso.textContent = 'Preencha nome e senha.'; return false; }
+  if (!email || !senha) { aviso.textContent = 'Preencha e-mail e senha.'; return false; }
+  if (modo === 'criar' && !nome) { aviso.textContent = 'Escolha o nome que vai aparecer.'; return false; }
 
   const corpo = modo === 'criar'
-    ? { nome, senha, convite: document.getElementById('campo-convite').value,
+    ? { email, nome, senha, convite: document.getElementById('campo-convite').value,
         aparencia: editorEntrada.ver(), cor: editorEntrada.ver().corCamisa }
-    : { nome, senha };
+    : { email, senha };
   aviso.textContent = modo === 'criar' ? 'Criando sua conta…' : 'Entrando…';
   try {
     const r = await fetch(modo === 'criar' ? '/conta/registrar' : '/conta/entrar', {

@@ -77,8 +77,8 @@ def tile_livre_da_zona(mapa, z):
 
 async def principal():
     marca = str(int(time.time()))[-4:]
-    t_admin = post("/conta/registrar", {"nome": "gulisboa5@hotmail.com", "senha": "segredo1", "convite": CODIGO})["token"]
-    t_membro = post("/conta/registrar", {"nome": "Membro" + marca, "senha": "segredo1", "convite": CODIGO})["token"]
+    t_admin = post("/conta/registrar", {"email": "gulisboa5@hotmail.com", "nome": "Chefe", "senha": "segredo1", "convite": CODIGO})["token"]
+    t_membro = post("/conta/registrar", {"email": "membro" + marca + "@teste.local", "nome": "Membro" + marca, "senha": "segredo1", "convite": CODIGO})["token"]
 
     async with websockets.connect(f"ws://127.0.0.1:{PORTA}/ws") as wa, \
                websockets.connect(f"ws://127.0.0.1:{PORTA}/ws") as wm:
@@ -86,7 +86,7 @@ async def principal():
         bem_a = await esperar(wa, "bemvindo")
         await wm.send(json.dumps({"tipo": "entrar", "token": t_membro}))
         bem_m = await esperar(wm, "bemvindo")
-        conferir("gulisboa5 entra como admin", bem_a.get("admin") is True)
+        conferir("o e-mail de admin entra como admin", bem_a.get("admin") is True)
         conferir("o outro entra como membro comum", bem_m.get("admin") is False)
 
         mapa = bem_m["mapa"]
@@ -126,24 +126,25 @@ async def principal():
             "acao": "parede", "valor": 1, "tiles": [[s1["x1"] + 2, s1["y1"] + 2]]}}))
         conferir("dono NÃO levanta parede", bool(await esperar(wm, "erro")))
 
-        # trocar o nome no perfil não pode dar poder: "gulisboa5@hotmail.com" é
-        # nome de administrador (contas.py:ADMINS) e está livre neste teste
+        # Trocar o nome não pode dar poder. Agora administrador é decidido pelo
+        # E-MAIL, então nem se a pessoa se chamar igual ao admin ela vira admin.
         await esvaziar(wm)
-        await wm.send(json.dumps({"tipo": "perfil", "nome": "gulisboa5@hotmail.com"}))
+        await wm.send(json.dumps({"tipo": "perfil", "nome": "Chefe"}))
         await asyncio.sleep(.5)
-        eu = json.loads(urllib.request.urlopen(BASE + "/conta/eu?token=" + t_membro, timeout=5).read())
-        conferir("membro NÃO se renomeia para um nome de administrador",
-                 (eu.get("conta") or {}).get("nome") == "Membro" + marca)
         async with websockets.connect(f"ws://127.0.0.1:{PORTA}/ws") as w2:
             await w2.send(json.dumps({"tipo": "entrar", "token": t_membro}))
             b2 = await esperar(w2, "bemvindo")
-            conferir("e ao voltar continua membro comum", bool(b2) and b2.get("admin") is False)
+            conferir("chamar-se igual ao admin não vira admin",
+                     bool(b2) and b2.get("admin") is False)
+        eu = json.loads(urllib.request.urlopen(BASE + "/conta/eu?token=" + t_membro, timeout=5).read())
+        conferir("e nome já usado por outro membro é recusado",
+                 (eu.get("conta") or {}).get("nome") == "Membro" + marca)
 
         # renomear de verdade leva a sala junto: ela é da chave da conta
         await esvaziar(wm)
         await wm.send(json.dumps({"tipo": "perfil", "nome": "Novo" + marca}))
         r = await esperar(wm, "mapa", 3)
-        conferir("renomear leva a sala junto (plaquinha com o nome novo)", bool(r) and any(
+        conferir("renomear troca a plaquinha da sala, sem perder a sala", bool(r) and any(
             z["id"] == "sala1" and z.get("dono_nome") == "Novo" + marca for z in r["mapa"]["zonas"]))
         await esvaziar(wm)
         await wm.send(json.dumps({"tipo": "editar", "acao": {

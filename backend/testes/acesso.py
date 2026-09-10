@@ -69,9 +69,9 @@ async def esperar(ws, tipo, limite=5):
 async def principal():
     marca = str(int(time.time()))[-5:]
     print("\n-- código da sala --")
-    r = post("/conta/registrar", {"nome": "Errado" + marca, "senha": "segredo1", "convite": "outra coisa"})
+    r = post("/conta/registrar", {"email": "Errado" + marca + "@teste.local", "nome": "Errado" + marca, "senha": "segredo1", "convite": "outra coisa"})
     conferir("código errado não cria conta", bool(r.get("erro")))
-    r = post("/conta/registrar", {"nome": "Membro" + marca, "senha": "segredo1", "convite": CODIGO})
+    r = post("/conta/registrar", {"email": "Membro" + marca + "@teste.local", "nome": "Membro" + marca, "senha": "segredo1", "convite": CODIGO})
     conferir("com o código certo, cria", bool(r.get("token")))
     token_membro = r.get("token")
 
@@ -81,23 +81,23 @@ async def principal():
             "corCamisa": "#d94f5c", "camisaTipo": "camisa", "calcaTipo": "calca",
             "sapatoTipo": "sapato", "corSapato": "#3a3a42", "chapeuTipo": "bone_pintado",
             "corCalca": "#d9a441", "barba": "medium"}
-    r = post("/conta/registrar", {"nome": "Doze" + marca, "senha": "segredo1", "convite": CODIGO,
+    r = post("/conta/registrar", {"email": "Doze" + marca + "@teste.local", "nome": "Doze" + marca, "senha": "segredo1", "convite": CODIGO,
                                   "aparencia": doze, "cor": "#d94f5c"})
     eu = json.loads(urllib.request.urlopen(BASE + "/conta/eu?token=" + (r.get("token") or "x"),
                                            timeout=5).read())
     conferir("as 12 escolhas do boneco ficam salvas na conta",
              (eu.get("conta") or {}).get("aparencia") == doze)
-    r = post("/conta/registrar", {"nome": "日本", "senha": "segredo1", "convite": CODIGO})
+    r = post("/conta/registrar", {"email": "日本@teste.local", "nome": "日本", "senha": "segredo1", "convite": CODIGO})
     conferir("nome sem letra que vire chave é recusado", bool(r.get("erro")))
 
     print("\n-- teto de 10 membros --")
     criados = 2                                   # Membro e Doze já estão dentro
     for i in range(2, 12):
-        r = post("/conta/registrar", {"nome": "M%d%s" % (i, marca), "senha": "segredo1", "convite": CODIGO})
+        r = post("/conta/registrar", {"email": "M%d%s" % (i, marca) + "@teste.local", "nome": "M%d%s" % (i, marca), "senha": "segredo1", "convite": CODIGO})
         if r.get("token"):
             criados += 1
     conferir("para exatamente em 10 contas", criados == 10)
-    r = post("/conta/registrar", {"nome": "Sobra" + marca, "senha": "segredo1", "convite": CODIGO})
+    r = post("/conta/registrar", {"email": "Sobra" + marca + "@teste.local", "nome": "Sobra" + marca, "senha": "segredo1", "convite": CODIGO})
     conferir("a 11ª é recusada com explicação", "visitante" in (r.get("erro") or ""))
     conferir("e /config diz que não há mais vaga",
              json.loads(urllib.request.urlopen(BASE + "/config", timeout=5).read())["vagas"] == 0)

@@ -63,8 +63,8 @@ async def esperar(ws, tipo, acao=None, limite=6):
 async def principal():
     marca = str(int(time.time()))[-6:]
     dono_nome, visita_nome = "Dono" + marca, "Visita" + marca
-    t_dono = post("/conta/registrar", {"nome": dono_nome, "senha": "segredo1"}).get("token")
-    t_vis = post("/conta/registrar", {"nome": visita_nome, "senha": "segredo1"}).get("token")
+    t_dono = post("/conta/registrar", {"email": dono_nome + "@teste.local", "nome": dono_nome, "senha": "segredo1"}).get("token")
+    t_vis = post("/conta/registrar", {"email": visita_nome + "@teste.local", "nome": visita_nome, "senha": "segredo1"}).get("token")
     conferir("as duas contas foram criadas", bool(t_dono and t_vis))
 
     async with websockets.connect(f"ws://127.0.0.1:{PORTA}/ws") as wd, \
