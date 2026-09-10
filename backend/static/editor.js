@@ -494,6 +494,45 @@ const Editor = {
     if (this.menu) { this.menu.remove(); this.menu = null; }
   },
 
+  /** Enquanto a pessoa está com um móvel (ou um conjunto) "na mão", mostra uma
+   *  faixa com o botão de largar. Antes o único jeito de soltar era Esc, e o
+   *  aviso morava dentro do editor — com o editor fechado ninguém via, e o móvel
+   *  ficava grudado no cursor. */
+  avisoNaMao() {
+    const naMao = this.movendo || this.conjunto;
+    let faixa = document.getElementById('na-mao');
+    if (!naMao) { if (faixa) faixa.remove(); return; }
+    if (!faixa) {
+      faixa = document.createElement('div');
+      faixa.id = 'na-mao';
+      faixa.innerHTML = '<span></span><button type="button">Cancelar</button>';
+      faixa.querySelector('button').onclick = () => {
+        this.movendo = null; this.conjunto = null; this.avisoNaMao();
+      };
+      document.querySelector('.palco').appendChild(faixa);
+    }
+    const texto = this.conjunto
+      ? '“' + this.conjunto.nome + '” na mão · clique para largar · G gira · Esc cancela'
+      : 'Clique onde o móvel deve ficar · Esc cancela';
+    const alvo = faixa.querySelector('span');
+    if (alvo.textContent !== texto) alvo.textContent = texto;
+  },
+
+  /** Põe o cartão onde foi pedido, mas sem deixar nenhum botão fora da tela.
+   *  A conta antiga usava a largura da JANELA e um tamanho chutado (500px), e
+   *  por isso o menu escapava por baixo e sumia atrás do painel lateral. Aqui a
+   *  gente mede o cartão de verdade e o palco de verdade. */
+  _encaixarNoPalco(caixa, x, y) {
+    const palco = document.querySelector('.palco').getBoundingClientRect();
+    const c = caixa.getBoundingClientRect();      // já está no DOM: tem tamanho
+    const larg = c.width || 300, alt = c.height || 140;
+    const M = 8;
+    const maxX = Math.max(M, palco.width - larg - M);
+    const maxY = Math.max(M, palco.height - alt - M);
+    caixa.style.left = Math.round(Math.max(M, Math.min(x, maxX))) + 'px';
+    caixa.style.top = Math.round(Math.max(M, Math.min(y, maxY))) + 'px';
+  },
+
   /** Onde, na tela, está o canto do tile (tx, ty). */
   _naTela(tx, ty) {
     const r = document.getElementById('tela').getBoundingClientRect();
@@ -513,6 +552,10 @@ const Editor = {
     const info = mapa.catalogo[o.tipo];
     const m = Objetos.medida(o.tipo, info, o.g);
     const pos = this._naTela(o.x + m.l / 2, o.y);
+    // Em que sala esse móvel está? é o caminho mais natural para reivindicar:
+    // a pessoa clica na mesa da sala vazia, não na plaquinha flutuante.
+    const sala = this.jogo.visitante ? null : (mapa.zonas.find(
+      (z) => z.privada && o.x >= z.x1 && o.x <= z.x2 && o.y >= z.y1 && o.y <= z.y2) || null);
     // o móvel do menu é o selecionado: assim ⌘/Ctrl+D duplica ele mesmo com o
     // menu aberto a partir do jogo (editor fechado)
     this.selecionado = o;
@@ -524,6 +567,11 @@ const Editor = {
         <img src="${Objetos.miniatura(o.tipo, info.l, info.a, 34, o.g)}" alt="">
         <div><strong>${info.nome}</strong><span>${m.l}×${m.a} · ${info.grupo}</span></div>
       </div>
+      ${sala ? `<div class="dono-sala">
+        ${sala.dono_nome ? `<span>${this._esc(sala.nome)} é de <b>${this._esc(sala.dono_nome)}</b></span>`
+                         : `<span>${this._esc(sala.nome)} está livre</span>`}
+        ${sala.dono_nome ? '' : '<button data-fazer="pegar-sala">Reivindicar</button>'}
+      </div>` : ''}
       <div class="acoes">
         <button data-fazer="girar" title="Girar 90° (G)">${this.icone('girar')} Girar</button>
         <button data-fazer="mover">${this.icone('mover')} Mover</button>
@@ -534,9 +582,13 @@ const Editor = {
       <div class="troca oculto"></div>`;
     document.querySelector('.palco').appendChild(caixa);
     this.menu = caixa;
-    caixa.style.left = Math.max(8, Math.min(pos.x - 96, window.innerWidth - 500)) + 'px';
-    caixa.style.top = Math.max(8, pos.y - 12) + 'px';
+    this._encaixarNoPalco(caixa, pos.x - 96, pos.y - 12);
 
+    const pegarSala = caixa.querySelector('[data-fazer="pegar-sala"]');
+    if (pegarSala) pegarSala.onclick = () => {
+      this.enviar({ tipo: 'sala', acao: 'reivindicar', id: sala.id });
+      this.fecharMenu();
+    };
     caixa.querySelector('[data-fazer="girar"]').onclick = () => {
       this.acao({ acao: 'girar', id: o.id });
       this.fecharMenu();
@@ -625,8 +677,7 @@ const Editor = {
         use 🧱 no editor (Shift preenche um retângulo).</p>`;
     document.querySelector('.palco').appendChild(caixa);
     this.menu = caixa;
-    caixa.style.left = Math.max(8, Math.min(pos.x - 110, window.innerWidth - 520)) + 'px';
-    caixa.style.top = Math.max(8, pos.y + 26) + 'px';
+    this._encaixarNoPalco(caixa, pos.x - 110, pos.y + 26);
 
     caixa.querySelectorAll('[data-cor]').forEach((b) => {
       b.onclick = () => {

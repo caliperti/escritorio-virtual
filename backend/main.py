@@ -271,6 +271,23 @@ async def websocket_sala(ws: WebSocket):
         # deixa a sala órfã, que era um problema de verdade antes.
         eu.conta = "" if visitante else mod_contas._chave(conta.get("email") or conta["nome"])
         eu.admin = (not visitante) and mod_contas.eh_admin(conta.get("email") or conta["nome"])
+
+        # Uma sessão por conta. Sem isso, abrir o escritório numa segunda aba
+        # (ou alguém entrar com a sua conta) punha DOIS bonecos idênticos no
+        # mapa e dois nomes iguais na lista — impossível saber qual é qual, e
+        # os dois recebendo as mesmas chamadas. A sessão antiga cai avisada.
+        if eu.conta:
+            for outro in list(sala.participantes.values()):
+                if outro.id != eu.id and outro.conta == eu.conta:
+                    await sala.enviar(outro, {
+                        "tipo": "recusado",
+                        "texto": "Sua conta entrou em outro lugar. Esta janela foi desconectada."})
+                    try:
+                        await outro.ws.close(code=4005)
+                    except Exception:
+                        pass
+                    await sala.sair(outro.id)
+                    await sala.publicar({"tipo": "saiu", "id": outro.id})
         log.info("entrou: %s (%s) — %d na sala", eu.nome, eu.id, len(sala.participantes))
 
         await ws.send_json({

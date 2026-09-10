@@ -16,13 +16,14 @@ def conferir(nome, ok):
     print(("  ok  " if ok else "FALHOU") + "  " + nome)
     if not ok: falhas.append(nome)
 
-ADMIN = os.environ.get("ADMIN_NOME", "gulisboa5@hotmail.com")
+ADMIN = os.environ.get("ADMIN_EMAIL", "gulisboa5@hotmail.com")
 SENHA = os.environ.get("ADMIN_SENHA", "")
 
 
 async def entrar(pg, nome):
     await pg.goto(END); await asyncio.sleep(1.4)
-    await pg.fill("#campo-nome", ADMIN); await pg.fill("#campo-senha", SENHA)
+    # o login agora é por e-mail: o campo de nome nem aparece na aba Entrar
+    await pg.fill("#campo-email", ADMIN); await pg.fill("#campo-senha", SENHA)
     await pg.evaluate("() => entrar(false)")
     await pg.wait_for_function("() => typeof Jogo !== 'undefined' && !!Jogo.eu", timeout=40000)
     await asyncio.sleep(1.4)

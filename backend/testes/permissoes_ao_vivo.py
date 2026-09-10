@@ -128,16 +128,13 @@ async def principal():
 
         # Trocar o nome não pode dar poder. Agora administrador é decidido pelo
         # E-MAIL, então nem se a pessoa se chamar igual ao admin ela vira admin.
+        # (a reconexão com o mesmo token fica para o fim: uma conta só pode ter
+        # uma sessão, então reconectar aqui derrubaria o `wm` que ainda usamos)
         await esvaziar(wm)
         await wm.send(json.dumps({"tipo": "perfil", "nome": "Chefe"}))
         await asyncio.sleep(.5)
-        async with websockets.connect(f"ws://127.0.0.1:{PORTA}/ws") as w2:
-            await w2.send(json.dumps({"tipo": "entrar", "token": t_membro}))
-            b2 = await esperar(w2, "bemvindo")
-            conferir("chamar-se igual ao admin não vira admin",
-                     bool(b2) and b2.get("admin") is False)
         eu = json.loads(urllib.request.urlopen(BASE + "/conta/eu?token=" + t_membro, timeout=5).read())
-        conferir("e nome já usado por outro membro é recusado",
+        conferir("nome já usado por outro membro é recusado",
                  (eu.get("conta") or {}).get("nome") == "Membro" + marca)
 
         # renomear de verdade leva a sala junto: ela é da chave da conta
@@ -175,6 +172,18 @@ async def principal():
         await esvaziar(wm)
         await wm.send(json.dumps({"tipo": "sala", "acao": "liberar_tudo", "id": ""}))
         conferir("membro NÃO consegue soltar todas", bool(await esperar(wm, "erro")))
+
+    # ---- sessão única: entrar de novo com a mesma conta derruba a anterior ----
+    async with websockets.connect(f"ws://127.0.0.1:{PORTA}/ws") as w1:
+        await w1.send(json.dumps({"tipo": "entrar", "token": t_membro}))
+        b1 = await esperar(w1, "bemvindo")
+        conferir("membro volta e continua membro comum", bool(b1) and b1.get("admin") is False)
+        async with websockets.connect(f"ws://127.0.0.1:{PORTA}/ws") as w2:
+            await w2.send(json.dumps({"tipo": "entrar", "token": t_membro}))
+            b2 = await esperar(w2, "bemvindo")
+            conferir("a segunda entrada é aceita", bool(b2))
+            r = await esperar(w1, "recusado", 4)
+            conferir("e a primeira janela é desconectada com aviso", bool(r))
 
 
 if CONTAS.exists():

@@ -773,3 +773,30 @@ body.editando #tela { cursor: crosshair; }
 }
 .editor-painel .ferramentas button .ic { stroke-width: 1.7; }
 .menu-movel .acoes button, .menu-sala .acoes button { display: inline-flex; align-items: center; gap: 4px; }
+
+/* Faixa de "estou com um móvel na mão": aparece com o editor aberto ou fechado,
+   porque sem ela a peça ficava grudada no cursor sem ninguém saber como largar. */
+#na-mao {
+  /* embaixo: em cima ela batia no cartão de "esta sala está livre" */
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: 62px;
+  display: flex; align-items: center; gap: 10px; z-index: 40;
+  background: var(--acento); color: #fff; font-size: 13px; font-weight: 600;
+  padding: 7px 9px 7px 14px; border-radius: 999px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .22);
+}
+#na-mao button {
+  border: 0; border-radius: 999px; cursor: pointer; font: inherit;
+  background: rgba(255, 255, 255, .92); color: var(--acento); padding: 4px 12px;
+}
+#na-mao button:hover { background: #fff; }
+
+/* Quem é o dono da sala, dentro do menu do móvel, com o botão de reivindicar. */
+.menu-movel .dono-sala {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: 0 0 9px; padding: 7px 9px; border-radius: 9px;
+  background: var(--painel-2); font-size: 12px;
+}
+.menu-movel .dono-sala button {
+  border: 0; border-radius: 7px; cursor: pointer; font: inherit; font-weight: 600;
+  background: var(--acento); color: #fff; padding: 5px 11px;
+}

@@ -868,7 +868,8 @@ tela.addEventListener('pointerdown', (e) => {
     return;
   }
   Jogo.caminho = null;
-  Jogo.clique = { ponto: pontoNoMapa(e), tela: { x: e.clientX, y: e.clientY }, quando: Date.now() };
+  Jogo.clique = { ponto: pontoNoMapa(e), tela: { x: e.clientX, y: e.clientY },
+                  quando: Date.now(), botao: e.button };
   tela.dataset.alvo = JSON.stringify(Jogo.clique.ponto);
 });
 tela.addEventListener('pointermove', (e) => {
@@ -884,7 +885,9 @@ tela.addEventListener('pointerup', (e) => {
   Jogo.clique = null;
   if (!c) return;
   const arrastou = Math.hypot(e.clientX - c.tela.x, e.clientY - c.tela.y) > 8;
-  if (arrastou || Date.now() - c.quando > 450) return;
+  if (arrastou) return;
+  // Segurar parado é o gesto de "abrir o menu"; clique curto é sempre andar.
+  const segurou = Date.now() - c.quando > 450 || c.botao === 2;
 
   // Clique na plaquinha da sala abre o menu dela (nome, cor, área, áudio).
   const etiqueta = (Jogo.etiquetas || []).find((e) =>
@@ -902,15 +905,48 @@ tela.addEventListener('pointerup', (e) => {
   const alvo = Editor.objetoEm(t.x, t.y);
   const info = alvo && Jogo.mapa.catalogo[alvo.tipo];
   const soNoEditor = info && info.camada === 'piso';
-  if (alvo && info && !Jogo.visitante && (!soNoEditor || Editor.ativo)) {
+  // Com o editor ABERTO o clique é de edição: abre o menu na hora.
+  // Com o editor FECHADO a pessoa está jogando, e clique é andar — senão, num
+  // escritório cheio de móveis, quase todo clique virava menu e dava a sensação
+  // de que o jogo tinha travado. Para editar sem abrir o editor, segure o botão
+  // (ou clique com o direito) em cima do móvel.
+  const abrirMenu = Editor.ativo ? !soNoEditor : segurou;
+  if (alvo && info && !Jogo.visitante && abrirMenu) {
     Editor.abrirMenu(alvo.id);
     return;
   }
   Editor.fecharMenu();
-  Jogo.caminho = tracarCaminho(Jogo.eu.x, Jogo.eu.y, c.ponto.x, c.ponto.y);
+  if (Editor.ativo) return;
+  Jogo.caminho = tracarCaminho(Jogo.eu.x, Jogo.eu.y, c.ponto.x, c.ponto.y)
+              || caminhoPertoDe(c.ponto);
 });
+
+/** Quando o ponto clicado é ocupado (uma mesa, por exemplo), anda até o tile
+ *  livre mais perto dele. Sem isso o clique em cima de um móvel não fazia nada
+ *  e o jogo parecia travado. */
+function caminhoPertoDe(ponto) {
+  const t = Jogo.tile;
+  const tx = Math.floor(ponto.x / t), ty = Math.floor(ponto.y / t);
+  for (let raio = 1; raio <= 4; raio++) {
+    let melhor = null, dist = Infinity;
+    for (let dy = -raio; dy <= raio; dy++) {
+      for (let dx = -raio; dx <= raio; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== raio) continue;
+        const px = (tx + dx + 0.5) * t, py = (ty + dy + 0.5) * t;
+        if (!livre(px, py)) continue;
+        const d = Math.hypot(px - ponto.x, py - ponto.y);
+        if (d < dist) { dist = d; melhor = { x: px, y: py }; }
+      }
+    }
+    if (melhor) {
+      const c = tracarCaminho(Jogo.eu.x, Jogo.eu.y, melhor.x, melhor.y);
+      if (c) return c;
+    }
+  }
+  return null;
+}
 tela.addEventListener('pointercancel', () => { Editor.aoSoltar(); delete tela.dataset.alvo; });
-tela.addEventListener('contextmenu', (e) => { if (Editor.ativo) e.preventDefault(); });
+tela.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // roda do mouse / pinça do trackpad aproximam e afastam
 tela.addEventListener('wheel', (e) => {
@@ -1030,6 +1066,7 @@ function atualizar() {
     }
   } else if (Jogo.ultimoEnvio) {
     Jogo.ultimoEnvio = 0;                          // envia a posição final ao parar
+    acomodarNoAssento(eu);
     enviar({ tipo: 'mover', x: eu.x, y: eu.y, direcao: eu.direcao });
   }
 
@@ -1050,7 +1087,46 @@ function atualizar() {
     chip.textContent = zona ? (zona.privada ? '🔒 ' : '') + zona.nome : 'Corredor';
     chip.style.borderColor = zona ? zona.cor : '';
     desenharListaPessoas();
+    ofereceSala(zona);
   }
+}
+
+// Salas já oferecidas nesta sessão: a pergunta aparece uma vez por sala, não a
+// cada vez que a pessoa cruza a porta.
+const salasOferecidas = new Set();
+
+/** Entrou numa sala livre? ela se oferece. Antes a única forma de reivindicar
+ *  era descobrir que a plaquinha flutuante era clicável, e ninguém descobre. */
+function ofereceSala(zona) {
+  if (!zona || !zona.privada || Jogo.visitante) return;
+  if (zona.dono_nome) {                      // já tem dono
+    if (zona.dono_nome === Jogo.eu.nome && !salasOferecidas.has('minha:' + zona.id)) {
+      salasOferecidas.add('minha:' + zona.id);
+      painelPedido({
+        texto: `Esta é a <b>sua</b> sala. ${zona.trancada
+          ? 'A porta está trancada.' : 'A porta está aberta: qualquer um entra.'}`,
+        botoes: [
+          { texto: zona.trancada ? 'Destrancar' : 'Trancar por dentro', classe: 'ok',
+            fazer: () => enviar({ tipo: 'sala',
+                                  acao: zona.trancada ? 'destrancar' : 'trancar', id: zona.id }) },
+          { texto: 'Deixar assim' },
+        ],
+        segundos: 12,
+      });
+    }
+    return;
+  }
+  if (salasOferecidas.has(zona.id)) return;
+  salasOferecidas.add(zona.id);
+  painelPedido({
+    texto: `<b>${escapar(zona.nome)}</b> está livre. Quer que ela seja sua?`,
+    botoes: [
+      { texto: 'Reivindicar', classe: 'ok',
+        fazer: () => enviar({ tipo: 'sala', acao: 'reivindicar', id: zona.id }) },
+      { texto: 'Agora não' },
+    ],
+    segundos: 14,
+  });
 }
 
 /** Assentos: pisar em cima de um deles senta a pessoa (como no Gather).
@@ -1061,6 +1137,47 @@ const GRUPOS_ASSENTO = new Set(['Assentos', 'Cadeiras', 'Cadeiras Gamer', 'Sofá
 
 function ehAssento(tipo, info) {
   return ASSENTOS.has(tipo) || !!(info && GRUPOS_ASSENTO.has(info.grupo));
+}
+
+/** Ao parar em cima de um assento, encaixa a pessoa no meio dele e vira para a
+ *  mesa mais próxima — é o que o Gather faz. Sem isso ela ficava meio dentro,
+ *  meio fora da cadeira, que era o que dava cara de defeito. */
+const GRUPOS_MESA = new Set(['Mesas', 'Escrivaninhas']);
+
+function acomodarNoAssento(eu) {
+  const assento = assentoEm(eu.x, eu.y);
+  if (!assento || !Jogo.mapa) return;
+  const t = Jogo.tile;
+  const info = Jogo.mapa.catalogo[assento.tipo];
+  const m = Objetos.medida(assento.tipo, info, assento.g);
+  // no meio do TILE em que ela parou, não no meio do móvel: num sofá de três
+  // lugares cada um senta no seu, em vez de todo mundo ser puxado para o centro
+  eu.x = (Math.floor(eu.x / t) + 0.5) * t;
+  eu.y = (Math.floor(eu.y / t) + 0.5) * t;
+  eu.xr = eu.x; eu.yr = eu.y;
+  const lado = ladoDaMesa(assento, m);
+  if (lado) eu.direcao = lado;
+}
+
+/** Para que lado está a mesa colada no assento, se houver alguma. */
+function ladoDaMesa(assento, m) {
+  const perto = { cima: 0, baixo: 0, esquerda: 0, direita: 0 };
+  for (const o of Jogo.mapa.objetos) {
+    const info = Jogo.mapa.catalogo[o.tipo];
+    if (!info || !GRUPOS_MESA.has(info.grupo)) continue;
+    const mo = Objetos.medida(o.tipo, info, o.g);
+    const cruzaX = o.x < assento.x + m.l && o.x + mo.l > assento.x;
+    const cruzaY = o.y < assento.y + m.a && o.y + mo.a > assento.y;
+    if (cruzaX && o.y + mo.a === assento.y) perto.cima++;
+    if (cruzaX && o.y === assento.y + m.a) perto.baixo++;
+    if (cruzaY && o.x + mo.l === assento.x) perto.esquerda++;
+    if (cruzaY && o.x === assento.x + m.l) perto.direita++;
+  }
+  let melhor = null;
+  for (const [lado, n] of Object.entries(perto)) {
+    if (n && (!melhor || n > perto[melhor])) melhor = lado;
+  }
+  return melhor;
 }
 
 function assentoEm(px, py) {
@@ -1332,6 +1449,7 @@ function desenhar() {
   if (typeof Editor !== 'undefined') {
     if (Editor.ativo) Editor.desenhar(ctx, x0, y0, x1, y1);
     else if (Editor.movendo && Editor.cursor) Editor.desenharNaMao(ctx);
+    Editor.avisoNaMao();   // vale com o editor aberto ou fechado
   }
 }
 

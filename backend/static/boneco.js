@@ -420,9 +420,20 @@ const Boneco = {
     ctx.imageSmoothingEnabled = false;
     // sentado o corpo sobe um pouco, para o quadril encostar no assento
     const base = sentado ? lado * 0.93 : lado * 0.955;
-    ctx.drawImage(folha, col * Q, linha * Q, Q, Q,
-                  Math.round(x - lado / 2), Math.round(y + 13 - base), lado, lado);
+    // De frente o acervo não tem pose de cadeira: o quadro "sentado" é igual ao
+    // de pé, o que fazia a pessoa parecer plantada em cima da cadeira. De costas
+    // a pose certa já vem cortada na altura do quadril (acaba na linha 51 do
+    // quadro) e o encosto esconde as pernas. Aqui a gente faz o mesmo de frente:
+    // corta na mesma linha e deixa a cadeira cobrir o resto.
+    const corte = (sentado && this.CORTE_SENTADO[direcao]) || Q;
+    ctx.drawImage(folha, col * Q, linha * Q, Q, corte,
+                  Math.round(x - lado / 2), Math.round(y + 13 - base),
+                  lado, lado * (corte / Q));
   },
+
+  /** Até que linha do quadro de 64px o corpo sentado aparece, por direção.
+   *  51 é onde termina a pose de costas — a referência do acervo. */
+  CORTE_SENTADO: { baixo: 51 },
 
   /* ---------- retrato ---------- */
 
