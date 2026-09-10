@@ -42,12 +42,14 @@ async def principal():
         await pg.wait_for_function("() => typeof Jogo !== 'undefined' && !!Jogo.eu", timeout=40000)
         await asyncio.sleep(1.5)
 
+        # guarda o que já existia: no fim só sai o que ESTE teste criou
+        antigos = await pg.evaluate("() => Jogo.mapa.objetos.map(o => o.id)")
+
         # uma mesa preta num canto livre da sala de reunião
         base = await pg.evaluate("""() => {
           const z = Jogo.mapa.zonas.find(z => z.id === 'reuniao') || Jogo.mapa.zonas[0];
           return { x: z.x1 + 1, y: z.y1 + 1 };
         }""")
-        criados = []
         await pg.evaluate("""(b) => Editor.enviar({ tipo: 'editar',
             acao: { acao: 'objeto', tipo: 'mesa_preta', x: b.x, y: b.y, g: 0 } })""", base)
         await asyncio.sleep(1.0)
@@ -57,7 +59,6 @@ async def principal():
         if not mesa:
             await nav.close()
             return
-        criados.append(mesa["id"])
 
         await pg.evaluate("() => { Editor.ativo = true; Editor.ferramenta = 'mobilia'; }")
 
@@ -106,12 +107,12 @@ async def principal():
         if erros:
             print("   ", erros)
 
-        # limpa tudo o que este teste criou
-        await pg.evaluate("""(b) => {
-          const alvos = Jogo.mapa.objetos.filter(
-            o => o.x >= b.x - 1 && o.x <= b.x + 4 && o.y >= b.y - 1 && o.y <= b.y + 2);
-          for (const o of alvos) Editor.enviar({ tipo: 'editar', acao: { acao: 'remover', id: o.id } });
-        }""", base)
+        # limpa só o que este teste criou — nada do mapa de antes
+        await pg.evaluate("""(antigos) => {
+          const velhos = new Set(antigos);
+          for (const o of Jogo.mapa.objetos.filter(o => !velhos.has(o.id)))
+            Editor.enviar({ tipo: 'editar', acao: { acao: 'remover', id: o.id } });
+        }""", antigos)
         await asyncio.sleep(1.2)
         await nav.close()
 
