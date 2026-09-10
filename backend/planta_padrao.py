@@ -214,6 +214,9 @@ def montar_padrao(esc) -> None:
     # A marca vive na ZONA e não no código do cliente, então vale para qualquer
     # sala que o administrador queira marcar assim depois.
     esc.zonas[-1]["abre_midia"] = True
+    # A reunião é da casa: ninguém reivindica. Sem isto a primeira pessoa que
+    # entrasse virava dona da sala de reunião e podia trancar todo mundo fora.
+    esc.zonas[-1]["sem_dono"] = True
     for py in (22, 23):                                          # segunda porta, a oeste
         esc.paredes[py][RX1] = 0
         esc.piso[py][RX1] = "z"

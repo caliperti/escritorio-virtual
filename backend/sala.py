@@ -96,17 +96,20 @@ def se_ouvem(a: Participante, b: Participante) -> bool:
     Sala privada é bolha: quem está dentro só fala com quem está dentro, mesmo
     que alguém esteja encostado na parede do lado de fora.
 
-    Dentro de QUALQUER sala todo mundo se ouve, por mais longe que esteja: numa
-    reunião ninguém pode ficar mudo só porque sentou na outra ponta da mesa. O
-    raio só vale em área aberta (corredor, convivência, jardim).
+    Sala FECHADA (as que têm parede em volta) é bolha cheia: quem está dentro
+    ouve todo mundo de dentro, por mais longe que esteja — numa reunião ninguém
+    fica mudo só porque sentou na outra ponta da mesa.
+
+    Área ABERTA (convivência, corredor, jardim) vale o raio, e de propósito: é
+    o que deixa duas rodas de conversa acontecerem no mesmo salão sem uma
+    atropelar a outra. Uma versão anterior fazia o salão inteiro se ouvir, e a
+    circulação cobre o prédio todo — dava um único bolo de vozes.
     """
     za, zb = mapa.zona_de(a.x, a.y), mapa.zona_de(b.x, b.y)
     priv_a = bool(za and za["privada"])
     priv_b = bool(zb and zb["privada"])
     if priv_a or priv_b:
         return priv_a and priv_b and za["id"] == zb["id"]
-    if za and zb and za["id"] == zb["id"]:
-        return True
     return (a.x - b.x) ** 2 + (a.y - b.y) ** 2 <= RAIO_CONVERSA ** 2
 
 

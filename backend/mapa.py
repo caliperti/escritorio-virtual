@@ -309,8 +309,17 @@ class Escritorio:
         acrescentada ao mapa que já existe, sem mexer em mais nada."""
         mudou = False
         for z in self.zonas:
-            if z.get("id") == "reuniao" and not z.get("abre_midia"):
+            if z.get("id") != "reuniao":
+                continue
+            if not z.get("abre_midia"):
                 z["abre_midia"] = True      # reunião é de cara aberta
+                mudou = True
+            if not z.get("sem_dono"):
+                z["sem_dono"] = True        # e é da casa: ninguém reivindica
+                mudou = True
+            if z.pop("dono", None) is not None:
+                z.pop("dono_nome", None)    # se alguém já tinha pegado, solta
+                z.pop("trancada", None)
                 mudou = True
         return mudou
 
@@ -512,6 +521,10 @@ class Escritorio:
         z = self.zona_por_id(id_)
         if not z or not z.get("privada"):
             return False, "Essa área não é uma sala fechada."
+        if z.get("sem_dono"):
+            # A reunião é da casa. Sem isto a primeira pessoa que entrasse virava
+            # dona dela e podia trancar todo mundo do lado de fora.
+            return False, "%s é da casa: ninguém reivindica." % z.get("nome", "Essa sala")
         if z.get("dono") and z["dono"] != chave:
             return False, "Essa sala já é de %s." % z.get("dono_nome", "outra pessoa")
         outra = self.sala_do_dono(chave)
@@ -791,10 +804,12 @@ class Escritorio:
                         z["trancada"] = True
                 if velha.get("porta"):
                     z["porta"] = velha["porta"]
-                if velha.get("abre_midia"):
-                    # "aqui entra com câmera e microfone abertos" é regra da
-                    # sala, não desenho: renomear a sala não pode apagar isso
-                    z["abre_midia"] = True
+                for regra in ("abre_midia", "sem_dono"):
+                    # regra da sala, não desenho: renomear ou redesenhar não
+                    # pode apagar "aqui entra de câmera aberta" nem "esta sala
+                    # é da casa e ninguém reivindica"
+                    if velha.get(regra):
+                        z[regra] = True
                 self.zonas[antigos[0]] = z
             else:
                 self.zonas.append(z)

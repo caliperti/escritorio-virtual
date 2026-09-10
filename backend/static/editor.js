@@ -338,6 +338,7 @@ const Editor = {
     // o próximo retângulo desenhado TELEPORTAVA a sala escolhida antes, calado.
     // Quem liga o redesenhar marca DEPOIS de chamar esta função.
     this.redesenhando = null;
+    this.derrubando = false;
     this.movendo = null;
     this.colocar = null;
     this.conjunto = null;
@@ -378,8 +379,27 @@ const Editor = {
       alvo.appendChild(grade);
 
     } else if (fer === 'parede') {
-      ajuda.textContent = 'Arraste para levantar parede. Alt (ou botão direito) derruba. '
-        + 'Segure Shift para preencher um retângulo inteiro.';
+      // Dois botões em vez de só a dica escrita: "Alt derruba" ninguém acha, e
+      // quem levantava uma parede sem querer ficava sem saber como tirar.
+      const modos = document.createElement('div');
+      modos.className = 'modos-parede';
+      modos.innerHTML = `
+        <button type="button" data-modo="levantar">${this.icone('parede')} Levantar</button>
+        <button type="button" data-modo="derrubar">${this.icone('apagar')} Derrubar</button>`;
+      alvo.appendChild(modos);
+      const marcar = () => {
+        modos.querySelectorAll('[data-modo]').forEach((b) => {
+          b.setAttribute('aria-pressed', (b.dataset.modo === 'derrubar') === !!this.derrubando);
+        });
+        ajuda.textContent = this.derrubando
+          ? 'Arraste no mapa para DERRUBAR parede. Shift preenche um retângulo inteiro.'
+          : 'Arraste para levantar parede. Shift preenche um retângulo inteiro. '
+            + 'Para tirar, use Derrubar aqui em cima (ou segure Alt).';
+      };
+      modos.querySelectorAll('[data-modo]').forEach((b) => {
+        b.onclick = () => { this.derrubando = b.dataset.modo === 'derrubar'; marcar(); };
+      });
+      marcar();
 
     } else if (fer === 'sala') {
       ajuda.textContent = 'Arraste no mapa para desenhar a sala. Ela vem com parede, porta e piso.';
@@ -596,8 +616,8 @@ const Editor = {
       const alvo = this.objetoEm(t.x, t.y);
       if (alvo) this.acao({ acao: 'remover', id: alvo.id });
     } else if (this.ferramenta === 'parede') {
-      this.pincel = { tipo: 'parede', valor: !apagando, tiles: [[t.x, t.y]],
-                      retangulo: e.shiftKey, inicio: t };
+      this.pincel = { tipo: 'parede', valor: !(apagando || this.derrubando),
+                      tiles: [[t.x, t.y]], retangulo: e.shiftKey, inicio: t };
     } else if (this.ferramenta === 'piso') {
       this.pincel = { tipo: 'piso', piso: this.pisoSel, tiles: [[t.x, t.y]],
                       retangulo: e.shiftKey, inicio: t };
@@ -854,7 +874,8 @@ const Editor = {
     // Em que sala esse móvel está? é o caminho mais natural para reivindicar:
     // a pessoa clica na mesa da sala vazia, não na plaquinha flutuante.
     const sala = this.jogo.visitante ? null : (mapa.zonas.find(
-      (z) => z.privada && o.x >= z.x1 && o.x <= z.x2 && o.y >= z.y1 && o.y <= z.y2) || null);
+      (z) => z.privada && !z.sem_dono
+             && o.x >= z.x1 && o.x <= z.x2 && o.y >= z.y1 && o.y <= z.y2) || null);
     // o móvel do menu é o selecionado: assim ⌘/Ctrl+D duplica ele mesmo com o
     // menu aberto a partir do jogo (editor fechado)
     this.selecionado = o;

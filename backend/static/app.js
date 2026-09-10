@@ -1276,7 +1276,7 @@ function atualizarBotaoTrancar(zona) {
   const b = document.getElementById('btn-trancar');
   if (!b) return;
   const viva = zona ? (Jogo.mapa.zonas.find((z) => z.id === zona.id) || zona) : null;
-  const minha = !!(viva && viva.privada && !Jogo.visitante
+  const minha = !!(viva && viva.privada && !viva.sem_dono && !Jogo.visitante
                    && viva.dono_nome && Jogo.eu && viva.dono_nome === Jogo.eu.nome);
   b.hidden = !minha;
   if (!minha) return;
@@ -1302,7 +1302,7 @@ const salasOferecidas = new Set();
 /** Entrou numa sala livre? ela se oferece. Antes a única forma de reivindicar
  *  era descobrir que a plaquinha flutuante era clicável, e ninguém descobre. */
 function ofereceSala(zona) {
-  if (!zona || !zona.privada || Jogo.visitante) return;
+  if (!zona || !zona.privada || zona.sem_dono || Jogo.visitante) return;
   if (zona.dono_nome) {                      // já tem dono
     if (zona.dono_nome === Jogo.eu.nome && !salasOferecidas.has('minha:' + zona.id)) {
       salasOferecidas.add('minha:' + zona.id);
@@ -1411,17 +1411,19 @@ function podemConversar(a, b, jaConectados) {
   if (a.silenciado || b.silenciado) return false;
   const za = zonaDe(a.x, a.y), zb = zonaDe(b.x, b.y);
   const privA = !!(za && za.privada), privB = !!(zb && zb.privada);
+  // Sala FECHADA é bolha cheia: dentro dela todo mundo se ouve, por mais longe
+  // que esteja. Área ABERTA (convivência, corredor, jardim) vale o raio, e de
+  // propósito: é o que deixa duas rodas de conversa no mesmo salão sem uma
+  // atropelar a outra. Fazer o salão inteiro se ouvir dava um bolo só de vozes,
+  // ainda mais porque a circulação cobre o prédio todo.
   if (privA || privB) return privA && privB && za.id === zb.id;
-  // Dentro de uma sala todo mundo se ouve, por mais longe que esteja: numa
-  // reunião ninguém pode ficar mudo só porque sentou na outra ponta da mesa.
-  // O raio só vale em área aberta (corredor, convivência, jardim).
-  if (za && zb && za.id === zb.id) return true;
   const d = Math.hypot(a.x - b.x, a.y - b.y);
   return d <= (jaConectados ? Jogo.config.raio_silencio : Jogo.config.raio_conversa);
 }
 
 function volumeEntre(a, b) {
-  if (mesmaSala(a, b)) return 1;                   // dentro da sala, volume cheio
+  const z = zonaDe(a.x, a.y);
+  if (z && z.privada && mesmaSala(a, b)) return 1;   // sala fechada: volume cheio
   const d = Math.hypot(a.x - b.x, a.y - b.y);
   const perto = 70, longe = Jogo.config.raio_silencio;
   return Math.max(0, Math.min(1, (longe - d) / (longe - perto)));

@@ -52,6 +52,12 @@ conferir("ninguém fica com duas salas", not ok)
 ok, _ = escritorio.reivindicar("circulacao", "gustavo", "Gustavo")
 conferir("área aberta não é reivindicável", not ok)
 
+print("\n-- a reunião é da casa --")
+ok, porque = escritorio.reivindicar("reuniao", "gustavo", "Gustavo")
+conferir("ninguém reivindica a sala de reunião", not ok)
+conferir("e a recusa explica por quê", "casa" in porque)
+conferir("a reunião continua sem dono", not escritorio.zona_por_id("reuniao").get("dono"))
+
 print("\n-- porta aberta: ter a sala não fecha a porta --")
 px, py = no_meio(z1)
 conferir("com a porta aberta, qualquer um entra", s.zona_trancada_para(visita, px, py) is None)

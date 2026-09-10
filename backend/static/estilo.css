@@ -918,3 +918,15 @@ body.editando #tela { cursor: crosshair; }
   cursor: pointer; font: inherit; color: var(--texto); white-space: nowrap;
 }
 .botao-chip:hover { background: var(--acento-claro); border-color: var(--acento); }
+
+/* Levantar / derrubar parede. A dica escrita "Alt derruba" ninguém achava, e
+   quem levantava uma parede sem querer ficava sem saber como tirar. */
+.modos-parede { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 10px; }
+.modos-parede button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  border: 1px solid var(--borda); background: var(--painel); color: var(--texto);
+  border-radius: 9px; padding: 9px 6px; font: inherit; font-size: 12px; cursor: pointer;
+}
+.modos-parede button[aria-pressed="true"] {
+  background: var(--acento); border-color: var(--acento); color: #fff;
+}
