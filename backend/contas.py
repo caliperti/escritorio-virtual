@@ -15,6 +15,7 @@ O arquivo `contas.json` guarda tudo — é pequeno e legível, não vale um banc
 Senha nunca é guardada: fica só o hash PBKDF2 com sal por conta.
 """
 
+import asyncio
 import hashlib
 import os
 import re
@@ -24,7 +25,9 @@ import secrets
 import time
 import unicodedata
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
+
+import nuvem
 
 log = logging.getLogger("escritorio.contas")
 
@@ -65,6 +68,8 @@ def email_valido(email: str) -> bool:
 
 def _chave(nome: str) -> str:
     """Nome sem acento, minúsculo — para 'José' e 'jose' serem a mesma conta."""
+    if not isinstance(nome, str):          # número ou lista no lugar do texto: chave nenhuma
+        return ""
     limpo = unicodedata.normalize("NFKD", nome).encode("ascii", "ignore").decode()
     return " ".join(limpo.lower().split())
 
@@ -94,6 +99,27 @@ def nome_de_pessoa(nome: str) -> bool:
     e-mail do administrador escrito na cabeça. Não é escalada de poder — quem
     manda é o campo `email` —, mas na tela ninguém distingue."""
     return not EMAIL.match((nome or "").strip())
+
+
+MAX_NOME = 24
+
+
+def nome_limpo(bruto) -> str:
+    """O nome que fica em cima do boneco, pronto — ou '' se não serve.
+
+    Uma regra só para cadastro, visitante e troca de nome. O visitante entrava
+    por outra porta e escapava de tudo: podia se chamar `gulisboa5@hotmail.com`
+    (o e-mail do administrador na cabeça do boneco), só de espaço invisível
+    (boneco sem nome) ou com quebra de linha no meio. Caractere que não se
+    imprime vira espaço, espaço repetido vira um, e o resto segue as regras do
+    cadastro: 2 letras que virem chave e nada com cara de e-mail."""
+    if not isinstance(bruto, str):
+        return ""
+    texto = "".join(c if c.isprintable() else " " for c in bruto)
+    texto = " ".join(texto.split())[:MAX_NOME].strip()
+    if len(texto) < 2 or len(_chave(texto)) < 2 or not nome_de_pessoa(texto):
+        return ""
+    return texto
 
 
 def _chave_nome(nome: str) -> str:
@@ -137,7 +163,10 @@ class Contas:
             self._limpar_tokens()
             log.info("%d contas carregadas", len(self.contas))
         except Exception:
-            log.exception("contas.json ilegível — começando vazio")
+            # O arquivo ruim fica guardado ao lado: a primeira gravação depois
+            # daqui o sobrescreveria, e ele era a única cópia das contas.
+            log.exception("contas.json ilegível — começando vazio (cópia em %s)",
+                          nuvem.guardar_ilegivel(ARQUIVO))
 
     def _migrar(self) -> None:
         """Conta antiga não tinha e-mail: o login era o nome. Quem cadastrou o
@@ -155,8 +184,10 @@ class Contas:
             self.salvar()
 
     def salvar(self) -> None:
-        ARQUIVO.write_text(json.dumps({"contas": self.contas, "tokens": self.tokens},
-                                      ensure_ascii=False), encoding="utf-8")
+        # Atômico: o processo morrer no meio da gravação deixava um JSON
+        # cortado, e na subida seguinte era "começando vazio" — zero contas.
+        nuvem.gravar_atomico(ARQUIVO, json.dumps({"contas": self.contas, "tokens": self.tokens},
+                                                 ensure_ascii=False))
 
     # ---------- cadastro e entrada ----------
 
@@ -176,47 +207,100 @@ class Contas:
         """Quantas sobram, ou None quando não há limite."""
         return None if MAX_CONTAS == 0 else max(0, MAX_CONTAS - len(self.contas))
 
-    def registrar(self, email: str, nome: str, senha: str,
-                  aparencia: Dict, cor: str) -> Optional[str]:
-        email = (email or "").strip()[:120]
-        nome = (nome or "").strip()[:24]
+    # O cadastro e o login vêm em duas metades, com o PBKDF2 no meio: assim a
+    # versão assíncrona manda só o hash para uma thread e mexe no dicionário
+    # de contas de volta no laço de eventos, onde ninguém mais mexe ao mesmo
+    # tempo. As 120 mil voltas levam dezenas de milissegundos (centenas no
+    # servidor de um núcleo), e rodando no laço TODO o escritório congelava
+    # nesse tempo: ninguém andava, nenhuma chamada negociava — a cada login.
+
+    def _preparar_cadastro(self, email, nome, senha) -> Optional[Tuple[str, str, str]]:
+        email = (email or "").strip()[:120] if isinstance(email, str) else ""
         # A chave do nome também precisa de 2 letras: nome só de emoji ou de
         # ideograma virava chave vazia, e duas contas assim eram a mesma conta.
-        if (not email_valido(email) or len(nome) < 2 or len(_chave(nome)) < 2
-                or not nome_de_pessoa(nome)
+        nome = nome_limpo(nome)
+        if (not email_valido(email) or not nome or not isinstance(senha, str)
                 or len(senha) < 4 or self.existe(email) or self.nome_em_uso(nome)
                 or self.cheio()):
             return None
-        sal = secrets.token_hex(16)
+        return email, nome, secrets.token_hex(16)
+
+    def _gravar_cadastro(self, email: str, nome: str, sal: str, digest: str,
+                         aparencia: Dict, cor: str) -> str:
         self.contas[_chave(email)] = {
-            "email": email, "nome": nome, "sal": sal, "hash": _hash(senha, sal),
+            "email": email, "nome": nome, "sal": sal, "hash": digest,
             "aparencia": aparencia, "cor": cor,
             "criada_em": time.time(), "visto_em": time.time(),
         }
         return self._novo_token(_chave(email))
+
+    def registrar(self, email: str, nome: str, senha: str,
+                  aparencia: Dict, cor: str) -> Optional[str]:
+        preparado = self._preparar_cadastro(email, nome, senha)
+        if not preparado:
+            return None
+        email, nome, sal = preparado
+        return self._gravar_cadastro(email, nome, sal, _hash(senha, sal), aparencia, cor)
+
+    async def registrar_async(self, email: str, nome: str, senha: str,
+                              aparencia: Dict, cor: str) -> Optional[str]:
+        """Como `registrar`, mas sem segurar o laço de eventos durante o hash."""
+        preparado = self._preparar_cadastro(email, nome, senha)
+        if not preparado:
+            return None
+        email, nome, sal = preparado
+        digest = await asyncio.get_running_loop().run_in_executor(None, _hash, senha, sal)
+        # enquanto o hash rodava, outro pedido pode ter criado a mesma conta
+        if self.existe(email) or self.nome_em_uso(nome) or self.cheio():
+            return None
+        return self._gravar_cadastro(email, nome, sal, digest, aparencia, cor)
+
+    def _antes_do_login(self, email, senha) -> Optional[Dict]:
+        """A conta, se existe e não está de castigo. None = nem calcula o hash."""
+        chave = _chave(email)
+        if self._espera_login.get(chave, 0) > time.time():
+            return None
+        conta = self.contas.get(chave)
+        if not conta or not isinstance(senha, str):
+            self._errou(chave)
+            return None
+        return conta
+
+    def _errou(self, chave: str) -> None:
+        n = self._erros_login.get(chave, 0) + 1
+        self._erros_login[chave] = n
+        if n >= ERROS_ATE_ESPERAR:
+            # dobra a cada nova rodada de erros, com teto de 5 minutos
+            espera = min(300, 2 ** (n - ERROS_ATE_ESPERAR))
+            self._espera_login[chave] = time.time() + espera
+
+    def _depois_do_login(self, email: str, conta: Dict, digest: str) -> Optional[str]:
+        chave = _chave(email)
+        if digest != conta["hash"]:
+            self._errou(chave)
+            return None
+        self._erros_login.pop(chave, None)
+        self._espera_login.pop(chave, None)
+        conta["visto_em"] = time.time()
+        return self._novo_token(chave)
 
     def entrar(self, email: str, senha: str) -> Optional[str]:
         """Devolve o token, ou None se e-mail/senha não batem ou se a conta está
         de castigo por tentativa demais. Sem o castigo dava para testar senha à
         vontade — e cada tentativa custa 120 mil voltas de PBKDF2, ou seja,
         também servia para derrubar o servidor, que é de um núcleo só."""
-        chave = _chave(email)
-        castigo = self._espera_login.get(chave, 0)
-        if castigo > time.time():
+        conta = self._antes_do_login(email, senha)
+        if conta is None:
             return None
-        conta = self.contas.get(chave)
-        if not conta or _hash(senha, conta["sal"]) != conta["hash"]:
-            n = self._erros_login.get(chave, 0) + 1
-            self._erros_login[chave] = n
-            if n >= ERROS_ATE_ESPERAR:
-                # dobra a cada nova rodada de erros, com teto de 5 minutos
-                espera = min(300, 2 ** (n - ERROS_ATE_ESPERAR))
-                self._espera_login[chave] = time.time() + espera
+        return self._depois_do_login(email, conta, _hash(senha, conta["sal"]))
+
+    async def entrar_async(self, email: str, senha: str) -> Optional[str]:
+        """Como `entrar`, mas sem segurar o laço de eventos durante o hash."""
+        conta = self._antes_do_login(email, senha)
+        if conta is None:
             return None
-        self._erros_login.pop(chave, None)
-        self._espera_login.pop(chave, None)
-        conta["visto_em"] = time.time()
-        return self._novo_token(_chave(email))
+        digest = await asyncio.get_running_loop().run_in_executor(None, _hash, senha, conta["sal"])
+        return self._depois_do_login(email, conta, digest)
 
     def _novo_token(self, chave: str) -> str:
         # Um token por sessão; os antigos continuam valendo (a pessoa pode ter
@@ -275,8 +359,8 @@ class Contas:
             # selo de administrador se perdem — e renomear-se para um nome de
             # administrador deixou de dar poder nenhum, porque poder vem do
             # e-mail. O que ainda vale é não repetir nome de outro membro.
-            novo = nome.strip()[:24]
-            if novo and len(_chave(novo)) >= 2 and not self.nome_em_uso(novo, chave):
+            novo = nome_limpo(nome)
+            if novo and not self.nome_em_uso(novo, chave):
                 conta["nome"] = novo
         if aparencia:
             conta["aparencia"] = aparencia

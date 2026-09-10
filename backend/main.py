@@ -1,4 +1,6 @@
+import json
 import logging
+import math
 import os
 import time
 from pathlib import Path
@@ -6,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, File, Form, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import contas as mod_contas
@@ -31,12 +33,23 @@ SENHA = os.environ.get("SENHA", "").strip()
 MINUTOS_EXPULSO = 30
 # Quantas mensagens por segundo cada conexão pode mandar.
 TETO_MENSAGENS = 40
+# E de que tamanho. O teto por segundo não olhava o tamanho: um `sinal` de
+# 8 MB era lido, desmontado e repassado inteiro ao alvo — 40 vezes por
+# segundo, se quisessem. Um SDP de WebRTC tem uns 10 KB; 64 KB é folgado.
+MAX_CARACTERES_MENSAGEM = 64 * 1024
+# O maior envio que o estúdio aceita: duas folhas de roupa no limite, mais a
+# moldura do multipart.
+MAX_CORPO_ESTUDIO = 2 * mod_estudio.MAX_BYTES + 512 * 1024
 
 # Na subida, primeiro tenta trazer o estado do repositório (o disco do plano
-# gratuito é apagado quando o serviço hiberna), depois carrega do arquivo.
-nuvem.restaurar([mod_contas.ARQUIVO, mapa.ARQUIVO])
+# gratuito é apagado quando o serviço hiberna), depois carrega do arquivo. O
+# catálogo do estúdio vem junto — ficava de fora, e o mapa restaurado perdia
+# todo móvel criado pelo admin (tipo desconhecido é descartado na carga).
+nuvem.restaurar([mod_contas.ARQUIVO, mapa.ARQUIVO, mod_estudio.ARQUIVO])
 contas.carregar()
 estudio.carregar()
+# as figuras das peças e roupas moram em static/assets, que some com o disco
+nuvem.restaurar([a for a in estudio.arquivos_de_imagem() if not a.exists()])
 # As peças que o admin criou entram POR CIMA do catálogo de fábrica. Se algo
 # aqui estiver torto, o escritório continua de pé — só falta a peça nova.
 mapa.CATALOGO.update({k: {**v} for k, v in estudio.pecas.items()})
@@ -58,8 +71,40 @@ class EstaticoSemCache(StaticFiles):
         return resposta
 
 
+class TetoDeCorpo:
+    """Diz não, na porta, a um envio maior do que o estúdio aceita.
+
+    O corpo de um POST multipart é lido e desmontado INTEIRO antes de a rota
+    olhar o token: qualquer um, sem login, mandava 40 MB (ou 4 GB) para
+    /estudio/peca e o servidor engolia tudo — memória, disco temporário e
+    tempo — para só então responder "só o administrador". O tamanho vem no
+    cabeçalho, e o servidor HTTP garante que o corpo não passa dele."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if (scope["type"] == "http" and scope.get("method") == "POST"
+                and scope["path"].startswith("/estudio/")):
+            declarado = dict(scope["headers"]).get(b"content-length", b"")
+            if not declarado.isdigit() or int(declarado) > MAX_CORPO_ESTUDIO:
+                resposta = JSONResponse({"erro": "Envio grande demais (o limite é 3 MB por imagem)."},
+                                        status_code=413)
+                await resposta(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
 app = FastAPI(title="Escritório Virtual")
+app.add_middleware(TetoDeCorpo)
 app.mount("/static", EstaticoSemCache(directory=STATIC_DIR), name="static")
+
+
+def _texto(valor) -> str:
+    """O campo como texto, ou vazio se veio de outro tipo. Um número ou uma
+    lista onde ia texto derrubava a rota com 500 (`.strip()` de int) — e, no
+    WebSocket, fechava a conexão sem resposta nenhuma."""
+    return valor if isinstance(valor, str) else ""
 
 
 # Carimbo de versão dos arquivos do site.
@@ -104,22 +149,23 @@ async def config():
 @app.post("/conta/registrar")
 async def registrar(dados: dict):
     """Cadastro: e-mail é o login, nome é o que aparece em cima do boneco."""
-    if SENHA and (dados.get("convite") or "") != SENHA:
+    if SENHA and _texto(dados.get("convite")) != SENHA:
         return {"erro": "Código de convite errado."}
-    email = (dados.get("email") or "").strip()
-    nome = (dados.get("nome") or "").strip()
+    email = _texto(dados.get("email")).strip()
+    nome = _texto(dados.get("nome")).strip()
     if not mod_contas.email_valido(email):
         return {"erro": "Escreva um e-mail de verdade."}
     if contas.existe(email):
         return {"erro": "Esse e-mail já tem conta. Use a aba Entrar."}
-    if contas.nome_em_uso(nome):
+    # nem de membro, nem de quem está na sala agora (um visitante, por exemplo)
+    if contas.nome_em_uso(nome) or sala.nome_em_uso(nome):
         return {"erro": "Já tem alguém com esse nome no escritório. Escolha outro."}
     if contas.cheio():
         return {"erro": "As %d vagas de membro já foram preenchidas. "
                         "Você pode entrar como visitante." % mod_contas.MAX_CONTAS}
     cor = dados.get("cor") if cor_valida(dados.get("cor")) else "#4f7fd9"
-    token = contas.registrar(email, nome, dados.get("senha") or "",
-                             limpar_aparencia(dados.get("aparencia")), cor)
+    token = await contas.registrar_async(email, nome, _texto(dados.get("senha")),
+                                         limpar_aparencia(dados.get("aparencia")), cor)
     if not token:
         return {"erro": "Nome precisa de 2 letras e senha de 4."}
     nuvem.marcar(mod_contas.ARQUIVO)
@@ -129,8 +175,8 @@ async def registrar(dados: dict):
 @app.post("/conta/entrar")
 async def entrar_conta(dados: dict):
     # `nome` ainda é aceito para não quebrar quem tem a página velha aberta
-    quem = (dados.get("email") or dados.get("nome") or "")
-    token = contas.entrar(quem, dados.get("senha") or "")
+    quem = _texto(dados.get("email")) or _texto(dados.get("nome"))
+    token = await contas.entrar_async(quem, _texto(dados.get("senha")))
     if not token:
         return {"erro": "E-mail ou senha não conferem."}
     nuvem.marcar(mod_contas.ARQUIVO)
@@ -151,7 +197,7 @@ def conta_publica(conta):
 
 def _admin_do_token(token: str):
     """Devolve a conta se o token for de um administrador, senão None."""
-    conta = contas.por_token(token or "")
+    conta = contas.por_token(_texto(token))
     if conta and mod_contas.eh_admin(conta.get("email") or conta["nome"]):
         return conta
     return None
@@ -179,6 +225,7 @@ async def estudio_criar_peca(
         return {"erro": porque}
     mapa.CATALOGO[peca["id"]] = {k: v for k, v in peca.items() if k != "id"}
     nuvem.marcar(mod_estudio.ARQUIVO)
+    nuvem.marcar(estudio.arquivo_da_peca(peca["id"]))     # a figura vai junto
     await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(),
                          "por": "estúdio"})
     return {"peca": peca}
@@ -196,26 +243,45 @@ async def estudio_criar_roupa(
                                         nome, grupo)
     if not roupa:
         return {"erro": porque}
+    # A roupa nova não era marcada para a nuvem — nem o catálogo nem as folhas —
+    # e sumia na primeira hibernação do servidor.
+    nuvem.marcar(mod_estudio.ARQUIVO)
+    for folha in estudio.arquivos_da_roupa(roupa["id"], roupa["sem_sentado"]):
+        nuvem.marcar(folha)
     return {"roupa": roupa}
 
 
 @app.post("/estudio/remover")
 async def estudio_remover(dados: dict):
-    if not _admin_do_token(dados.get("token") or ""):
+    if not _admin_do_token(dados.get("token")):
         return {"erro": "Só o administrador."}
-    chave = str(dados.get("id") or "")
+    chave = _texto(dados.get("id"))
     if dados.get("roupa"):
-        return {"ok": estudio.remover_roupa(chave)}
-    if estudio.remover_peca(chave):
+        folhas = estudio.remover_roupa(chave)
+        if folhas is not None:
+            _espelhar_remocao(folhas)
+        return {"ok": folhas is not None}
+    removidos = estudio.remover_peca(chave)
+    if removidos is not None:
+        _espelhar_remocao(removidos)
         mapa.CATALOGO.pop(chave, None)
         # tira do mapa o que já tinha sido colocado com essa peça
         escritorio.objetos = [o for o in escritorio.objetos if o["tipo"] != chave]
         escritorio._recalcular()
         escritorio.salvar()
+        nuvem.marcar(mapa.ARQUIVO)
         await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(),
                              "por": "estúdio"})
         return {"ok": True}
     return {"erro": "Peça não encontrada."}
+
+
+def _espelhar_remocao(arquivos) -> None:
+    """Remover no estúdio não chegava à nuvem: o catálogo antigo (com a peça
+    apagada) e as figuras voltavam do espelho na subida seguinte."""
+    nuvem.marcar(mod_estudio.ARQUIVO)
+    for arquivo in arquivos:
+        nuvem.marcar_apagado(arquivo)
 
 
 @app.get("/catalogo")
@@ -231,44 +297,123 @@ async def saude():
     return {"ok": True, "pessoas": len(sala.participantes)}
 
 
+class MensagemGrande(ValueError):
+    pass
+
+
+async def _receber(ws: WebSocket) -> dict:
+    """Uma mensagem do cliente, já como dicionário — ou MensagemGrande antes
+    de gastar CPU desmontando um JSON de megabytes."""
+    texto = await ws.receive_text()
+    if len(texto) > MAX_CARACTERES_MENSAGEM:
+        raise MensagemGrande()
+    dados = json.loads(texto)
+    if not isinstance(dados, dict):
+        raise TypeError("a mensagem não é um objeto")
+    return dados
+
+
+def _limpar_entrada(bruto: dict) -> dict:
+    """A mensagem de entrada com cada campo no tipo certo. Token que vinha como
+    lista, nome como número ou `voltando` com "nan" estouravam antes de
+    qualquer resposta, e a conexão caía sem dizer por quê."""
+    limpa = {"tipo": _texto(bruto.get("tipo")), "visitante": bool(bruto.get("visitante")),
+             "convite": _texto(bruto.get("convite")), "nome": _texto(bruto.get("nome")),
+             "token": _texto(bruto.get("token")), "emoji": _texto(bruto.get("emoji")),
+             "cor": _texto(bruto.get("cor")), "aparencia": bruto.get("aparencia")}
+    voltando = bruto.get("voltando")
+    if isinstance(voltando, dict):
+        try:
+            vx, vy = float(voltando.get("x")), float(voltando.get("y"))
+        except (TypeError, ValueError):
+            vx = vy = None
+        if vx is not None and math.isfinite(vx) and math.isfinite(vy):
+            limpa["voltando"] = {"x": vx, "y": vy}
+    return limpa
+
+
+def _nome_livre(base: str) -> str:
+    """`base`, ou `base 2`, `base 3`… — o primeiro que ninguém usa."""
+    nome, n = base, 2
+    while sala.nome_em_uso(nome) or contas.nome_em_uso(nome):
+        nome = "%s %d" % (base, n)
+        n += 1
+    return nome
+
+
+async def _reacomodar() -> None:
+    """Quem ficou fora do mapa depois de uma edição volta para a entrada — e
+    fica sabendo, assim como os outros."""
+    for p in sala.reacomodar():
+        await sala.enviar(p, {"tipo": "corrigir", "x": p.x, "y": p.y})
+        await sala.publicar({"tipo": "mover", "id": p.id, "x": round(p.x, 1), "y": round(p.y, 1),
+                             "direcao": p.direcao,
+                             "zona": (mapa.zona_de(p.x, p.y) or {}).get("id")}, exceto=p.id)
+
+
 @app.websocket("/ws")
 async def websocket_sala(ws: WebSocket):
     await ws.accept()
     eu = None
     try:
-        entrada = await ws.receive_json()
-        if entrada.get("tipo") != "entrar":
+        try:
+            entrada = _limpar_entrada(await _receber(ws))
+        except MensagemGrande:
+            await ws.send_json({"tipo": "recusado", "texto": "Pedido grande demais."})
+            await ws.close(code=1009)
+            return
+        except (TypeError, ValueError, KeyError, AttributeError):
+            await ws.send_json({"tipo": "recusado", "texto": "Não entendi esse pedido."})
+            await ws.close(code=4000)
+            return
+        if entrada["tipo"] != "entrar":
             await ws.close(code=4000)
             return
         # Visitante entra sem cadastro: precisa do código da sala e de um nome.
         # Ele anda, vê e conversa, mas nada do que ele faz muda o escritório.
-        visitante = bool(entrada.get("visitante"))
+        visitante = entrada["visitante"]
         if visitante:
-            if SENHA and (entrada.get("convite") or "") != SENHA:
+            if SENHA and entrada["convite"] != SENHA:
                 await ws.send_json({"tipo": "recusado", "texto": "Código da sala errado."})
                 await ws.close(code=4003)
                 return
-            nome = (entrada.get("nome") or "").strip()[:24] or "Visitante"
+            # O nome do visitante segue as MESMAS regras do cadastro. Sem isto
+            # ele entrava como `gulisboa5@hotmail.com`, só de espaço invisível
+            # ou com quebra de linha — coisa que nenhum membro consegue.
+            if entrada["nome"].strip():
+                nome = mod_contas.nome_limpo(entrada["nome"])
+            else:
+                nome = _nome_livre("Visitante")
+            if not nome:
+                await ws.send_json({"tipo": "recusado",
+                                    "texto": "Escolha um nome de gente: 2 letras pelo menos, e sem @."})
+                await ws.close(code=4003)
+                return
             # Nome de membro é do membro: visitante com o mesmo nome aparecia
-            # na lista e no mapa igualzinho ao dono da conta.
-            # o nome que o visitante escolhe é o que aparece em cima do boneco:
-            # não pode ser o de um membro, senão ele se passa por outra pessoa
+            # na lista e no mapa igualzinho ao dono da conta. E nome de quem
+            # já está na sala também não: dois "Ana" eram dois bonecos iguais,
+            # e expulsar um expulsava os dois.
             if contas.nome_em_uso(nome):
                 await ws.send_json({"tipo": "recusado",
                                     "texto": "Esse nome é de um membro. Escolha outro."})
                 await ws.close(code=4003)
                 return
+            if sala.nome_em_uso(nome):
+                await ws.send_json({"tipo": "recusado",
+                                    "texto": "Já tem alguém com esse nome na sala. Escolha outro."})
+                await ws.close(code=4003)
+                return
             entrada = {**entrada, "nome": nome}
             conta = None
         else:
-            conta = contas.por_token(entrada.get("token") or "")
+            conta = contas.por_token(entrada["token"])
             if not conta:
                 await ws.send_json({"tipo": "recusado", "texto": "Faça login para entrar."})
                 await ws.close(code=4003)
                 return
             entrada = {**entrada, "nome": conta["nome"],
                        "aparencia": conta.get("aparencia") or {},
-                       "cor": conta.get("cor") or entrada.get("cor")}
+                       "cor": conta.get("cor") or entrada["cor"]}
 
         # Quem foi expulso pelo admin não entra enquanto o castigo durar.
         castigo = sala.castigo_de(
@@ -332,7 +477,7 @@ async def websocket_sala(ws: WebSocket):
             # cliente reconectava em laço. Agora vira recusa, como as outras.
             msg = None
             try:
-                msg = await ws.receive_json()
+                msg = await _receber(ws)
                 # Teto de mensagens: um cliente sozinho mandou mil em 0,2 s e o
                 # servidor reenviou três mil (o custo se multiplica por quem
                 # está na sala). Andando são ~15 por segundo; 40 é folgado.
@@ -404,16 +549,26 @@ async def websocket_sala(ws: WebSocket):
                     await sala.publicar({"tipo": "reacao", "id": eu.id, "emoji": emoji}, exceto=eu.id)
 
                 elif tipo == "perfil":
-                    nome_novo = (msg.get("nome") or eu.nome).strip()[:24] or eu.nome
-                    if not mod_contas.nome_de_pessoa(nome_novo):
-                        await ws.send_json({"tipo": "erro",
-                                            "texto": "Seu nome não pode ser um e-mail."})
-                        nome_novo = eu.nome
+                    # Mesmas regras do cadastro para o nome novo; se não serve,
+                    # fica o de antes (e a pessoa fica sabendo). Antes, a sessão
+                    # passava a usar o nome torto enquanto a conta guardava o
+                    # antigo — dois nomes para a mesma pessoa até o F5.
+                    nome_novo = eu.nome
+                    if _texto(msg.get("nome")).strip():
+                        nome_novo = mod_contas.nome_limpo(msg["nome"])
+                        if not nome_novo:
+                            await ws.send_json({"tipo": "erro",
+                                                "texto": "Nome precisa de 2 letras e não pode ser um e-mail."})
+                            nome_novo = eu.nome
                     if cor_valida(msg.get("cor")):
                         eu.cor = msg["cor"]
-                    eu.emoji = (msg.get("emoji") or eu.emoji)[:4]
+                    eu.emoji = (_texto(msg.get("emoji")) or eu.emoji)[:4]
                     if msg.get("aparencia"):
                         eu.aparencia = limpar_aparencia(msg["aparencia"])
+                    if nome_novo != eu.nome and sala.nome_em_uso(nome_novo, eu.id):
+                        await ws.send_json({"tipo": "erro",
+                                            "texto": "Já tem alguém com esse nome na sala. Ficou o de antes."})
+                        nome_novo = eu.nome
                     if eu.visitante:
                         if nome_novo != eu.nome and contas.nome_em_uso(nome_novo):
                             await ws.send_json({"tipo": "erro",
@@ -526,6 +681,7 @@ async def websocket_sala(ws: WebSocket):
                         nuvem.marcar(mapa.ARQUIVO)
                         await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(),
                                              "por": eu.nome})
+                        await _reacomodar()
                     else:
                         await ws.send_json({"tipo": "erro", "texto": "Edição recusada."})
 
@@ -639,6 +795,13 @@ async def websocket_sala(ws: WebSocket):
 
                 elif tipo == "ping":
                     await ws.send_json({"tipo": "pong"})
+            except MensagemGrande:
+                # já foi lida, mas não é desmontada nem repassada — e a conexão
+                # fecha, porque isso não vem do nosso cliente
+                log.warning("mensagem grande demais de %s", eu.nome)
+                await ws.send_json({"tipo": "erro", "texto": "Pedido grande demais."})
+                await ws.close(code=1009)
+                return
             except (TypeError, ValueError, KeyError, AttributeError, IndexError):
                 log.warning("mensagem malformada de %s: %s", eu.nome, str(msg)[:200])
                 await ws.send_json({"tipo": "erro", "texto": "Não entendi esse pedido."})

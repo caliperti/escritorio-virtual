@@ -21,9 +21,10 @@ import re
 import struct
 import time
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import mapa                      # só para ler os ids de fábrica (mapa.FABRICA)
+import nuvem
 
 log = logging.getLogger("escritorio.estudio")
 
@@ -97,12 +98,39 @@ class Estudio:
             log.info("estúdio: %d peça(s) e %d roupa(s) criadas pelo admin",
                      len(self.pecas), len(self.roupas))
         except Exception:
-            log.exception("pecas.json ilegível; começando vazio")
+            log.exception("pecas.json ilegível; começando vazio (cópia em %s)",
+                          nuvem.guardar_ilegivel(ARQUIVO))
             self.pecas, self.roupas = {}, {}
 
     def salvar(self) -> None:
-        ARQUIVO.write_text(json.dumps({"pecas": self.pecas, "roupas": self.roupas},
-                                      ensure_ascii=False, indent=1), encoding="utf-8")
+        nuvem.gravar_atomico(ARQUIVO, json.dumps({"pecas": self.pecas, "roupas": self.roupas},
+                                                 ensure_ascii=False, indent=1))
+
+    # ---------- as imagens, para o espelho na nuvem ----------
+
+    def arquivo_da_peca(self, chave: str) -> Optional[Path]:
+        peca = self.pecas.get(chave)
+        if not peca:
+            return None
+        return PASTA_IMAGENS / Path(peca.get("imagem", "")).name
+
+    @staticmethod
+    def arquivos_da_roupa(chave: str, sem_sentado: bool = False) -> List[Path]:
+        lista = []
+        for sexo in ("m", "f"):
+            lista.append(PASTA_ROUPAS / ("%s_%s.png" % (chave, sexo)))
+            if not sem_sentado:
+                lista.append(PASTA_ROUPAS / ("sit_%s_%s.png" % (chave, sexo)))
+        return lista
+
+    def arquivos_de_imagem(self) -> List[Path]:
+        """Toda imagem que o estúdio criou. É o que o espelho na nuvem precisa
+        guardar além do `pecas.json`: o catálogo restaurado sem as figuras
+        apontava para arquivo nenhum, e o disco do plano gratuito some inteiro."""
+        lista = [self.arquivo_da_peca(c) for c in self.pecas]
+        for chave, roupa in self.roupas.items():
+            lista += self.arquivos_da_roupa(chave, bool(roupa.get("sem_sentado")))
+        return [a for a in lista if a is not None]
 
     @staticmethod
     def _id_livre(base: str, ocupado) -> str:
@@ -150,17 +178,18 @@ class Estudio:
         self.salvar()
         return {"id": chave, **self.pecas[chave]}, ""
 
-    def remover_peca(self, chave: str) -> bool:
-        peca = self.pecas.pop(chave, None)
-        if not peca:
-            return False
-        alvo = PASTA_IMAGENS / Path(peca.get("imagem", "")).name
+    def remover_peca(self, chave: str) -> Optional[List[Path]]:
+        """Devolve os arquivos que saíram (para tirar do espelho também), ou
+        None se a peça não existia."""
+        alvo = self.arquivo_da_peca(chave)
+        if self.pecas.pop(chave, None) is None:
+            return None
         try:
             alvo.unlink(missing_ok=True)
         except OSError:
             pass
         self.salvar()
-        return True
+        return [alvo]
 
     # ---------- roupas do boneco ----------
 
@@ -204,17 +233,18 @@ class Estudio:
         self.salvar()
         return {"id": chave, **self.roupas[chave]}, ""
 
-    def remover_roupa(self, chave: str) -> bool:
+    def remover_roupa(self, chave: str) -> Optional[List[Path]]:
+        """Devolve as folhas que saíram, ou None se a roupa não existia."""
         if self.roupas.pop(chave, None) is None:
-            return False
-        for sexo in ("m", "f"):
-            for nome in ("%s_%s.png" % (chave, sexo), "sit_%s_%s.png" % (chave, sexo)):
-                try:
-                    (PASTA_ROUPAS / nome).unlink(missing_ok=True)
-                except OSError:
-                    pass
+            return None
+        folhas = self.arquivos_da_roupa(chave)
+        for folha in folhas:
+            try:
+                folha.unlink(missing_ok=True)
+            except OSError:
+                pass
         self.salvar()
-        return True
+        return folhas
 
 
 estudio = Estudio()

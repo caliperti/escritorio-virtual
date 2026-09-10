@@ -16,9 +16,12 @@ o que ocupa espaço, não o que é bonito.
 
 import json
 import logging
+import math
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import nuvem
 from planta_padrao import VERSAO as VERSAO_PLANTA, montar_padrao
 
 log = logging.getLogger("escritorio.mapa")
@@ -294,12 +297,19 @@ class Escritorio:
                 log.info("planta de fábrica é mais nova (%d > %d) — remontando o escritório",
                          VERSAO_PLANTA, self.versao_planta)
             except Exception:
-                log.exception("mapa.json ilegível — voltando para a planta padrão")
+                # O arquivo ruim não pode ser só sobrescrito pela planta de
+                # fábrica: era a única cópia do escritório editado, e a linha
+                # de baixo apagava a prova. Fica uma cópia ao lado dele.
+                log.exception("mapa.json ilegível — voltando para a planta padrão (cópia em %s)",
+                              nuvem.guardar_ilegivel(ARQUIVO))
         montar_padrao(self)
         self.salvar()
 
     def salvar(self) -> None:
-        ARQUIVO.write_text(json.dumps(self.para_json(), ensure_ascii=False), encoding="utf-8")
+        # Gravação atômica: um leitor (o envio para a nuvem) nunca vê o arquivo
+        # vazio, e o processo morrer no meio não deixa JSON cortado — que na
+        # subida seguinte virava planta de fábrica em silêncio.
+        nuvem.gravar_atomico(ARQUIVO, json.dumps(self.para_json(), ensure_ascii=False))
 
     def para_json(self) -> Dict:
         return {
@@ -310,19 +320,35 @@ class Escritorio:
             "zonas": self.zonas,
             "nascimento": list(self.nascimento),
             "versao_planta": self.versao_planta,
+            # O contador de ids vai junto. Sem ele, a subida recalculava só
+            # pelos móveis, e a próxima sala criada ganhava o id de uma que já
+            # existia — e a substituía, com o dono e tudo.
+            "proximo_id": self.proximo_id,
         }
 
     def de_json(self, dados: Dict) -> None:
         self.largura = int(dados["largura"])
         self.altura = int(dados["altura"])
-        self.piso = [list(linha.ljust(self.largura, "c")[:self.largura]) for linha in dados["piso"]]
+        # A grade tem sempre o tamanho declarado: linha faltando no arquivo
+        # virava IndexError na primeira edição que encostasse nela.
+        self.piso = [list(linha.ljust(self.largura, "c")[:self.largura])
+                     for linha in dados["piso"]][:self.altura]
         self.paredes = [[1 if c == "1" else 0 for c in linha.ljust(self.largura, "0")[:self.largura]]
-                        for linha in dados["paredes"]]
+                        for linha in dados["paredes"]][:self.altura]
+        while len(self.piso) < self.altura:
+            self.piso.append(["c"] * self.largura)
+        while len(self.paredes) < self.altura:
+            self.paredes.append([0] * self.largura)
         self.objetos = [o for o in dados.get("objetos", []) if o.get("tipo") in CATALOGO]
         self.zonas = dados.get("zonas", [])
         self.nascimento = tuple(dados.get("nascimento", (2, 2)))
         self.versao_planta = int(dados.get("versao_planta", 0))
-        self.proximo_id = max([o["id"] for o in self.objetos], default=0) + 1
+        # O id nunca anda para trás: vale o maior entre o contador gravado, os
+        # móveis e as salas `z<n>` (mapa gravado antes de o contador existir).
+        maior_objeto = max([int(o["id"]) for o in self.objetos], default=0)
+        maior_zona = max([int(str(z["id"])[1:]) for z in self.zonas
+                          if re.fullmatch(r"z\d+", str(z.get("id")))], default=0)
+        self.proximo_id = max(int(dados.get("proximo_id", 0)), maior_objeto + 1, maior_zona + 1)
         self._recalcular()
 
     # ---------- colisão ----------
@@ -349,6 +375,10 @@ class Escritorio:
 
     def livre(self, px: float, py: float) -> bool:
         """O avatar é uma caixinha: os quatro cantos precisam cair em chão livre."""
+        # NaN e infinito não são lugar nenhum. `int(nan // 32)` estourava, e um
+        # `voltando` com "nan" na entrada derrubava o WebSocket sem resposta.
+        if not (math.isfinite(px) and math.isfinite(py)):
+            return False
         r = RAIO_AVATAR
         for cx, cy in ((px - r, py - r), (px + r, py - r), (px - r, py + r), (px + r, py + r)):
             if not self.tile_livre(int(cx // TAMANHO_TILE), int(cy // TAMANHO_TILE)):
@@ -525,191 +555,233 @@ class Escritorio:
 
     # ---------- edição ----------
 
-    def _guardar_historico(self) -> None:
-        self._historico.append(json.dumps(self.para_json(), ensure_ascii=False))
+    def _foto(self) -> str:
+        return json.dumps(self.para_json(), ensure_ascii=False)
+
+    def _guardar_historico(self, foto: str) -> None:
+        self._historico.append(foto)
         del self._historico[:-HISTORICO]
+
+    def _novo_id_zona(self) -> str:
+        """Um id de sala que ninguém usa. O contador vai para o disco, mas o
+        mapa pode ter vindo de uma versão que não o gravava — então confere."""
+        usados = {str(z.get("id")) for z in self.zonas}
+        while f"z{self.proximo_id}" in usados:
+            self.proximo_id += 1
+        zid = f"z{self.proximo_id}"
+        self.proximo_id += 1
+        return zid
+
+    @staticmethod
+    def _tiles(acao: Dict) -> List[Tuple[int, int]]:
+        """Os tiles do pedido, todos inteiros — ou ValueError/TypeError ANTES
+        de qualquer um deles ser aplicado."""
+        return [(int(x), int(y)) for x, y in acao.get("tiles", [])]
+
+    def _desfazer(self) -> bool:
+        if not self._historico:
+            return False
+        # A posse da sala não é desenho. Reivindicar e trancar não passam pelo
+        # histórico, mas a foto guardava `dono` e `trancada` de cada zona: o
+        # administrador desfazia uma planta que tinha colocado e, sem querer,
+        # devolvia a sala de alguém ao estado de antes — sem dono, destrancada.
+        posse = {z["id"]: {k: z[k] for k in ("dono", "dono_nome", "trancada") if k in z}
+                 for z in self.zonas}
+        self.de_json(json.loads(self._historico.pop()))
+        for z in self.zonas:
+            for k in ("dono", "dono_nome", "trancada"):
+                z.pop(k, None)
+            z.update(posse.get(z["id"], {}))
+        return True
 
     def editar(self, acao: Dict) -> bool:
         """Aplica uma edição vinda do editor. Devolve False se for inválida —
-        o cliente é quem desenha, mas quem decide o que é permitido é aqui."""
+        o cliente é quem desenha, mas quem decide o que é permitido é aqui.
+
+        Recusada é recusada: nada do pedido fica no mapa e o histórico não
+        ganha passo. Antes, uma lista de tiles com um item torto no meio
+        deixava os de antes aplicados em memória — sem recalcular colisão, sem
+        gravar e sem avisar ninguém: uma parede fantasma que só aparecia na
+        edição seguinte. E cada recusa empurrava uma foto para o histórico, então
+        40 pedidos inválidos de um membro apagavam o desfazer do administrador.
+        """
         tipo = acao.get("acao")
+        if tipo == "desfazer":
+            return self._desfazer()
+        foto = self._foto()
         try:
-            if tipo == "desfazer":
-                if not self._historico:
-                    return False
-                self.de_json(json.loads(self._historico.pop()))
-                return True
+            ok = self._aplicar(tipo, acao)
+        except (KeyError, TypeError, ValueError, IndexError):
+            log.warning("edição inválida: %s", str(acao)[:200])
+            ok = False
+        if not ok:
+            self.de_json(json.loads(foto))     # volta ao que era, tile por tile
+            return False
+        self._guardar_historico(foto)
+        self._recalcular()
+        return True
 
-            self._guardar_historico()
+    def _aplicar(self, tipo: Optional[str], acao: Dict) -> bool:
+        """Mexe no mapa. Devolve False (ou levanta) para `editar` desfazer tudo."""
+        if tipo == "objeto":
+            if len(self.objetos) >= MAX_OBJETOS or acao["tipo"] not in CATALOGO:
+                return False
+            x, y = int(acao["x"]), int(acao["y"])
+            novo = {"id": self.proximo_id, "tipo": acao["tipo"], "x": x, "y": y,
+                    "g": int(acao.get("g", 0)) % 4}
+            lg, ag = medida(novo)
+            if not (0 <= x and x + lg <= self.largura
+                    and 0 <= y and y + ag <= self.altura):
+                return False
+            self.objetos.append(novo)
+            self.proximo_id += 1
 
-            if tipo == "objeto":
-                if len(self.objetos) >= MAX_OBJETOS or acao["tipo"] not in CATALOGO:
-                    return False
-                x, y = int(acao["x"]), int(acao["y"])
-                novo = {"id": self.proximo_id, "tipo": acao["tipo"], "x": x, "y": y,
-                        "g": int(acao.get("g", 0)) % 4}
-                lg, ag = medida(novo)
-                if not (0 <= x and x + lg <= self.largura
-                        and 0 <= y and y + ag <= self.altura):
-                    return False
-                self.objetos.append(novo)
-                self.proximo_id += 1
+        elif tipo == "mover":
+            alvo = next((o for o in self.objetos if o["id"] == int(acao["id"])), None)
+            if not alvo:
+                return False
+            lg, ag = medida(alvo)
+            x, y = int(acao["x"]), int(acao["y"])
+            if not (0 <= x and x + lg <= self.largura
+                    and 0 <= y and y + ag <= self.altura):
+                return False
+            alvo["x"], alvo["y"] = x, y
 
-            elif tipo == "mover":
-                alvo = next((o for o in self.objetos if o["id"] == int(acao["id"])), None)
-                if not alvo:
-                    return False
-                lg, ag = medida(alvo)
-                x, y = int(acao["x"]), int(acao["y"])
-                if not (0 <= x and x + lg <= self.largura
-                        and 0 <= y and y + ag <= self.altura):
-                    return False
-                alvo["x"], alvo["y"] = x, y
+        elif tipo == "girar":
+            alvo = next((o for o in self.objetos if o["id"] == int(acao["id"])), None)
+            if not alvo:
+                return False
+            giro = acao.get("g")
+            giro = (int(alvo.get("g", 0)) + 1) % 4 if giro is None else int(giro) % 4
+            candidato = {**alvo, "g": giro}
+            lg, ag = medida(candidato)
+            if not (alvo["x"] + lg <= self.largura and alvo["y"] + ag <= self.altura):
+                return False                     # giraria para fora do mapa
+            alvo["g"] = giro
 
-            elif tipo == "girar":
-                alvo = next((o for o in self.objetos if o["id"] == int(acao["id"])), None)
-                if not alvo:
-                    self._historico.pop()
-                    return False
-                giro = acao.get("g")
-                giro = (int(alvo.get("g", 0)) + 1) % 4 if giro is None else int(giro) % 4
-                candidato = {**alvo, "g": giro}
-                lg, ag = medida(candidato)
-                if not (alvo["x"] + lg <= self.largura and alvo["y"] + ag <= self.altura):
-                    self._historico.pop()
-                    return False                     # giraria para fora do mapa
-                alvo["g"] = giro
+        elif tipo == "trocar":
+            alvo = next((o for o in self.objetos if o["id"] == int(acao["id"])), None)
+            novo = acao.get("tipo")
+            if not alvo or novo not in CATALOGO:
+                return False
+            lg, ag = medida({**alvo, "tipo": novo})
+            if not (alvo["x"] + lg <= self.largura and alvo["y"] + ag <= self.altura):
+                return False
+            alvo["tipo"] = novo
 
-            elif tipo == "trocar":
-                alvo = next((o for o in self.objetos if o["id"] == int(acao["id"])), None)
-                novo = acao.get("tipo")
-                if not alvo or novo not in CATALOGO:
-                    self._historico.pop()
-                    return False
-                lg, ag = medida({**alvo, "tipo": novo})
-                if not (alvo["x"] + lg <= self.largura and alvo["y"] + ag <= self.altura):
-                    self._historico.pop()
-                    return False
-                alvo["tipo"] = novo
-
-            elif tipo == "remover":
-                antes = len(self.objetos)
-                self.objetos = [o for o in self.objetos if o["id"] != int(acao["id"])]
-                if len(self.objetos) == antes:
-                    return False
-
-            elif tipo == "parede":
-                valor = 1 if acao.get("valor") else 0
-                for x, y in acao.get("tiles", []):
-                    if 0 <= x < self.largura and 0 <= y < self.altura:
-                        self.paredes[y][x] = valor
-
-            elif tipo == "piso":
-                novo = acao.get("piso")
-                if novo not in PISOS:
-                    return False
-                for x, y in acao.get("tiles", []):
-                    if 0 <= x < self.largura and 0 <= y < self.altura:
-                        self.piso[y][x] = novo
-
-            elif tipo == "montar_sala":
-                # Uma sala pronta: parede em volta, porta, piso e a zona. É o
-                # que transforma "desenhar um retângulo" em sala de verdade.
-                x1, y1 = max(0, int(acao["x1"])), max(0, int(acao["y1"]))
-                x2 = min(self.largura - 1, int(acao["x2"]))
-                y2 = min(self.altura - 1, int(acao["y2"]))
-                if x2 - x1 < 2 or y2 - y1 < 2:
-                    self._historico.pop()
-                    return False
-                piso = acao.get("piso") if acao.get("piso") in PISOS else "c"
-                for y in range(y1, y2 + 1):
-                    for x in range(x1, x2 + 1):
-                        borda = x in (x1, x2) or y in (y1, y2)
-                        self.paredes[y][x] = 1 if borda else 0
-                        if not borda:
-                            self.piso[y][x] = piso
-                # porta de 2 tiles no meio do lado escolhido
-                lado = acao.get("porta", "baixo")
-                meio_x, meio_y = (x1 + x2) // 2, (y1 + y2) // 2
-                portas = {
-                    "baixo": [(meio_x, y2), (meio_x + 1, y2)],
-                    "cima": [(meio_x, y1), (meio_x + 1, y1)],
-                    "esquerda": [(x1, meio_y), (x1, meio_y + 1)],
-                    "direita": [(x2, meio_y), (x2, meio_y + 1)],
-                }.get(lado, [])
-                for px, py in portas:
-                    if 0 <= px < self.largura and 0 <= py < self.altura:
-                        self.paredes[py][px] = 0
-                        self.piso[py][px] = piso
-                if acao.get("nome"):
-                    self.zonas.append({
-                        "id": f"z{self.proximo_id}", "nome": acao["nome"][:28],
-                        "x1": x1 + 1, "y1": y1 + 1, "x2": x2 - 1, "y2": y2 - 1,
-                        "privada": bool(acao.get("privada")),
-                        "cor": acao.get("cor") if isinstance(acao.get("cor"), str) else "#8b7fd0",
-                    })
-                    self.proximo_id += 1
-
-            elif tipo == "zona":
-                if len(self.zonas) >= MAX_ZONAS:
-                    return False
-                z = {
-                    "id": str(acao.get("id") or f"z{self.proximo_id}"),
-                    "nome": (acao.get("nome") or "Sala")[:28],
-                    "x1": max(0, int(acao["x1"])), "y1": max(0, int(acao["y1"])),
-                    "x2": min(self.largura - 1, int(acao["x2"])),
-                    "y2": min(self.altura - 1, int(acao["y2"])),
-                    "privada": bool(acao.get("privada")),
-                    "cor": acao.get("cor") if isinstance(acao.get("cor"), str) else "#6366f1",
-                }
-                if z["x2"] < z["x1"] or z["y2"] < z["y1"]:
-                    return False
-                self.proximo_id += 1
-                # Editar uma sala mantém o lugar dela na lista: se fosse para o
-                # fim, a linha pularia embaixo do olho de quem está editando.
-                antigos = [i for i, x in enumerate(self.zonas) if x["id"] == z["id"]]
-                if antigos:
-                    # renomear ou redesenhar a sala NÃO solta o dono dela: o
-                    # editor reescreve a zona inteira, e sem isto quem mexesse
-                    # na plaquinha tirava a sala de alguém sem querer
-                    velha = self.zonas[antigos[0]]
-                    if velha.get("dono"):
-                        z["dono"] = velha["dono"]
-                        z["dono_nome"] = velha.get("dono_nome", "")
-                        if velha.get("trancada"):
-                            z["trancada"] = True
-                    if velha.get("porta"):
-                        z["porta"] = velha["porta"]
-                    self.zonas[antigos[0]] = z
-                else:
-                    self.zonas.append(z)
-
-            elif tipo == "zona_remover":
-                self.zonas = [z for z in self.zonas if z["id"] != acao.get("id")]
-
-            elif tipo == "nascimento":
-                x, y = int(acao["x"]), int(acao["y"])
-                if not self.tile_livre(x, y):
-                    return False
-                self.nascimento = (x, y)
-
-            elif tipo == "padrao":
-                montar_padrao(self)
-
-            elif tipo == "tamanho":
-                self._redimensionar(int(acao["largura"]), int(acao["altura"]))
-
-            else:
-                self._historico.pop()
+        elif tipo == "remover":
+            antes = len(self.objetos)
+            self.objetos = [o for o in self.objetos if o["id"] != int(acao["id"])]
+            if len(self.objetos) == antes:
                 return False
 
-        except (KeyError, TypeError, ValueError):
-            log.warning("edição inválida: %s", acao)
-            if self._historico:
-                self._historico.pop()
-            return False
+        elif tipo == "parede":
+            valor = 1 if acao.get("valor") else 0
+            for x, y in self._tiles(acao):
+                if 0 <= x < self.largura and 0 <= y < self.altura:
+                    self.paredes[y][x] = valor
 
-        self._recalcular()
+        elif tipo == "piso":
+            novo = acao.get("piso")
+            if novo not in PISOS:
+                return False
+            for x, y in self._tiles(acao):
+                if 0 <= x < self.largura and 0 <= y < self.altura:
+                    self.piso[y][x] = novo
+
+        elif tipo == "montar_sala":
+            # Uma sala pronta: parede em volta, porta, piso e a zona. É o
+            # que transforma "desenhar um retângulo" em sala de verdade.
+            x1, y1 = max(0, int(acao["x1"])), max(0, int(acao["y1"]))
+            x2 = min(self.largura - 1, int(acao["x2"]))
+            y2 = min(self.altura - 1, int(acao["y2"]))
+            if x2 - x1 < 2 or y2 - y1 < 2:
+                return False
+            # O teto de salas vale aqui também: só a ação `zona` conferia, e
+            # por esta porta o mapa passava de MAX_ZONAS sem ninguém barrar.
+            if acao.get("nome") and len(self.zonas) >= MAX_ZONAS:
+                return False
+            piso = acao.get("piso") if acao.get("piso") in PISOS else "c"
+            for y in range(y1, y2 + 1):
+                for x in range(x1, x2 + 1):
+                    borda = x in (x1, x2) or y in (y1, y2)
+                    self.paredes[y][x] = 1 if borda else 0
+                    if not borda:
+                        self.piso[y][x] = piso
+            # porta de 2 tiles no meio do lado escolhido
+            lado = acao.get("porta", "baixo")
+            meio_x, meio_y = (x1 + x2) // 2, (y1 + y2) // 2
+            portas = {
+                "baixo": [(meio_x, y2), (meio_x + 1, y2)],
+                "cima": [(meio_x, y1), (meio_x + 1, y1)],
+                "esquerda": [(x1, meio_y), (x1, meio_y + 1)],
+                "direita": [(x2, meio_y), (x2, meio_y + 1)],
+            }.get(lado, [])
+            for px, py in portas:
+                if 0 <= px < self.largura and 0 <= py < self.altura:
+                    self.paredes[py][px] = 0
+                    self.piso[py][px] = piso
+            if acao.get("nome"):
+                self.zonas.append({
+                    "id": self._novo_id_zona(), "nome": str(acao["nome"])[:28],
+                    "x1": x1 + 1, "y1": y1 + 1, "x2": x2 - 1, "y2": y2 - 1,
+                    "privada": bool(acao.get("privada")),
+                    "cor": acao.get("cor") if isinstance(acao.get("cor"), str) else "#8b7fd0",
+                })
+
+        elif tipo == "zona":
+            zid = str(acao.get("id") or "")
+            antigos = [i for i, x in enumerate(self.zonas) if x["id"] == zid] if zid else []
+            # O teto é de salas NOVAS: com 40 salas, renomear uma delas
+            # continua podendo.
+            if not antigos and len(self.zonas) >= MAX_ZONAS:
+                return False
+            z = {
+                "id": zid or self._novo_id_zona(),
+                "nome": str(acao.get("nome") or "Sala")[:28],
+                "x1": max(0, int(acao["x1"])), "y1": max(0, int(acao["y1"])),
+                "x2": min(self.largura - 1, int(acao["x2"])),
+                "y2": min(self.altura - 1, int(acao["y2"])),
+                "privada": bool(acao.get("privada")),
+                "cor": acao.get("cor") if isinstance(acao.get("cor"), str) else "#6366f1",
+            }
+            if z["x2"] < z["x1"] or z["y2"] < z["y1"]:
+                return False
+            # Editar uma sala mantém o lugar dela na lista: se fosse para o
+            # fim, a linha pularia embaixo do olho de quem está editando.
+            if antigos:
+                # renomear ou redesenhar a sala NÃO solta o dono dela: o
+                # editor reescreve a zona inteira, e sem isto quem mexesse
+                # na plaquinha tirava a sala de alguém sem querer
+                velha = self.zonas[antigos[0]]
+                if velha.get("dono"):
+                    z["dono"] = velha["dono"]
+                    z["dono_nome"] = velha.get("dono_nome", "")
+                    if velha.get("trancada"):
+                        z["trancada"] = True
+                if velha.get("porta"):
+                    z["porta"] = velha["porta"]
+                self.zonas[antigos[0]] = z
+            else:
+                self.zonas.append(z)
+
+        elif tipo == "zona_remover":
+            self.zonas = [z for z in self.zonas if z["id"] != acao.get("id")]
+
+        elif tipo == "nascimento":
+            x, y = int(acao["x"]), int(acao["y"])
+            if not self.tile_livre(x, y):
+                return False
+            self.nascimento = (x, y)
+
+        elif tipo == "padrao":
+            montar_padrao(self)
+
+        elif tipo == "tamanho":
+            self._redimensionar(int(acao["largura"]), int(acao["altura"]))
+
+        else:
+            return False
         return True
 
     def _redimensionar(self, largura: int, altura: int) -> None:

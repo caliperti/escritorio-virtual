@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import mapa
+from contas import _chave_nome
 from mapa import escritorio
 
 # Raio (em pixels) em que duas pessoas passam a se ouvir. A histerese evita que
@@ -222,6 +223,38 @@ class Sala:
         for convidados in self._convidados.values():   # o convite morre com a sessão
             convidados.discard(id_)
 
+    def nome_em_uso(self, nome: str, exceto: str = "") -> bool:
+        """Já tem alguém CONECTADO com esse nome? A conta garante nome único
+        entre membros; aqui é entre quem está na sala agora — dois visitantes
+        "Ana" eram dois bonecos iguais, e expulsar um expulsava os dois (o
+        castigo do visitante é pelo nome)."""
+        alvo = _chave_nome(nome)
+        return any(p.id != exceto and _chave_nome(p.nome) == alvo
+                   for p in self.participantes.values())
+
+    # ---------- o mapa mudou embaixo de quem está andando ----------
+
+    @staticmethod
+    def dentro_do_mapa(x: float, y: float) -> bool:
+        return (0 <= x <= escritorio.largura * mapa.TAMANHO_TILE
+                and 0 <= y <= escritorio.altura * mapa.TAMANHO_TILE)
+
+    def reacomodar(self) -> List[Participante]:
+        """Depois de uma edição, quem ficou FORA do mapa volta para a entrada.
+
+        O administrador encolhia o escritório com alguém na ponta e essa pessoa
+        ficava num lugar que não existe mais: todo `mover` era recusado (a
+        posição nova caía fora do mapa, e a entrada estava longe demais para
+        um passo só), sem saída a não ser recarregar a página. Devolve quem
+        foi movido, para o servidor avisar cada um e os outros."""
+        movidos = []
+        for p in list(self.participantes.values()):
+            if self.dentro_do_mapa(p.x, p.y):
+                continue
+            p.x, p.y = escritorio.ponto_de_nascimento()
+            movidos.append(p)
+        return movidos
+
     # ---------- envio ----------
 
     async def enviar(self, destino: Participante, mensagem: Dict) -> None:
@@ -293,8 +326,7 @@ class Sala:
             x, y = float(x), float(y)
         except (TypeError, ValueError):
             return False
-        if not (0 <= x <= escritorio.largura * mapa.TAMANHO_TILE
-                and 0 <= y <= escritorio.altura * mapa.TAMANHO_TILE):
+        if not self.dentro_do_mapa(x, y):
             return False
         # Quem ficou preso porque alguém colocou uma mesa em cima dele pode sair
         # andando; senão a única saída seria recarregar a página.
