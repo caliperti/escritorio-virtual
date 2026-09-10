@@ -48,13 +48,18 @@ ok = escritorio.editar({"acao": "parede", "valor": 1, "tiles": [[vx, vy], [6, "x
 conferir("parede com um tile torto no meio é recusada", not ok)
 conferir("e o tile de antes NÃO ficou levantado", escritorio.paredes[vy][vx] == 0)
 conferir("nem entrou na colisão", escritorio.tile_livre(vx, vy))
-ok = escritorio.editar({"acao": "piso", "piso": "m", "tiles": [[9, 6], [7, "x"]]})
+# um tile de corredor, achado no mapa: fixar coordenada quebra a cada mudança
+# de planta (já quebrou quando o topo virou três diretorias)
+cx, cy = next((x, y) for y in range(escritorio.altura) for x in range(escritorio.largura)
+              if escritorio.piso[y][x] == "a" and not escritorio.paredes[y][x])
+ok = escritorio.editar({"acao": "piso", "piso": "m", "tiles": [[cx, cy], [7, "x"]]})
 conferir("piso com tile torto é recusado", not ok)
-conferir("e o piso de antes continua", escritorio.piso[6][9] == "a")
+conferir("e o piso de antes continua", escritorio.piso[cy][cx] == "a")
 conferir("o mapa ficou idêntico ao de antes",
          json.dumps(escritorio.para_json(), sort_keys=True) == antes)
-ok = escritorio.editar({"acao": "piso", "piso": "m", "tiles": [[9, 6], [9.5, 6]]})
-conferir("tile com fração é aplicado como inteiro (9.5 vira 9)", ok and escritorio.piso[6][9] == "m")
+ok = escritorio.editar({"acao": "piso", "piso": "m", "tiles": [[cx, cy], [cx + 0.5, cy]]})
+conferir("tile com fração é aplicado como inteiro (x.5 vira x)",
+         ok and escritorio.piso[cy][cx] == "m")
 
 print("\n-- só edição de verdade entra no histórico --")
 montar_padrao(escritorio)
@@ -116,6 +121,15 @@ s1 = escritorio.zona_por_id("sala1")
 conferir("renomear uma sala com o teto cheio continua podendo", escritorio.editar(
     {"acao": "zona", "id": "sala1", "nome": "Sala Um", "x1": s1["x1"], "y1": s1["y1"],
      "x2": s1["x2"], "y2": s1["y2"], "privada": True}) and escritorio.zona_por_id("sala1")["nome"] == "Sala Um")
+
+print("\n-- a planta padrão cabe no que o admin pode pedir --")
+# A planta cresceu para 94 colunas e o teto era 90: qualquer redimensionar
+# encolhia o escritório e cortava a coluna de salas do leste.
+from mapa import LIMITE_LARGURA, LIMITE_ALTURA                  # noqa: E402
+from planta_padrao import LARGURA as PL, ALTURA as PA           # noqa: E402
+conferir("a planta padrão cabe nos limites do mapa",
+         LIMITE_LARGURA[0] <= PL <= LIMITE_LARGURA[1]
+         and LIMITE_ALTURA[0] <= PA <= LIMITE_ALTURA[1])
 
 print("\n-- coordenada que não é número --")
 conferir("NaN não é chão livre", not escritorio.livre(float("nan"), 100))

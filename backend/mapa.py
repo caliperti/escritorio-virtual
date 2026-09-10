@@ -30,8 +30,11 @@ TAMANHO_TILE = 32
 RAIO_AVATAR = 11
 ARQUIVO = Path(__file__).parent / "mapa.json"
 
-LIMITE_LARGURA = (20, 90)
-LIMITE_ALTURA = (16, 70)
+# Teto do escritório. A planta padrão já usa 94 de largura (três diretorias
+# lado a lado, com jardim dos dois lados): com o teto em 90, qualquer
+# redimensionar do admin ENCOLHIA o mapa e cortava a coluna leste.
+LIMITE_LARGURA = (20, 120)
+LIMITE_ALTURA = (16, 80)
 MAX_OBJETOS = 1200
 MAX_ZONAS = 40
 HISTORICO = 40                      # quantos passos de desfazer guardamos

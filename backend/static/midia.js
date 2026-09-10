@@ -162,7 +162,8 @@ const Midia = {
     });
     // "Polido" cede em caso de colisão de ofertas (perfect negotiation).
     const par = { pc, stream: new MediaStream(), video: null, tile: null,
-                  polido: this.meuId < id, fazendoOferta: false, pendentes: [], volume: 1 };
+                  polido: this.meuId < id, fazendoOferta: false, pendentes: [], volume: 1,
+                  tentativas: 0 };
     this.pares.set(id, par);
 
     const enviar = [];
@@ -207,14 +208,40 @@ const Midia = {
     };
 
     pc.onconnectionstatechange = () => {
-      if (['failed', 'closed'].includes(pc.connectionState)) this.fechar(id);
+      if (pc.connectionState === 'connected') {
+        // deu certo: zera o histórico de tentativa e a espera
+        par.tentativas = 0;
+        this.espera.delete(id);
+        return;
+      }
+      if (!['failed', 'closed'].includes(pc.connectionState)) return;
+      // Antes bastava falhar para a conexão ser fechada — e o vigia das
+      // chamadas, que roda a cada 250 ms, criava outra na hora. Numa rede em
+      // que o P2P não fecha (é comum sem TURN), isso virava laço: a pessoa do
+      // seu lado com a câmera entrando e saindo sem parar. Agora tenta refazer
+      // só o caminho do ICE, e só depois desiste, com espera crescente.
+      if (pc.connectionState === 'failed' && par.tentativas < 2 && pc.restartIce) {
+        par.tentativas += 1;
+        try { pc.restartIce(); return; } catch (e) { /* navegador antigo: desiste */ }
+      }
+      const espera = Math.min(30000, 2000 * Math.pow(2, par.tentativas));
+      this.espera.set(id, Date.now() + espera);
+      this.fechar(id);
     };
 
     return par;
   },
 
+  /** Até quando não vale a pena tentar de novo com essa pessoa. */
+  espera: new Map(),
+
   garantirPar(id) {
-    return this.pares.get(id) || this._criarPar(id);
+    const ja = this.pares.get(id);
+    if (ja) return ja;
+    const ate = this.espera.get(id) || 0;
+    if (Date.now() < ate) return null;      // ainda de castigo: não insiste
+    this.espera.delete(id);
+    return this._criarPar(id);
   },
 
   fechar(id) {
@@ -242,7 +269,10 @@ const Midia = {
   },
 
   async receberSinal(de, dados) {
-    const par = this.garantirPar(de);
+    // Sinal que CHEGA nunca é barrado pela espera: quem está do outro lado está
+    // tentando agora, e recusar aqui deixaria os dois sem chamada.
+    const par = this.pares.get(de) || this._criarPar(de);
+    this.espera.delete(de);
     const pc = par.pc;
     try {
       if (dados.descricao) {

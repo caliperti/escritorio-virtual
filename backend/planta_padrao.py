@@ -22,33 +22,39 @@ cada peça é desenhada, em `static/objetos.js`. Aqui só se decide ONDE fica.
 # o que está gravado e, se for mais nova, remonta o escritório. Sem isso, o mapa
 # salvo (ou restaurado do espelho) vence para sempre e a planta nova nunca
 # aparece — foi exatamente o que aconteceu.
-VERSAO = 12
+VERSAO = 13
 
-LARGURA, ALTURA = 84, 48
-JARDIM = 7                      # colunas de área externa antes da fachada
+LARGURA, ALTURA = 94, 48
+JARDIM = 7                      # colunas de área externa, de CADA lado
 
 # ---- colunas ----
-COR_OESTE = (8, 10)             # corredor colado no jardim, sobe o prédio inteiro
+# O prédio é simétrico: jardim, fachada, corredor, coluna de salas, corredor,
+# miolo, corredor, coluna de salas, corredor, fachada, jardim. Antes a coluna
+# da direita terminava na última coluna do mapa, sem corredor nem jardim, e por
+# isso aquele lado parecia cortado na borda da tela.
+COR_OESTE = (8, 10)             # corredor colado na fachada oeste
 COL_ESQ = (11, 27)              # coluna das salas 1 a 4
 COR_ESQ = (28, 30)              # corredor entre as salas da esquerda e o miolo
-MIOLO = (31, 63)                # reunião e convivência
-COR_DIR = (64, 66)
-COL_DIR = (67, 83)              # coluna das salas 5 a 8
+MIOLO = (31, 62)                # reunião e convivência
+COR_DIR = (63, 65)
+COL_DIR = (66, 82)              # coluna das salas 5 a 8
+COR_LESTE = (83, 85)            # corredor colado na fachada leste
 
 # ---- linhas ----
-DIRETORIA_Y = (1, 10)           # faixa das duas diretorias
+DIRETORIA_Y = (1, 10)           # faixa das três diretorias
 COR_TOPO = (11, 13)             # corredor sob as diretorias
 SALAS_Y0 = 14                   # onde começa a coluna lateral
 ALTURA_SALA = 8                 # 4 salas de 8 dividindo parede = 29 linhas
 RODAPE_Y = 46                   # corredor no pé do prédio
 
 # id, nome, x1, y1, x2, y2, cor da plaquinha, piso, lado da porta, posição
-# 27x10 contra 17x8 das salas padrão: continuam sendo as maiores e as mais
-# equipadas, mas na proporção da referência — antes estavam quase quatro vezes
-# a área de uma sala comum, o que fazia o topo do prédio engolir o resto.
+# São TRÊS, lado a lado, dividindo parede, ocupando a largura inteira do andar:
+# 25, 26 e 25 tiles de vão. Continuam sendo as maiores e as mais equipadas,
+# contra 15x6 das salas padrão.
 DIRETORIAS = [
-    ("diretoria1", "Diretoria", 16, 1, 42, 10, "#c99a4a", "m", "baixo", 27),
-    ("diretoria2", "Diretoria", 46, 1, 72, 10, "#c9a24a", "m", "baixo", 57),
+    ("diretoria1", "Diretoria 1", 7, 1, 33, 10, "#c99a4a", "m", "baixo", 19),
+    ("diretoria2", "Diretoria 2", 33, 1, 60, 10, "#c9a24a", "m", "baixo", 46),
+    ("diretoria3", "Diretoria 3", 60, 1, 86, 10, "#c9aa4a", "m", "baixo", 72),
 ]
 
 # As oito salas padrão, todas 17x8. A cor do piso muda de sala para sala, em
@@ -121,22 +127,35 @@ def montar_padrao(esc) -> None:
         esc.zonas[-1]["porta"] = {"lado": porta, "x": vaos[0][0], "y": vaos[0][1]}
 
     # ---------------- jardim, fachada e casca do prédio ----------------
+    # Jardim nos DOIS lados, e a fachada leste na mesma distância da borda que a
+    # oeste. Antes o prédio só tinha jardim à esquerda e a coluna de salas da
+    # direita terminava na última coluna do mapa: aquele lado ficava espremido
+    # contra a borda da tela, com cara de sala cortada.
+    LESTE = LARGURA - 1 - JARDIM                                  # x da fachada leste
     piso(0, 0, JARDIM, ALTURA - 1, "g")
+    piso(LESTE, 0, LARGURA - 1, ALTURA - 1, "g")
     for x in range(LARGURA):
         esc.paredes[0][x] = esc.paredes[ALTURA - 1][x] = 1
     for y in range(ALTURA):
         esc.paredes[y][0] = esc.paredes[y][LARGURA - 1] = 1
     parede(JARDIM, 1, JARDIM, ALTURA - 2)
+    parede(LESTE, 1, LESTE, ALTURA - 2)
     esc.paredes[19][JARDIM] = esc.paredes[20][JARDIM] = 0        # portaria
+    esc.paredes[19][LESTE] = esc.paredes[20][LESTE] = 0          # saída dos fundos
     piso(JARDIM - 3, 18, JARDIM, 21, "p")                        # calçada da entrada
+    piso(LESTE, 18, LESTE + 3, 21, "p")
 
     for x, y in [(1, 3), (4, 10), (1, 17), (4, 26), (1, 33), (4, 40), (1, 43)]:
         por("arvore", x, y)
+        por("arvore", LARGURA - 2 - x, y + 2)
     for x, y in [(3, 7), (1, 13), (4, 20), (2, 30), (5, 36), (1, 39), (3, 45)]:
         por("arbusto", x, y)
-    por("banco", 3, 15); por("banco", 3, 25); por("banco", 3, 34)
+        por("arbusto", LARGURA - 2 - x, y)
+    for y in (15, 25, 34):
+        por("banco", 3, y)
+        por("banco", LARGURA - 5, y)
 
-    # ---------------- as duas diretorias ----------------
+    # ---------------- as três diretorias ----------------
     for n, (id_, nome, x1, y1, x2, y2, cor, tp, porta, pos) in enumerate(DIRETORIAS):
         sala(id_, nome, x1, y1, x2, y2, cor, tp, porta, pos)
         ix, iy = x1 + 1, y1 + 1
@@ -155,9 +174,12 @@ def montar_padrao(esc) -> None:
         if n == 0:
             por("sofa", ix + 18, iy + 3); por("poltrona", ix + 22, iy + 4)
             por("mesa_centro", ix + 19, iy + 5); por("livros", ix + 19, iy + 5)
-        else:
+        elif n == 1:
             por("poltrona", ix + 18, iy + 3); por("poltrona", ix + 21, iy + 3)
             por("mesa_centro", ix + 19, iy + 5); por("vasinho", ix + 19, iy + 5)
+        else:
+            por("sofa", ix + 18, iy + 3); por("poltrona", ix + 22, iy + 3)
+            por("mesa_centro", ix + 19, iy + 5); por("caneca", ix + 19, iy + 5)
         por("tapete", ix + 18, iy + 4)
         por("tv", ix + 19, iy); por("luminaria", ix + 24, iy + 2)
         por("planta_alta", ix + 24, iy + 5)
@@ -239,9 +261,10 @@ def montar_padrao(esc) -> None:
     por("tapete_redondo", 38, CY1 + 8)
 
     # ---------------- circulação ----------------
-    zona("circulacao", "Circulação", JARDIM + 1, 1, LARGURA - 2, ALTURA - 2, False, "#8a8f9c")
-    for x, y in [(9, 5), (9, 28), (9, 44), (29, 18), (29, 38), (65, 18), (65, 38),
-                 (34, 12), (60, 12), (34, 45), (60, 45)]:
+    zona("circulacao", "Circulação", JARDIM + 1, 1, LESTE - 1, ALTURA - 2, False, "#8a8f9c")
+    for x, y in [(9, 5), (9, 28), (9, 44), (29, 18), (29, 38), (64, 18), (64, 38),
+                 (84, 5), (84, 28), (84, 44),
+                 (34, 12), (58, 12), (34, 45), (58, 45)]:
         por("planta", x, y)
 
     esc.nascimento = (9, 19)      # logo dentro da portaria

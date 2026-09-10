@@ -8,11 +8,13 @@
 // O escritório passou de 64x40 para 84x48 tiles: com o mínimo em 0,9 não cabia
 // mais uma ala inteira na tela, e a pessoa perdia a noção de onde estava.
 const ZOOM_MIN = 0.5, ZOOM_MAX = 3.2;
+// piso absoluto: abaixo disto o boneco vira um ponto e ninguém se acha
+const ZOOM_CHAO = 0.2;
 // No celular a tela é estreita: começando em 1.5 cabia meia sala. 1.05 mostra
 // o corredor inteiro e ainda dá para ler o nome de quem está por perto.
 let ESCALA = Number(localStorage.getItem('escritorio:zoom'))
   || (matchMedia('(max-width: 760px)').matches ? 1.05 : 1.5);
-if (!(ESCALA >= ZOOM_MIN && ESCALA <= ZOOM_MAX)) ESCALA = 1.5;
+if (!(ESCALA >= ZOOM_CHAO && ESCALA <= ZOOM_MAX)) ESCALA = 1.5;
 const VELOCIDADE = 3.2;             // pixels por quadro (~190 px/s)
 const INTERVALO_ENVIO = 66;         // ms entre atualizações de posição
 const DURACAO_BOLHA = 6000;
@@ -29,7 +31,7 @@ const Jogo = {
   pessoas: new Map(),               // id -> { ...publico, xr, yr, bolha, reacao }
   teclas: new Set(),
   escala: ESCALA,
-  zoomMin: ZOOM_MIN,
+  zoomMin: ZOOM_CHAO,
   zoomMax: ZOOM_MAX,
   caminho: null,
   clique: null,
@@ -807,8 +809,21 @@ function zonaDe(px, py) {
 
 /* ==================== zoom ==================== */
 
+/** O menor zoom permitido. Não é fixo: é o que faz o andar INTEIRO caber na
+ *  tela, quando isso pede mais do que o mínimo normal. Com o teto fixo em 0.5,
+ *  um mapa largo não cabia de jeito nenhum e as colunas de salas dos dois lados
+ *  ficavam cortadas na borda, sem nenhum jeito de ver o andar todo. */
+function zoomMinimo() {
+  if (!Jogo.mapa) return ZOOM_MIN;
+  const r = tela.getBoundingClientRect();
+  if (!r.width || !r.height) return ZOOM_MIN;
+  const cabe = Math.min(r.width / (Jogo.mapa.largura * Jogo.tile),
+                        r.height / (Jogo.mapa.altura * Jogo.tile));
+  return Math.max(ZOOM_CHAO, Math.min(ZOOM_MIN, cabe));
+}
+
 function definirZoom(valor) {
-  ESCALA = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Number(valor.toFixed(2))));
+  ESCALA = Math.max(zoomMinimo(), Math.min(ZOOM_MAX, Number(valor.toFixed(2))));
   Jogo.escala = ESCALA;
   localStorage.setItem('escritorio:zoom', String(ESCALA));
   const marca = document.getElementById('zoom-nivel');
@@ -1369,7 +1384,12 @@ function ajustarTela() {
   tela.height = Math.floor(r.height * dpr);
   Jogo.dpr = dpr;
 }
-window.addEventListener('resize', () => { if (Jogo.eu) ajustarTela(); });
+window.addEventListener('resize', () => {
+  if (!Jogo.eu) return;
+  ajustarTela();
+  // a janela encolheu: o zoom que cabia antes pode não caber mais
+  definirZoom(ESCALA);
+});
 
 // Paleta clara, tirada da referência: o chão é neutro e quem colore o ambiente
 // são os carpetes das áreas de time.
