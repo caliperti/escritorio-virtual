@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, File, Form, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 import contas as mod_contas
@@ -56,9 +56,34 @@ app = FastAPI(title="Escritório Virtual")
 app.mount("/static", EstaticoSemCache(directory=STATIC_DIR), name="static")
 
 
+# Carimbo de versão dos arquivos do site.
+#
+# Sem isso, quem já visitou continua vendo o CSS e o JS velhos por dias: o
+# navegador guarda e nem pergunta. `Cache-Control: no-cache` só passa a valer
+# na visita SEGUINTE à primeira que o recebe, então quem pegou a versão antiga
+# antes disso fica preso — foi o que aconteceu na virada do tema.
+#
+# A saída é o endereço mudar quando o arquivo muda: `estilo.css?v=1699...`. Para
+# o navegador é outro arquivo, então ele baixa. O carimbo é o relógio do arquivo
+# mais novo entre os do site, calculado a cada pedido do index (é barato: são
+# poucos arquivos e o index é pedido uma vez por visita).
+ARQUIVOS_DO_SITE = ("estilo.css", "app.js", "editor.js", "objetos.js",
+                    "boneco.js", "midia.js", "index.html")
+
+
+def _carimbo() -> str:
+    ultimo = 0.0
+    for nome in ARQUIVOS_DO_SITE:
+        alvo = STATIC_DIR / nome
+        if alvo.exists():
+            ultimo = max(ultimo, alvo.stat().st_mtime)
+    return str(int(ultimo))
+
+
 @app.get("/")
 async def raiz():
-    return FileResponse(STATIC_DIR / "index.html")
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(html.replace("?v=VERSAO", "?v=" + _carimbo()))
 
 
 @app.get("/config")
