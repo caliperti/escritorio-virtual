@@ -84,7 +84,15 @@ async def principal():
                websockets.connect(f"ws://127.0.0.1:{PORTA}/ws") as wm:
         await wa.send(json.dumps({"tipo": "entrar", "token": t_admin}))
         bem_a = await esperar(wa, "bemvindo")
-        await wm.send(json.dumps({"tipo": "entrar", "token": t_membro}))
+        # O membro entra JÁ dentro da Sala 1. Um `mover` sozinho não atravessa
+        # mais o escritório (isso era teleporte, e furava parede), e reivindicar
+        # exige estar lá dentro. Nascer numa sala destrancada é permitido.
+        z1 = next(z for z in bem_a["mapa"]["zonas"] if z["id"] == "sala1")
+        t0 = bem_a["mapa"]["tile"]
+        dentro = tile_livre_da_zona(bem_a["mapa"], z1)
+        await wm.send(json.dumps({"tipo": "entrar", "token": t_membro,
+                                  "voltando": {"x": (dentro[0] + .5) * t0,
+                                               "y": (dentro[1] + .5) * t0}}))
         bem_m = await esperar(wm, "bemvindo")
         conferir("o e-mail de admin entra como admin", bem_a.get("admin") is True)
         conferir("o outro entra como membro comum", bem_m.get("admin") is False)
@@ -102,8 +110,6 @@ async def principal():
         # membro pega a sala 1 e passa a poder decorar ela
         livre = tile_livre_da_zona(mapa, s1)
         conferir("achei chão livre dentro da Sala 1", livre is not None)
-        pos = ((livre[0] + .5) * tile, (livre[1] + .5) * tile)
-        await wm.send(json.dumps({"tipo": "mover", "x": pos[0], "y": pos[1], "direcao": "baixo"}))
         await asyncio.sleep(.4)
         await wm.send(json.dumps({"tipo": "sala", "acao": "reivindicar", "id": "sala1"}))
         r = await esperar(wm, "mapa", 3)

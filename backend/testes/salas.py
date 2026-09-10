@@ -73,16 +73,31 @@ s.esquecer_convite("sala1", "b")
 conferir("convite retirado barra de novo", s.zona_trancada_para(visita, px, py) is not None)
 
 print("\n-- andar de verdade --")
-fora = (z1["x1"] * TAMANHO_TILE - TAMANHO_TILE, py)
+# Um passo de verdade: da porta para o tile de dentro colado nela. Antes o
+# teste "andava" do corredor até o meio da sala numa mensagem só, o que agora
+# é recusado como teleporte — e com razão, porque atravessava a parede.
+porta = z1["porta"]
+dentro_x = (z1["x2"] + 0.5) * TAMANHO_TILE if porta["lado"] == "direita" else (z1["x1"] + 0.5) * TAMANHO_TILE
+dentro_y = (porta["y"] + 0.5) * TAMANHO_TILE
+if porta["lado"] in ("cima", "baixo"):
+    dentro_x = (porta["x"] + 0.5) * TAMANHO_TILE
+    dentro_y = (z1["y1"] + 0.5) * TAMANHO_TILE if porta["lado"] == "cima" else (z1["y2"] + 0.5) * TAMANHO_TILE
+fora = ((porta["x"] + 0.5) * TAMANHO_TILE, (porta["y"] + 0.5) * TAMANHO_TILE)
 visita.x, visita.y = fora
-conferir("estranho não anda para dentro", not s.mover(visita, px, py, "direita"))
+conferir("estranho não anda para dentro", not s.mover(visita, dentro_x, dentro_y, "direita"))
 s.convidar("sala1", "b")
-conferir("depois de aceito, anda para dentro", s.mover(visita, px, py, "direita"))
+conferir("depois de aceito, anda para dentro", s.mover(visita, dentro_x, dentro_y, "direita"))
+
+print("\n-- teleporte --")
+visita.x, visita.y = fora
+longe = ((z1["x1"] + 1.5) * TAMANHO_TILE, (z1["y1"] + 1.5) * TAMANHO_TILE)
+conferir("um pulo de vários tiles atravessando parede é recusado",
+         not s.mover(visita, *longe, "esquerda"))
 s.esquecer_convite("sala1", "b")
-# a entrada é chão livre garantido — o meio da circulação pode cair numa parede
-nx, ny = esc_nascimento = escritorio.nascimento
+# põe a visita DENTRO e deixa ela sair pela porta, um passo, sem convite nenhum
+visita.x, visita.y = dentro_x, dentro_y
 conferir("quem já está dentro consegue SAIR mesmo sem convite",
-         s.mover(visita, (nx + .5) * TAMANHO_TILE, (ny + .5) * TAMANHO_TILE, "baixo"))
+         s.mover(visita, *fora, "direita"))
 
 print("\n-- o editor não pode tirar a sala de alguém --")
 escritorio.editar({"acao": "zona", "id": "sala1", "nome": "Sala do Christian",

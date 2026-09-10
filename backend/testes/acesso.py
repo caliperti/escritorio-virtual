@@ -130,17 +130,20 @@ async def principal():
         erro = await esperar(wv, "erro")
         conferir("visitante NÃO reivindica sala", bool(erro))
 
-        # o membro, sim
-        await wm.send(json.dumps({"tipo": "entrar", "token": token_membro}))
+        # o membro, sim. Ele entra JÁ dentro da sala: um `mover` sozinho não
+        # atravessa mais o escritório (isso era teleporte), e reivindicar exige
+        # estar lá dentro.
+        tile = 32
+        meio = ((alvo["x1"] + alvo["x2"] + 1) / 2 * tile, (alvo["y1"] + alvo["y2"] + 1) / 2 * tile)
+        await wm.send(json.dumps({"tipo": "entrar", "token": token_membro,
+                                  "voltando": {"x": meio[0], "y": meio[1]}}))
         bem_m = await esperar(wm, "bemvindo")
         conferir("membro entra com a conta", bool(bem_m) and bem_m.get("visitante") is False)
-        tile = bem_m["mapa"]["tile"]
-        meio = ((alvo["x1"] + alvo["x2"] + 1) / 2 * tile, (alvo["y1"] + alvo["y2"] + 1) / 2 * tile)
-        await wm.send(json.dumps({"tipo": "mover", "x": meio[0], "y": meio[1], "direcao": "baixo"}))
         await wm.send(json.dumps({"tipo": "sala", "acao": "reivindicar", "id": alvo["id"]}))
         novo = await esperar(wm, "mapa")
         z = next((x for x in novo["mapa"]["zonas"] if x["id"] == alvo["id"]), {}) if novo else {}
-        conferir("membro reivindica a sala", bool(z.get("dono")))
+        # o e-mail do dono não sai mais do servidor: quem prova a posse é o nome
+        conferir("membro reivindica a sala", bool(z.get("dono_nome")))
 
 
 if CONTAS.exists():

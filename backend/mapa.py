@@ -513,7 +513,14 @@ class Escritorio:
         return self.livre((x + 0.5) * TAMANHO_TILE, (y + 0.5) * TAMANHO_TILE)
 
     def para_cliente(self) -> Dict:
-        return {**self.para_json(), "tile": TAMANHO_TILE, "raio_avatar": RAIO_AVATAR,
+        """O mapa como o navegador recebe. O campo `dono` da zona é a CHAVE da
+        conta, ou seja, o e-mail: ele fica no servidor. A tela só precisa de
+        `dono_nome`, e o mapa vai inteiro para todo mundo — inclusive visitante,
+        que entra só com o código da sala. Mandar o `dono` era entregar a lista
+        de e-mails de quem tem sala."""
+        dados = self.para_json()
+        dados["zonas"] = [{k: v for k, v in z.items() if k != "dono"} for z in dados["zonas"]]
+        return {**dados, "tile": TAMANHO_TILE, "raio_avatar": RAIO_AVATAR,
                 "catalogo": CATALOGO, "pisos": PISOS}
 
     # ---------- edição ----------

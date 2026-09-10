@@ -18,7 +18,7 @@ import os
 import time
 
 ENDERECO = os.environ.get("ENDERECO", "http://localhost:8400")
-CONVITE = os.environ.get("CONVITE", "escritorio2026")
+CONVITE = os.environ.get("CONVITE", "digital dreamer")
 SUFIXO = str(int(time.time() * 1000) % 1000000)
 
 
@@ -38,14 +38,35 @@ class Sessao:
         await pg.goto(ENDERECO)
         await asyncio.sleep(1.2)
         await pg.click("#aba-criar")
+        await pg.fill("#campo-email", nome.lower() + SUFIXO + "@teste.local")
         await pg.fill("#campo-nome", nome + SUFIXO)
         await pg.fill("#campo-senha", "teste1234")
         await pg.fill("#campo-convite", CONVITE)
-        await pg.click("#btn-entrar-mudo")
+        # o botão "entrar só olhando" não existe mais; entra sem pedir mídia,
+        # que é o que o navegador do teste consegue fazer
+        await pg.evaluate("() => entrar(false)")
         await pg.wait_for_function(
             "() => typeof Jogo !== 'undefined' && !!Jogo.eu", timeout=40000)
         await asyncio.sleep(1.2)
         return pg
+
+
+async def andar_ate(pg, x, y, segundos=15):
+    """Anda de verdade até (x, y), usando o mesmo trajeto que um clique usa.
+
+    Empurrar o boneco na marra (`Jogo.eu.x = ...`) não serve mais: o servidor
+    recusa salto grande — era teleporte, atravessava parede — e devolve a
+    pessoa para o lugar de antes."""
+    await pg.evaluate("""([x, y]) => {
+        Jogo.caminho = tracarCaminho(Jogo.eu.x, Jogo.eu.y, x, y) || caminhoPertoDe({ x, y });
+    }""", [x, y])
+    try:
+        await pg.wait_for_function(
+            """([x, y]) => Math.hypot(Jogo.eu.x - x, Jogo.eu.y - y) < 34 || !Jogo.caminho""",
+            arg=[x, y], timeout=segundos * 1000)
+    except Exception:
+        pass
+    await asyncio.sleep(.5)
 
 
 def conferir(rotulo, valor, esperado=True):

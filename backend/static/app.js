@@ -303,7 +303,11 @@ async function conferirSessao() {
       campoNome.parentElement.hidden = true;
       document.getElementById('linha-convite').hidden = true;
       document.getElementById('btn-sair-conta').classList.remove('oculto');
-      aviso.textContent = `Bem-vindo de volta, ${d.conta.nome.split(' ')[0]}.`;
+      aviso.textContent = `Bem-vindo de volta, ${d.conta.nome.split(' ')[0]}. Entrando…`;
+      // Atualizar a página tem de voltar para dentro do escritório, não para a
+      // tela de entrada. Antes a sessão era reconhecida mas parava aqui, e dava
+      // a impressão de que recarregar deslogava.
+      entrar(true);
       return;
     }
   } catch (e) { /* offline: cai no login normal */ }
@@ -565,6 +569,17 @@ function receber(msg) {
     }
 
     case 'midia': {
+      if (msg.proprio) {
+        // o servidor recusou o pedido (calado pelo admin): fecha o microfone de
+        // verdade, senão a pessoa fala achando que está saindo som
+        if (msg.mudo && Midia.ligado('audio')) Midia.alternar('audio').then(() => {
+          atualizarBotoesMidia(); montarTiles();
+        });
+        Jogo.eu.mudo = msg.mudo;
+        escreverChat({ sistema: true, texto: 'Seu microfone está fechado pelo administrador.' });
+        desenharListaPessoas();
+        break;
+      }
       const p = Jogo.pessoas.get(msg.id);
       if (p) { p.mudo = msg.mudo; p.sem_camera = msg.sem_camera; p.tela = msg.tela; }
       montarTiles();
@@ -878,8 +893,13 @@ tela.addEventListener('pointermove', (e) => {
   if (tela.dataset.alvo) tela.dataset.alvo = JSON.stringify(pontoNoMapa(e));
 });
 tela.addEventListener('pointerup', (e) => {
-  if (Editor.ativo) { Editor.aoSoltar(); return; }
+  // Limpa SEMPRE. Antes, abrir o editor com o botão apertado deixava o destino
+  // gravado para sempre: o boneco voltava sozinho para aquele ponto e grudava,
+  // e só um clique novo no mapa soltava.
+  const alvoPendente = tela.dataset.alvo;
   delete tela.dataset.alvo;
+  if (Editor.ativo) { Editor.aoSoltar(); return; }
+  void alvoPendente;
   // clique curto e sem arrastar = "vá até ali"
   const c = Jogo.clique;
   Jogo.clique = null;
@@ -2036,4 +2056,8 @@ document.getElementById('form-chat').addEventListener('submit', (e) => {
   if (!texto) return;
   enviar({ tipo: 'chat', texto, escopo: document.getElementById('escopo-chat').value });
   campo.value = '';
+  // Devolve o teclado ao jogo, como no Gather. Antes o foco ficava no campo e
+  // W A S D só escreviam letras: parecia que o boneco tinha travado, e nada na
+  // tela dizia que era preciso apertar Esc.
+  campo.blur();
 });

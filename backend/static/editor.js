@@ -161,6 +161,10 @@ const Editor = {
     this.ferramenta = fer;
     this.selecionado = null;
     this.retangulo = null;
+    // Sem isto o "redesenhar área" continuava ligado depois de sair de Salas, e
+    // o próximo retângulo desenhado TELEPORTAVA a sala escolhida antes, calado.
+    // Quem liga o redesenhar marca DEPOIS de chamar esta função.
+    this.redesenhando = null;
     this.movendo = null;
     this.conjunto = null;
     this.fecharMenu();
@@ -230,8 +234,9 @@ const Editor = {
       const [renomear, redesenhar, alternar, remover] = li.querySelectorAll('button');
       renomear.onclick = () => this.formularioSala(z, z);
       redesenhar.onclick = () => {
-        this.redesenhando = this.redesenhando === z.id ? null : z.id;
-        this.usarFerramenta('sala');
+        const ligar = this.redesenhando !== z.id;
+        this.usarFerramenta('sala');           // limpa o estado, inclusive este
+        this.redesenhando = ligar ? z.id : null;
         document.getElementById('editor-ajuda').textContent = this.redesenhando
           ? `Arraste no mapa a área nova de "${z.nome}".`
           : 'Arraste no mapa para marcar uma sala nova.';
@@ -330,6 +335,37 @@ const Editor = {
     return (info && info.camada) || 'chao';
   },
 
+  ALTURA_CAMADA: { piso: 0, chao: 1, mesa: 2 },
+
+  /** O que o clique pega, com a peça `tipoSel` na mão — ou null para COLOCAR.
+   *
+   *  Regra: pega o móvel de cima quando ele está na mesma altura da peça na
+   *  mão, ou acima dela; senão coloca a peça em cima do que já está lá.
+   *  Assim o monitor sobe na mesa (mesa é mais alta que o chão), clicar no
+   *  monitor com a mesa na mão alcança o MONITOR (era impossível: abria o menu
+   *  da mesa de baixo), e o tapete — que mora no piso, embaixo de tudo — só
+   *  disputa com outro tapete e por isso entra por baixo da mobília. */
+  alvoDoClique(tx, ty) {
+    const camada = this.camadaDe(this.tipoSel);
+    if (camada === 'piso') return this.objetoEm(tx, ty, 'piso');
+    const alt = this.ALTURA_CAMADA;
+    const minha = alt[camada] || 0;
+    const cat = this.jogo.mapa.catalogo;
+    // O mais ALTO que estiver ali, e entre os empatados o mais recente. Não dá
+    // para usar só a ordem da lista: um tapete colocado depois da mesa aparece
+    // por último nela e mora EMBAIXO de tudo.
+    let melhor = null, melhorAlt = -1;
+    for (const o of this.jogo.mapa.objetos) {
+      const info = cat[o.tipo];
+      if (!info) continue;
+      const m = Objetos.medida(o.tipo, info, o.g);
+      if (!(tx >= o.x && tx < o.x + m.l && ty >= o.y && ty < o.y + m.a)) continue;
+      const h = alt[(info.camada || 'chao')] || 0;
+      if (h >= melhorAlt) { melhor = o; melhorAlt = h; }
+    }
+    return melhor && melhorAlt >= minha ? melhor : null;
+  },
+
   aoApontar(e, ponto) {
     const t = this._tile(ponto);
     this.cursor = t;
@@ -346,11 +382,7 @@ const Editor = {
         this.soltarConjunto(t);
         return;
       }
-      // O móvel que o clique pega é o da MESMA camada da peça que está na mão.
-      // Antes pegava o de cima de qualquer camada, e por isso era impossível
-      // pôr um monitor em cima de uma mesa: o clique agarrava a mesa (ou os
-      // papéis que já estavam nela) em vez de colocar o monitor.
-      const alvo = this.objetoEm(t.x, t.y, this.camadaDe(this.tipoSel));
+      const alvo = this.alvoDoClique(t.x, t.y);
       if (alvo) {
         // guarda o arrasto, mas só vira movimento se a pessoa arrastar de fato:
         // um clique seco abre o menu do móvel.
@@ -444,6 +476,9 @@ const Editor = {
   },
 
   removerSelecionado() {
+    // sem isto o cartão do móvel apagado continuava na tela, e "Mover" nele
+    // punha um fantasma na mão que nenhum clique conseguia largar
+    this.fecharMenu();
     if (this.selecionado) {
       this.acao({ acao: 'remover', id: this.selecionado.id });
       this.selecionado = null;
@@ -576,7 +611,7 @@ const Editor = {
     caixa.innerHTML = `
       <div class="cabeca">
         <img src="${Objetos.miniatura(o.tipo, info.l, info.a, 34, o.g)}" alt="">
-        <div><strong>${info.nome}</strong><span>${m.l}×${m.a} · ${info.grupo}</span></div>
+        <div><strong>${this._esc(info.nome)}</strong><span>${m.l}×${m.a} · ${this._esc(info.grupo)}</span></div>
       </div>
       ${sala ? `<div class="dono-sala">
         ${sala.dono_nome ? `<span>${this._esc(sala.nome)} é de <b>${this._esc(sala.dono_nome)}</b></span>`
@@ -618,7 +653,11 @@ const Editor = {
     caixa.querySelector('[data-fazer="trocar"]').onclick = () => {
       const alvo = caixa.querySelector('.troca');
       alvo.classList.toggle('oculto');
-      if (alvo.childElementCount) return;
+      // A lista de troca faz o cartão triplicar de altura. Sem recolocar, ela
+      // nascia inteira embaixo da tela e o recurso ficava inalcançável.
+      const recolocar = () => requestAnimationFrame(() =>
+        this._encaixarNoPalco(caixa, caixa.offsetLeft, caixa.offsetTop));
+      if (alvo.childElementCount) { recolocar(); return; }
       // Quem cabe no espaço atual, da MESMA camada, do mais parecido ao menor.
       // Trocar por um maior invadiria o vizinho; trocar de camada faria um
       // tapete virar cadeira, que não é troca, é outra coisa. A categoria da
@@ -642,6 +681,7 @@ const Editor = {
       if (!alvo.childElementCount) {
         alvo.innerHTML = '<p class="vazio">Nenhuma outra peça desse tamanho e dessa camada.</p>';
       }
+      recolocar();
     };
   },
 
@@ -728,13 +768,15 @@ const Editor = {
       // redesenhar exige as ferramentas: abre o editor já na hora certa
       this.fecharMenu();
       if (!this.ativo) this.alternar();
-      this.redesenhando = z.id;
       this.usarFerramenta('sala');
+      this.redesenhando = z.id;
       document.getElementById('editor-ajuda').textContent =
         `Arraste no mapa a área nova de "${z.nome}".`;
     };
-    nome.focus();
-    nome.select();
+    // Antes o campo já vinha com o foco: quem apertava S para andar escrevia um
+    // "s" no nome da sala, o boneco não saía do lugar, e Salvar sem perceber
+    // renomeava a sala para "s".
+    nome.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.fecharMenu(); });
   },
 
   /* ==================== o que aparece por cima do mapa ==================== */
@@ -1030,7 +1072,9 @@ const Editor = {
       const b = document.createElement('button');
       b.type = 'button';
       b.dataset.cat = id;
-      b.innerHTML = `${nome} <small>${n}</small>`;
+      // nome de categoria pode vir de peça do estúdio, escrita por gente:
+      // sem escapar, um `<img onerror=...>` no nome roda no navegador de quem abre o editor
+      b.innerHTML = `${this._esc(nome)} <small>${n}</small>`;
       b.setAttribute('aria-pressed', id === this.arsenal.categoria);
       b.onclick = () => {
         this.arsenal.categoria = id;
@@ -1332,10 +1376,10 @@ const Editor = {
     el.dataset.tipo = tipo;
     const fav = favoritos.has(tipo);
     el.innerHTML = `
-      <button type="button" class="escolher" title="${info.nome} (${info.l}×${info.a}) · ${info.grupo}"
+      <button type="button" class="escolher" title="${this._esc(info.nome)} (${info.l}×${info.a}) · ${this._esc(info.grupo)}"
               aria-pressed="${tipo === this.tipoSel}">
         <img alt="" width="44" height="44" data-tipo="${tipo}" data-l="${info.l}" data-a="${info.a}">
-        <span class="nome">${info.nome}</span>
+        <span class="nome">${this._esc(info.nome)}</span>
       </button>
       <button type="button" class="coracao${fav ? ' ligado' : ''}" aria-pressed="${fav}"
               title="${fav ? 'Tirar dos favoritos' : 'Favoritar'}">${fav ? '♥' : '♡'}</button>`;
@@ -1358,6 +1402,10 @@ const Editor = {
 
   /** Peça escolhida na grade: vira a próxima a ser colocada e entra nos recentes. */
   escolherPeca(tipo) {
+    // O foco ficava na busca, então "G gira antes" digitava um g na busca e a
+    // grade zerava — parecia que o arsenal tinha quebrado.
+    const busca = document.getElementById('arsenal-busca');
+    if (busca && document.activeElement === busca) busca.blur();
     this.tipoSel = tipo;
     this.conjunto = null;
     this._registrarRecente(tipo);

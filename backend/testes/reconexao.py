@@ -37,8 +37,14 @@ async def main():
 
         # sai da recepção e derruba a conexão na marra
         alvo = await a.evaluate("""() => {
-            const cad = Jogo.mapa.objetos.find(o => o.tipo === 'cadeira');
-            Jogo.eu.x = (cad.x + 0.5) * Jogo.tile; Jogo.eu.y = (cad.y + 2.5) * Jogo.tile;
+            // um passo curto: salto grande é recusado pelo servidor (era
+            // teleporte, e atravessava parede)
+            const t = Jogo.tile;
+            for (const [dx, dy] of [[t, 0], [-t, 0], [0, t], [0, -t]]) {
+              if (livre(Jogo.eu.x + dx, Jogo.eu.y + dy)) {
+                Jogo.eu.x += dx; Jogo.eu.y += dy; break;
+              }
+            }
             enviar({tipo:'mover', x:Jogo.eu.x, y:Jogo.eu.y, direcao:'cima'});
             return [Jogo.eu.x, Jogo.eu.y]; }""")
         await asyncio.sleep(1.2)

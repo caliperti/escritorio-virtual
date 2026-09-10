@@ -64,6 +64,15 @@ def medida_png(dados: bytes) -> Optional[Tuple[int, int]]:
     return int(largura), int(altura)
 
 
+def texto_seguro(bruto: str, tamanho: int) -> str:
+    """Nome e categoria escritos por gente vão parar no HTML do editor de todo
+    mundo. Fora escapar na hora de desenhar, o que é gravado já sai limpo: sem
+    `<`, `>`, aspas e sem caractere de controle. Uma peça chamada
+    `<img src=1 onerror=...>` rodava script no navegador de qualquer membro."""
+    limpo = "".join(c for c in (bruto or "") if c.isprintable() and c not in '<>"\'`')
+    return limpo.strip()[:tamanho]
+
+
 def limpar_id(bruto: str) -> str:
     """Id de arquivo e de catálogo: só letra sem acento, número e sublinhado."""
     base = re.sub(r"[^a-z0-9_]+", "_", (bruto or "").strip().lower()).strip("_")
@@ -119,7 +128,7 @@ class Estudio:
         ext = tipo_da_imagem(dados)
         if not ext:
             return None, "Isso não parece uma imagem (aceito PNG, WebP, JPG ou GIF)."
-        nome = (nome or "").strip()[:40]
+        nome = texto_seguro(nome, 40)
         if len(nome) < 2:
             return None, "Dê um nome à peça."
         if camada not in CAMADAS:
@@ -133,7 +142,7 @@ class Estudio:
         arquivo = "%s.%s" % (chave, ext)
         (PASTA_IMAGENS / arquivo).write_bytes(dados)
         self.pecas[chave] = {
-            "grupo": (grupo or "Decoração").strip()[:24] or "Decoração",
+            "grupo": texto_seguro(grupo, 24) or "Decoração",
             "nome": nome, "l": l, "a": a, "bloqueia": bool(bloqueia),
             "camada": camada, "imagem": "/static/assets/pecas/" + arquivo,
             "criada_em": time.time(),
@@ -173,7 +182,7 @@ class Estudio:
             if m2 != FOLHA_SENTADO:
                 return None, ("A folha sentado tem de ter %dx%d, e essa tem %s."
                               % (*FOLHA_SENTADO, "x".join(map(str, m2)) if m2 else "outro formato"))
-        nome = (nome or "").strip()[:28]
+        nome = texto_seguro(nome, 28)
         if len(nome) < 2:
             return None, "Dê um nome à roupa."
         prefixo = {"camisaTipo": "camisa", "calcaTipo": "calca",

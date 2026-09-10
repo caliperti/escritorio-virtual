@@ -5,6 +5,7 @@ Se um dia precisar de histórico de chat, aí sim entra SQLite como nos outros a
 """
 
 import asyncio
+import time
 import re
 import secrets
 from dataclasses import dataclass, field
@@ -16,6 +17,10 @@ from mapa import escritorio
 # Raio (em pixels) em que duas pessoas passam a se ouvir. A histerese evita que
 # a chamada fique conectando/desconectando quando alguém anda na fronteira.
 RAIO_CONVERSA = 150
+# Quanto a pessoa pode andar em UMA mensagem de posição. Andando normal são
+# ~13 px a cada 66 ms; o resto é engasgo de rede ou mensagem forjada.
+PASSO_LIVRE = 64          # dois tiles: passa sem perguntar nada
+PASSO_MAXIMO = 256        # oito tiles: acima disso é sempre recusado
 RAIO_SILENCIO = 210
 
 # Paleta dos avatares — sorteada na entrada, o usuário pode trocar.
@@ -104,12 +109,67 @@ def se_ouvem(a: Participante, b: Participante) -> bool:
     return (a.x - b.x) ** 2 + (a.y - b.y) ** 2 <= RAIO_CONVERSA ** 2
 
 
+def chave_de_castigo(conta: str, nome: str) -> str:
+    """Por quem o castigo de expulsão pega. Membro é pela CONTA (trocar o nome
+    não desfaz). Visitante não tem conta, então vai pelo nome — não é à prova de
+    esperto, mas obriga a escolher outro nome em vez de voltar num clique."""
+    return conta if conta else "visitante:" + (nome or "").strip().lower()
+
+
 class Sala:
     def __init__(self) -> None:
         self.participantes: Dict[str, Participante] = {}
         # convite para entrar na sala de alguém, por sala: {zona_id: {id, ...}}
         self._convidados: Dict[str, set] = {}
+        # quem o admin expulsou: {chave: momento em que pode voltar}
+        self._castigo: Dict[str, float] = {}
+        # quem o admin calou: fica pela CONTA, não pela conexão — senão bastava
+        # recarregar a página para voltar a falar
+        self._calados: set = set()
         self._trava = asyncio.Lock()
+
+    # ---------- expulsão ----------
+    # Fechar o WebSocket não expulsa ninguém: a pessoa reconecta no segundo
+    # seguinte com o mesmo login. O castigo é o que faz "expulsar" significar
+    # alguma coisa.
+
+    def expulsar(self, p: Participante, segundos: float) -> None:
+        self._castigo[chave_de_castigo(p.conta, p.nome)] = time.time() + segundos
+
+    def readmitir(self, chave: str) -> None:
+        self._castigo.pop(chave, None)
+
+    def castigo_de(self, conta: str, nome: str) -> float:
+        """Quantos segundos ainda faltam para essa pessoa poder voltar (0 = pode)."""
+        chave = chave_de_castigo(conta, nome)
+        falta = self._castigo.get(chave, 0) - time.time()
+        if falta <= 0:
+            self._castigo.pop(chave, None)
+            return 0
+        return falta
+
+    # ---------- silêncio ----------
+
+    def calar(self, p: Participante, calado: bool) -> None:
+        chave = chave_de_castigo(p.conta, p.nome)
+        if calado:
+            self._calados.add(chave)
+        else:
+            self._calados.discard(chave)
+        p.silenciado = calado
+        if calado:
+            p.mudo = True
+
+    def esta_calado(self, conta: str, nome: str) -> bool:
+        return chave_de_castigo(conta, nome) in self._calados
+
+    def expulsos(self) -> List[Dict]:
+        agora = time.time()
+        fora = [k for k, ate in self._castigo.items() if ate <= agora]
+        for k in fora:
+            self._castigo.pop(k, None)
+        return [{"chave": k, "minutos": max(1, int((ate - agora) / 60) + 1)}
+                for k, ate in sorted(self._castigo.items(), key=lambda kv: kv[1])]
 
     # ---------- entrada e saída ----------
 
@@ -135,7 +195,10 @@ class Sala:
                 vx, vy = float(voltando["x"]), float(voltando["y"])
             except (KeyError, TypeError, ValueError):
                 vx = vy = None
-            if vx is not None and mapa.livre(vx, vy):
+            # A sala trancada tem de barrar aqui também: mandar a coordenada de
+            # dentro na hora de conectar era um jeito de nascer dentro da sala
+            # dos outros sem passar pela porta — inclusive sendo visitante.
+            if vx is not None and mapa.livre(vx, vy) and not self.zona_trancada_para(p, vx, vy):
                 p.x, p.y = vx, vy
                 async with self._trava:
                     self.participantes[p.id] = p
@@ -207,6 +270,19 @@ class Sala:
 
     # ---------- movimento ----------
 
+    def _linha_livre(self, p: Participante, x: float, y: float) -> bool:
+        """Confere de meio em meio tile se dá para ir de onde a pessoa está até
+        (x, y) em linha reta, sem furar parede nem cair dentro de sala trancada."""
+        passos = max(1, int(((x - p.x) ** 2 + (y - p.y) ** 2) ** 0.5 / (mapa.TAMANHO_TILE / 2)))
+        for i in range(1, passos + 1):
+            px = p.x + (x - p.x) * i / passos
+            py = p.y + (y - p.y) * i / passos
+            if not mapa.livre(px, py):
+                return False
+            if self.zona_trancada_para(p, px, py):
+                return False
+        return True
+
     def mover(self, p: Participante, x: float, y: float, direcao: str) -> bool:
         """O cliente é a autoridade do movimento (é ele que roda a 60 fps); aqui
         só recusamos posição fora do mapa ou dentro de parede. Recusa devolve
@@ -229,6 +305,16 @@ class Sala:
         # convite prenderia a visita lá dentro para sempre.
         if self.zona_trancada_para(p, x, y) and not self.zona_trancada_para(p, p.x, p.y):
             return False
+        # Um `mover` sozinho não pode atravessar o escritório. O cliente manda a
+        # posição a cada 66 ms andando ~13 px, então um salto grande é sempre
+        # mensagem forjada — e servia para cair dentro de qualquer sala e entrar
+        # na bolha de áudio dela. Até dois tiles passa direto (engasgo de rede);
+        # acima disso o caminho em linha reta precisa estar livre; acima do teto
+        # não passa de jeito nenhum.
+        salto = ((x - p.x) ** 2 + (y - p.y) ** 2) ** 0.5
+        if salto > PASSO_LIVRE:
+            if salto > PASSO_MAXIMO or not self._linha_livre(p, x, y):
+                return False
         p.x, p.y = x, y
         if direcao in ("cima", "baixo", "esquerda", "direita"):
             p.direcao = direcao
