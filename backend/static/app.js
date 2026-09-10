@@ -882,6 +882,13 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && digitando) { campo.blur(); return; }
   if (e.key === 'Escape') {
     if (Reuniao.ativa) { fecharReuniao(); return; }
+    // Com o editor aberto e uma peça na mão, o primeiro Esc só LARGA a peça:
+    // é o que devolve o clique de selecionar, para apagar ou girar um móvel.
+    if (Editor.ativo && (Editor.tipoSel || Editor.conjunto || Editor.movendo)) {
+      Editor.esvaziarMao('esvaziar');
+      Editor.fecharMenu();
+      return;
+    }
     encolherTiles();
     fecharEditor();
     Editor.movendo = null;
@@ -925,7 +932,18 @@ document.addEventListener('keyup', (e) => {
   if (dir) Jogo.teclas.delete(dir);
 });
 
-window.addEventListener('blur', () => Jogo.teclas.clear());
+// Sair da janela solta TUDO: tecla presa e destino de caminhada. Sem limpar o
+// destino, quem apertava o botão no mapa e trocava de janela deixava o boneco
+// andando sozinho atrás do cursor, e mexer o mouse na outra janela continuava
+// guiando ele.
+function soltarControles() {
+  Jogo.teclas.clear();
+  Jogo.caminho = null;
+  Jogo.clique = null;
+  delete tela.dataset.alvo;
+}
+window.addEventListener('blur', soltarControles);
+document.addEventListener('visibilitychange', () => { if (document.hidden) soltarControles(); });
 
 /* Dois dedos no mapa: pinça aproxima e afasta, como em qualquer mapa de
    celular. O canvas tem `touch-action: none` (sem isso o navegador cancelava o
@@ -1225,8 +1243,57 @@ function atualizar() {
     chip.style.borderColor = zona ? zona.cor : '';
     desenharListaPessoas();
     ofereceSala(zona);
+    abrirMidiaDaSala(zona);
   }
+  atualizarBotaoTrancar(zona);
 }
+
+/** Sala marcada com `abre_midia` (a de reunião) abre câmera e microfone de
+ *  quem entra. É regra da casa: reunião é de cara aberta. Quem não quiser
+ *  desliga com M ou V depois — e quem negou a permissão do navegador só recebe
+ *  o aviso, não fica de fora. */
+async function abrirMidiaDaSala(zona) {
+  if (!zona || !zona.abre_midia || Jogo.visitante) return;
+  const faltando = ['audio', 'video'].filter((t) => !Midia.ligado(t));
+  if (!faltando.length) return;
+  escreverChat({ sistema: true,
+    texto: `Na ${zona.nome} todo mundo entra com câmera e microfone abertos.` });
+  for (const tipo of faltando) {
+    try {
+      await Midia.alternar(tipo);
+    } catch (e) { /* permissão negada: o aviso do Midia já aparece */ }
+  }
+  atualizarBotoesMidia();
+  montarTiles();
+  avisarMidia();
+}
+
+/** Botão de trancar/destrancar a PRÓPRIA sala, fixo na barra enquanto você
+ *  está dentro dela. Antes o único lugar de trancar era um cartão que aparece
+ *  uma vez por sessão: depois de trancar, não sobrava nenhum jeito de
+ *  destrancar. Ele lê a sala AGORA, não uma cópia de quando apareceu. */
+function atualizarBotaoTrancar(zona) {
+  const b = document.getElementById('btn-trancar');
+  if (!b) return;
+  const viva = zona ? (Jogo.mapa.zonas.find((z) => z.id === zona.id) || zona) : null;
+  const minha = !!(viva && viva.privada && !Jogo.visitante
+                   && viva.dono_nome && Jogo.eu && viva.dono_nome === Jogo.eu.nome);
+  b.hidden = !minha;
+  if (!minha) return;
+  const trancada = !!viva.trancada;
+  const texto = trancada ? '🔓 Destrancar' : '🔒 Trancar';
+  if (b.textContent !== texto) b.textContent = texto;
+  b.title = trancada
+    ? 'A porta está trancada: só entra quem você deixar. Clique para abrir.'
+    : 'A porta está aberta: qualquer um entra. Clique para trancar.';
+  b.dataset.zona = viva.id;
+  b.dataset.trancada = trancada ? '1' : '';
+}
+
+document.getElementById('btn-trancar').onclick = (e) => {
+  const b = e.currentTarget;
+  enviar({ tipo: 'sala', acao: b.dataset.trancada ? 'destrancar' : 'trancar', id: b.dataset.zona });
+};
 
 // Salas já oferecidas nesta sessão: a pergunta aparece uma vez por sala, não a
 // cada vez que a pessoa cruza a porta.
@@ -1338,6 +1405,10 @@ function mesmaSala(a, b) {
 }
 
 function podemConversar(a, b, jaConectados) {
+  // Calado pelo administrador não entra em chamada nenhuma. O servidor já não
+  // encaminha o sinal dessa pessoa; sem esta linha o vigia ficava tentando
+  // abrir a chamada a cada 250 ms, para sempre.
+  if (a.silenciado || b.silenciado) return false;
   const za = zonaDe(a.x, a.y), zb = zonaDe(b.x, b.y);
   const privA = !!(za && za.privada), privB = !!(zb && zb.privada);
   if (privA || privB) return privA && privB && za.id === zb.id;

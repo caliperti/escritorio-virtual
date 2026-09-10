@@ -210,6 +210,10 @@ def montar_padrao(esc) -> None:
     # ---------------- sala de reunião, no centro ----------------
     RX1, RY1, RX2, RY2 = 38, 16, 56, 29
     sala("reuniao", "Sala de Reunião", RX1, RY1, RX2, RY2, "#8b7fd0", "z", "cima", 46)
+    # Regra da casa: quem entra na reunião entra com câmera e microfone abertos.
+    # A marca vive na ZONA e não no código do cliente, então vale para qualquer
+    # sala que o administrador queira marcar assim depois.
+    esc.zonas[-1]["abre_midia"] = True
     for py in (22, 23):                                          # segunda porta, a oeste
         esc.paredes[py][RX1] = 0
         esc.piso[py][RX1] = "z"

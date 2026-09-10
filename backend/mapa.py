@@ -301,11 +301,27 @@ class Escritorio:
 
     # ---------- carga e gravação ----------
 
+    def _marcar_regras_de_sala(self) -> bool:
+        """Regras de sala que nasceram depois do mapa gravado.
+
+        Elas não podem esperar a próxima remontagem da planta: remontar joga
+        fora todo móvel colocado e toda sala reivindicada. Aqui a regra é
+        acrescentada ao mapa que já existe, sem mexer em mais nada."""
+        mudou = False
+        for z in self.zonas:
+            if z.get("id") == "reuniao" and not z.get("abre_midia"):
+                z["abre_midia"] = True      # reunião é de cara aberta
+                mudou = True
+        return mudou
+
+
     def carregar(self) -> None:
         if ARQUIVO.exists():
             try:
                 self.de_json(json.loads(ARQUIVO.read_text(encoding="utf-8")))
                 if self.versao_planta >= VERSAO_PLANTA:
+                    if self._marcar_regras_de_sala():
+                        self.salvar()
                     log.info("mapa carregado de %s", ARQUIVO.name)
                     return
                 log.info("planta de fábrica é mais nova (%d > %d) — remontando o escritório",
@@ -775,6 +791,10 @@ class Escritorio:
                         z["trancada"] = True
                 if velha.get("porta"):
                     z["porta"] = velha["porta"]
+                if velha.get("abre_midia"):
+                    # "aqui entra com câmera e microfone abertos" é regra da
+                    # sala, não desenho: renomear a sala não pode apagar isso
+                    z["abre_midia"] = True
                 self.zonas[antigos[0]] = z
             else:
                 self.zonas.append(z)

@@ -122,6 +122,27 @@ async def principal():
         await asyncio.sleep(0.4)
         ok("e sair devolve a ajuda de antes", await pg.evaluate(faixa) != sobre_piso)
 
+        # clicar em cima de um móvel coloca a peça e ENSINA o gesto do menu:
+        # foi por não saber disso que pareceu que o editor tinha parado
+        await pg.evaluate("""() => {
+            Editor.ferramenta = 'mobilia';
+            Editor.tipoSel = 'planta';
+            const o = Jogo.mapa.objetos.find((o) => (Jogo.mapa.catalogo[o.tipo] || {}).camada !== 'piso');
+            const t = Jogo.tile;
+            Editor.aoApontar({ button: 0, altKey: false, shiftKey: false },
+                             { x: (o.x + 0.5) * t, y: (o.y + 0.5) * t });
+            Editor.aoSoltar();
+        }""")
+        await asyncio.sleep(1.0)
+        ok("colocar em cima de um móvel ensina como abrir o menu dele",
+           "SEGURE" in await pg.evaluate("() => document.getElementById('editor-ajuda').textContent"))
+        await pg.evaluate("""() => {
+            const p = Jogo.mapa.objetos.filter((o) => o.tipo === 'planta');
+            const ultima = p[p.length - 1];
+            if (ultima) Editor.enviar({ tipo: 'editar', acao: { acao: 'remover', id: ultima.id } });
+        }""")
+        await asyncio.sleep(0.8)
+
         ok("nenhum erro de página", not erros)
         if erros:
             print("   ", erros)

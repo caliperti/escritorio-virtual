@@ -51,6 +51,13 @@ conferir("mesmo assim os dois se ouvem", se_ouvem(a, b))
 a, b = cantos(sala1)
 conferir("nas pontas de uma sala pessoal também se ouvem", se_ouvem(a, b))
 
+print("\n-- salão central (convivência) --")
+copa = escritorio.zona_por_id("copa")
+a, b = cantos(copa)
+dist = ((a.x - b.x) ** 2 + (a.y - b.y) ** 2) ** 0.5
+conferir("as pontas da convivência estão fora do raio de conversa", dist > RAIO_CONVERSA)
+conferir("mas quem está na convivência se ouve de ponta a ponta", se_ouvem(a, b))
+
 print("\n-- salas diferentes --")
 a = em(sala1["x1"] + 0.5, sala1["y1"] + 0.5, "a")
 b = em(sala2["x1"] + 0.5, sala2["y1"] + 0.5, "b")

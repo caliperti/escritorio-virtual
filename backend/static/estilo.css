@@ -898,3 +898,23 @@ body.editando #tela { cursor: crosshair; }
   .app.sem-lateral .puxador { right: 12px; bottom: 12px; }
   .app.sem-lateral .puxador svg { transform: rotate(-90deg); }
 }
+
+/* Mão vazia: com ela ligada o clique volta a SELECIONAR o móvel em vez de
+   colocar um novo. Sem esse botão havia sempre uma peça armada, e não dava
+   para escolher nada no mapa para apagar ou girar. */
+.arsenal .mao-vazia {
+  border: 1px solid var(--borda); background: var(--painel); color: var(--fraco);
+  border-radius: 8px; width: 30px; height: 30px; cursor: pointer; font-size: 14px;
+  padding: 0; flex: none;
+}
+.arsenal .mao-vazia[aria-pressed="true"] {
+  background: var(--acento); border-color: var(--acento); color: #fff;
+}
+
+/* Trancar a própria sala, na barra de cima. Fica visível o tempo todo em que a
+   pessoa está dentro da sala dela: antes só existia num cartão que aparecia uma
+   vez por sessão, e depois de trancar não sobrava jeito de destrancar. */
+.botao-chip {
+  cursor: pointer; font: inherit; color: var(--texto); white-space: nowrap;
+}
+.botao-chip:hover { background: var(--acento-claro); border-color: var(--acento); }

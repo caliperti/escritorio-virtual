@@ -653,12 +653,22 @@ const Editor = {
         // que já tivesse teclado ou caneca: o clique selecionava em vez de
         // soltar. Para abrir o menu, segure o botão — mesmo gesto de fora do
         // editor.
-        if (Date.now() - a.quando > 450) {
+        // 300 ms e não 450: dentro do editor não existe "andar", então segurar
+        // pode ser mais leve. Fora do editor o limite continua maior, senão um
+        // clique meio demorado abriria menu em vez de andar.
+        if (!this.tipoSel || Date.now() - a.quando > 300) {
           this.abrirMenu(a.id);
         } else {
           this.acao({ acao: 'objeto', tipo: this.tipoSel, x: a.tile.x, y: a.tile.y, g: this.giro });
           this._registrarRecente(this.tipoSel);
           this._atualizarContagens();
+          // A pessoa clicou em cima de um móvel e a peça foi colocada por cima.
+          // Se ela queria o menu daquele móvel, precisa saber do gesto — foi
+          // por não saber que pareceu que o editor tinha parado de funcionar.
+          const ajuda = document.getElementById('editor-ajuda');
+          if (ajuda) ajuda.textContent =
+            'Peça colocada. Para abrir o menu do móvel que já estava aí '
+            + '(girar, mover, trocar, remover), SEGURE o botão em cima dele.';
         }
       } else {
         const alvo = this.jogo.mapa.objetos.find((o) => o.id === a.id);
@@ -1271,6 +1281,9 @@ const Editor = {
           <button type="button" class="limpar" title="Limpar busca" hidden>✕</button>
           <button id="editor-girar" type="button" class="girar"
                   title="Girar 90° o próximo móvel (tecla G)">↻</button>
+          <button id="editor-mao-vazia" type="button" class="mao-vazia"
+                  title="Mão vazia: o clique passa a SELECIONAR o móvel em vez de colocar um novo (Esc)"
+                  aria-pressed="false">✋</button>
         </div>
         <div class="arsenal-cats" id="arsenal-cats"></div>
       </div>
@@ -1279,6 +1292,9 @@ const Editor = {
 
     const busca = caixa.querySelector('#arsenal-busca');
     const limpar = caixa.querySelector('.limpar');
+    const maoVazia = caixa.querySelector('#editor-mao-vazia');
+    maoVazia.setAttribute('aria-pressed', !this.tipoSel);
+    maoVazia.onclick = () => this.esvaziarMao(!this.tipoSel ? 'voltar' : 'esvaziar');
     const fita = caixa.querySelector('#arsenal-cats');
     busca.value = est.busca;
     limpar.hidden = !est.busca;
@@ -1664,6 +1680,33 @@ const Editor = {
     return el;
   },
 
+  /** Larga a peça que está na mão. Com a mão vazia o clique volta a SELECIONAR
+   *  o móvel, que é o jeito de apagar ou girar um que já está no mapa. Sem isso
+   *  havia sempre uma peça armada e todo clique colocava outra coisa. */
+  esvaziarMao(modo) {
+    if (modo === 'voltar') {
+      this.tipoSel = this._ultimoTipo || 'mesa';
+    } else {
+      this._ultimoTipo = this.tipoSel || this._ultimoTipo;
+      this.tipoSel = null;
+      this.conjunto = null;
+      this.movendo = null;
+    }
+    const b = document.getElementById('editor-mao-vazia');
+    if (b) b.setAttribute('aria-pressed', !this.tipoSel);
+    document.querySelectorAll('#editor .peca .escolher').forEach((x) => {
+      x.setAttribute('aria-pressed', !!this.tipoSel && x.parentElement.dataset.tipo === this.tipoSel);
+    });
+    const ajuda = document.getElementById('editor-ajuda');
+    if (ajuda) {
+      ajuda.textContent = this.tipoSel
+        ? this.AJUDA_MOBILIA
+        : 'Mão vazia. Clique num móvel para abrir o menu dele (girar, mover, trocar, '
+          + 'remover). Escolha uma peça na lista para voltar a colocar.';
+    }
+    this.avisoNaMao();
+  },
+
   /** Peça escolhida na grade: vira a próxima a ser colocada e entra nos recentes. */
   escolherPeca(tipo) {
     // O foco ficava na busca, então "G gira antes" digitava um g na busca e a
@@ -1671,8 +1714,11 @@ const Editor = {
     const busca = document.getElementById('arsenal-busca');
     if (busca && document.activeElement === busca) busca.blur();
     this.tipoSel = tipo;
+    this._ultimoTipo = tipo;
     this.conjunto = null;
     this._registrarRecente(tipo);
+    const bVazia = document.getElementById('editor-mao-vazia');
+    if (bVazia) bVazia.setAttribute('aria-pressed', 'false');
     document.querySelectorAll('#editor .peca .escolher').forEach((b) => {
       b.setAttribute('aria-pressed', b.parentElement.dataset.tipo === tipo);
     });
