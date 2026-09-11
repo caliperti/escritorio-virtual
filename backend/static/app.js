@@ -395,16 +395,33 @@ const SILENCIO_MS = 55000;      // nada vindo do servidor por tanto tempo = caiu
 const ESPERA_MAX_MS = 15000;    // teto da espera entre tentativas de voltar
 
 const Conexao = { perfil: null, tentativas: 0, batida: null, timer: null,
-                  ultima: 0, saindo: false };
+                  ultima: 0, saindo: false, atual: null };
 
 function conectar(perfil) {
   Conexao.perfil = perfil;
   clearTimeout(Conexao.timer);
+  // A ligação anterior podia continuar de pé aqui (voltar para a aba com o
+  // socket em CLOSING abria outra por cima). Duas ligações da mesma conta no
+  // servidor = ele derruba uma delas com "recusado", e esta página, que
+  // escutava as DUAS, entendia "sessão expirada" e jogava a pessoa para a tela
+  // de login. O aviso de fim da ligação velha também fechava as chamadas da
+  // nova: era a câmera de todo mundo piscando sem parar.
+  const velho = Conexao.atual;
+  if (velho) {
+    velho.onopen = velho.onmessage = velho.onclose = velho.onerror = null;
+    try { velho.close(); } catch (e) { /* já estava fechada */ }
+  }
   const protocolo = location.protocol === 'https:' ? 'wss' : 'ws';
   const ws = new WebSocket(`${protocolo}://${location.host}/ws`);
+  Conexao.atual = ws;
   Jogo.ws = ws;
 
+  // Todo aviso vindo de uma ligação que não é mais a atual é descartado: ela
+  // fala do passado, e obedecer a ela derruba o presente.
+  const atual = () => Conexao.atual === ws;
+
   ws.onopen = () => {
+    if (!atual()) { try { ws.close(); } catch (e) {} return; }
     // voltando de uma queda: pede para nascer onde a pessoa estava
     const voltando = Jogo.eu ? { x: Jogo.eu.x, y: Jogo.eu.y } : null;
     ws.send(JSON.stringify({ tipo: 'entrar', ...perfil, ...(voltando ? { voltando } : {}) }));
@@ -413,11 +430,13 @@ function conectar(perfil) {
     baterCoracao();
   };
   ws.onmessage = (ev) => {
+    if (!atual()) return;
     Conexao.ultima = Date.now();
     avisarReconectando(false);
     receber(JSON.parse(ev.data));
   };
   ws.onclose = () => {
+    if (!atual()) return;
     pararCoracao();
     // só as chamadas caem; câmera e microfone continuam ligados para a pessoa
     // não ter que dar permissão de novo a cada tropeço da rede
@@ -425,6 +444,7 @@ function conectar(perfil) {
     if (!Conexao.saindo) tentarVoltar();
   };
   ws.onerror = () => {
+    if (!atual()) return;
     if (!Jogo.eu) {
       document.getElementById('aviso-entrada').textContent = 'Não consegui conectar ao servidor.';
     }

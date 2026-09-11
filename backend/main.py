@@ -33,6 +33,12 @@ SENHA = os.environ.get("SENHA", "").strip()
 MINUTOS_EXPULSO = 30
 # Quantas mensagens por segundo cada conexão pode mandar.
 TETO_MENSAGENS = 40
+# O sinal de WebRTC tem teto PRÓPRIO, e bem mais largo. Abrir uma chamada
+# dispara dezenas de candidatos ICE em menos de um segundo; com três pessoas
+# por perto, o teto único de 40 estourava, o sinal era jogado fora sem aviso e
+# a chamada nunca fechava — câmera acendendo e apagando sem parar, para todo
+# mundo. O tamanho de cada mensagem continua limitado logo abaixo.
+TETO_SINAIS = 200
 # E de que tamanho. O teto por segundo não olhava o tamanho: um `sinal` de
 # 8 MB era lido, desmontado e repassado inteiro ao alvo — 40 vezes por
 # segundo, se quisessem. Um SDP de WebRTC tem uns 10 KB; 64 KB é folgado.
@@ -470,7 +476,7 @@ async def websocket_sala(ws: WebSocket):
         })
         await sala.publicar({"tipo": "entrou", "participante": eu.publico()}, exceto=eu.id)
 
-        janela, contador = time.monotonic(), 0
+        janela, contador, contador_sinal = time.monotonic(), 0, 0
         while True:
             # Uma mensagem com o campo do tipo errado (texto onde ia número,
             # objeto onde ia texto) derrubava o WebSocket sem dizer nada, e o
@@ -483,14 +489,22 @@ async def websocket_sala(ws: WebSocket):
                 # está na sala). Andando são ~15 por segundo; 40 é folgado.
                 agora_ms = time.monotonic()
                 if agora_ms - janela > 1:
-                    janela, contador = agora_ms, 0
-                contador += 1
-                if contador > TETO_MENSAGENS:
-                    if contador == TETO_MENSAGENS + 1:
-                        log.warning("rápido demais: %s", eu.nome)
-                        await ws.send_json({"tipo": "erro", "texto": "Calma aí: pedidos demais."})
-                    continue
+                    janela, contador, contador_sinal = agora_ms, 0, 0
                 tipo = msg.get("tipo")
+                if tipo == "sinal":
+                    contador_sinal += 1
+                    if contador_sinal > TETO_SINAIS:
+                        if contador_sinal == TETO_SINAIS + 1:
+                            log.warning("sinal demais: %s", eu.nome)
+                        continue
+                else:
+                    contador += 1
+                    if contador > TETO_MENSAGENS:
+                        if contador == TETO_MENSAGENS + 1:
+                            log.warning("rápido demais: %s", eu.nome)
+                            await ws.send_json({"tipo": "erro",
+                                                "texto": "Calma aí: pedidos demais."})
+                        continue
 
                 if tipo == "mover":
                     if not sala.mover(eu, msg.get("x"), msg.get("y"), msg.get("direcao")):

@@ -21,6 +21,7 @@ python3 testes/permissoes.py     # quem edita o quê
 ADMIN_SENHA=... .venv/bin/python testes/arsenal.py
 .venv/bin/python testes/fumaca.py
 .venv/bin/python testes/reconexao.py
+CONVITE=... .venv/bin/python testes/ligacao_teimosa.py   # teto do sinal e troca de ligação
 ```
 
 O teste do arsenal entra como administrador, porque membro comum só edita
