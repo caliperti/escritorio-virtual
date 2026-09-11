@@ -78,6 +78,37 @@ async def prova_do_teto(marca):
     await b.close()
 
 
+async def prova_do_teto_de_comandos(marca):
+    """Rajada de `mover` não pode engolir o que a pessoa mandou de verdade."""
+    a, id_a = await visitante("Tetoa" + marca)
+    b, id_b = await visitante("Tetob" + marca)
+    # 200 posições de uma vez: é o que chega de uma conexão que engasgou
+    for i in range(200):
+        await a.send(json.dumps({"tipo": "mover", "x": 300 + (i % 3), "y": 300}))
+    # e, logo depois, uma fala — o comando que não pode sumir
+    await a.send(json.dumps({"tipo": "chat", "texto": "oi" + marca, "escopo": "todos"}))
+    ouviu, bronca = False, []
+    try:
+        while True:
+            msg = json.loads(await asyncio.wait_for(b.recv(), timeout=4))
+            if msg["tipo"] == "chat" and ("oi" + marca) in (msg.get("texto") or ""):
+                ouviu = True
+                break
+    except asyncio.TimeoutError:
+        pass
+    try:
+        while True:
+            msg = json.loads(await asyncio.wait_for(a.recv(), timeout=0.8))
+            if msg["tipo"] == "erro":
+                bronca.append(msg["texto"])
+    except asyncio.TimeoutError:
+        pass
+    ok("a fala atravessa uma rajada de 200 movimentos", ouviu)
+    ok("e o engasgo de rede não vira bronca no chat", not bronca)
+    await a.close()
+    await b.close()
+
+
 async def prova_da_troca(marca):
     """Abrir outra ligação com a velha ainda de pé não derruba quem está dentro."""
     async with async_playwright() as p:
@@ -128,6 +159,7 @@ async def prova_da_troca(marca):
 async def principal():
     marca = os.environ.get("MARCA") or str(os.getpid())[-4:]
     await prova_do_teto(marca)
+    await prova_do_teto_de_comandos(marca)
     await prova_da_troca(marca)
 
 

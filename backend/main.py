@@ -31,8 +31,15 @@ SENHA = os.environ.get("SENHA", "").strip()
 # Quanto tempo quem o admin expulsa fica de fora. Só fechar o WebSocket não
 # expulsava nada: a pessoa voltava no clique seguinte com o mesmo login.
 MINUTOS_EXPULSO = 30
-# Quantas mensagens por segundo cada conexão pode mandar.
+# Quantas mensagens por segundo cada conexão pode mandar. O teto existe contra
+# abuso, não contra rede ruim: uma conexão que engasga um segundo entrega tudo
+# junto no segundo seguinte, e isso não é culpa de ninguém.
 TETO_MENSAGENS = 40
+# Andar manda posição 15 vezes por segundo. Numa rajada dessas, perder uma
+# posição não faz falta — a próxima chega em 66 ms e corrige. Por isso o andar
+# tem balde próprio, largo, e some calado quando estoura: avisar "calma aí" a
+# cada engasgo de rede só entupia o chat de quem já estava sofrendo.
+TETO_MOVER = 90
 # O sinal de WebRTC tem teto PRÓPRIO, e bem mais largo. Abrir uma chamada
 # dispara dezenas de candidatos ICE em menos de um segundo; com três pessoas
 # por perto, o teto único de 40 estourava, o sinal era jogado fora sem aviso e
@@ -498,7 +505,7 @@ async def websocket_sala(ws: WebSocket):
         })
         await sala.publicar({"tipo": "entrou", "participante": eu.publico()}, exceto=eu.id)
 
-        janela, contador, contador_sinal = time.monotonic(), 0, 0
+        janela, contador, contador_sinal, contador_mover = time.monotonic(), 0, 0, 0
         while True:
             # Uma mensagem com o campo do tipo errado (texto onde ia número,
             # objeto onde ia texto) derrubava o WebSocket sem dizer nada, e o
@@ -511,7 +518,7 @@ async def websocket_sala(ws: WebSocket):
                 # está na sala). Andando são ~15 por segundo; 40 é folgado.
                 agora_ms = time.monotonic()
                 if agora_ms - janela > 1:
-                    janela, contador, contador_sinal = agora_ms, 0, 0
+                    janela, contador, contador_sinal, contador_mover = agora_ms, 0, 0, 0
                 tipo = msg.get("tipo")
                 if tipo == "sinal":
                     contador_sinal += 1
@@ -519,11 +526,19 @@ async def websocket_sala(ws: WebSocket):
                         if contador_sinal == TETO_SINAIS + 1:
                             log.warning("sinal demais: %s", eu.nome)
                         continue
+                elif tipo == "mover":
+                    contador_mover += 1
+                    if contador_mover > TETO_MOVER:
+                        continue                      # some calado: a próxima corrige
                 else:
+                    # O resto é comando de gente: falar, ligar o microfone,
+                    # mexer no escritório, trancar a sala. Descartar um desses
+                    # é a pessoa clicando e nada acontecer — o sistema inteiro
+                    # parecendo quebrado. Só cai se for abuso mesmo.
                     contador += 1
                     if contador > TETO_MENSAGENS:
                         if contador == TETO_MENSAGENS + 1:
-                            log.warning("rápido demais: %s", eu.nome)
+                            log.warning("rápido demais: %s — no tipo '%s'", eu.nome, tipo)
                             await ws.send_json({"tipo": "erro",
                                                 "texto": "Calma aí: pedidos demais."})
                         continue
