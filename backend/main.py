@@ -327,6 +327,21 @@ def _limpar_entrada(bruto: dict) -> dict:
              "convite": _texto(bruto.get("convite")), "nome": _texto(bruto.get("nome")),
              "token": _texto(bruto.get("token")), "emoji": _texto(bruto.get("emoji")),
              "cor": _texto(bruto.get("cor")), "aparencia": bruto.get("aparencia")}
+    # Por que a ligação de antes acabou. Só serve para o registro: sem isso,
+    # "entrou de novo" no log não diz se a pessoa deu F5, se a rede caiu ou se
+    # o próprio servidor trocou a sessão dela — e sem saber isso não dá para
+    # consertar quem fica caindo.
+    porque = bruto.get("porque")
+    if isinstance(porque, dict):
+        try:
+            codigo = int(porque.get("codigo"))
+        except (TypeError, ValueError):
+            codigo = 0
+        try:
+            ha = max(0, int(porque.get("ha")))
+        except (TypeError, ValueError):
+            ha = -1
+        limpa["porque"] = {"codigo": codigo, "limpo": bool(porque.get("limpo")), "ha": ha}
     voltando = bruto.get("voltando")
     if isinstance(voltando, dict):
         try:
@@ -459,7 +474,14 @@ async def websocket_sala(ws: WebSocket):
                         pass
                     await sala.sair(outro.id)
                     await sala.publicar({"tipo": "saiu", "id": outro.id})
-        log.info("entrou: %s (%s) — %d na sala", eu.nome, eu.id, len(sala.participantes))
+                    log.info("sessão trocada: %s — a conta entrou de outro lugar "
+                             "(a janela de antes foi desligada)", eu.nome)
+        pq = entrada.get("porque")
+        log.info("entrou: %s (%s) — %d na sala%s", eu.nome, eu.id, len(sala.participantes),
+                 ("" if not pq else
+                  "  [voltou: fim %d%s há %dms%s]" % (
+                      pq["codigo"], " limpo" if pq["limpo"] else " seco",
+                      pq["ha"], ", no mesmo lugar" if entrada.get("voltando") else "")))
 
         await ws.send_json({
             "tipo": "bemvindo",

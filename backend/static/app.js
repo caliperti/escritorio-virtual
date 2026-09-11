@@ -395,7 +395,7 @@ const SILENCIO_MS = 55000;      // nada vindo do servidor por tanto tempo = caiu
 const ESPERA_MAX_MS = 15000;    // teto da espera entre tentativas de voltar
 
 const Conexao = { perfil: null, tentativas: 0, batida: null, timer: null,
-                  ultima: 0, saindo: false, atual: null };
+                  ultima: 0, saindo: false, atual: null, ultimoFim: null };
 
 function conectar(perfil) {
   Conexao.perfil = perfil;
@@ -424,7 +424,15 @@ function conectar(perfil) {
     if (!atual()) { try { ws.close(); } catch (e) {} return; }
     // voltando de uma queda: pede para nascer onde a pessoa estava
     const voltando = Jogo.eu ? { x: Jogo.eu.x, y: Jogo.eu.y } : null;
-    ws.send(JSON.stringify({ tipo: 'entrar', ...perfil, ...(voltando ? { voltando } : {}) }));
+    // e conta POR QUE a ligação de antes acabou. No registro do servidor,
+    // "entrou de novo" sozinho não diz se foi F5, queda de rede ou troca de
+    // sessão — e sem isso não dá para consertar quem vive caindo.
+    const fim = Conexao.ultimoFim;
+    const porque = fim ? { codigo: fim.codigo, limpo: fim.limpo,
+                           ha: Date.now() - fim.quando } : null;
+    ws.send(JSON.stringify({ tipo: 'entrar', ...perfil,
+                             ...(voltando ? { voltando } : {}),
+                             ...(porque ? { porque } : {}) }));
     Conexao.tentativas = 0;
     Conexao.ultima = Date.now();
     baterCoracao();
@@ -435,8 +443,10 @@ function conectar(perfil) {
     avisarReconectando(false);
     receber(JSON.parse(ev.data));
   };
-  ws.onclose = () => {
+  ws.onclose = (ev) => {
     if (!atual()) return;
+    Conexao.ultimoFim = { codigo: (ev && ev.code) || 0,
+                          limpo: !!(ev && ev.wasClean), quando: Date.now() };
     pararCoracao();
     // só as chamadas caem; câmera e microfone continuam ligados para a pessoa
     // não ter que dar permissão de novo a cada tropeço da rede
