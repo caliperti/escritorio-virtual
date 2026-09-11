@@ -780,6 +780,16 @@ function iniciarSala(msg) {
     aoNegar: (tipo, e) => escreverChat({ sistema: true, texto:
       (tipo === 'audio' ? 'Microfone' : 'Câmera') + ' bloqueado pelo navegador ('
       + e.name + '). Libere nas permissões do site e tente de novo.' }),
+    // o aparelho caiu sozinho: sem este aviso a pessoa fala para o vazio com o
+    // botão aceso, e ninguém do outro lado sabe dizer o que houve
+    aoPerderAparelho: (tipo) => {
+      atualizarBotoesMidia();
+      avisarMidia();
+      escreverChat({ sistema: true, texto:
+        (tipo === 'audio' ? 'O microfone' : 'A câmera')
+        + ' foi desligado por fora (outro programa pegou o aparelho, ou o fone saiu). '
+        + 'Clique no botão para ligar de novo.' });
+    },
   });
   avisarMidia();
 
@@ -1449,23 +1459,66 @@ function volumeEntre(a, b) {
   return Math.max(0, Math.min(1, (longe - d) / (longe - perto)));
 }
 
+// Quem anda na borda do raio cruzava a linha para um lado e para o outro a
+// cada passo: a chamada caía e outra nascia do zero, e a câmera piscava para
+// os dois. Sair de perto só vale se a pessoa ficou fora de verdade.
+const CARENCIA_FORA_MS = 3000;
+const foraDesde = new Map();      // id -> quando saiu do raio
+
 function cuidarDasChamadas() {
   const eu = Jogo.eu;
   if (!eu) return;
+  const agora = Date.now();
   for (const p of Jogo.pessoas.values()) {
     const conectado = Midia.pares.has(p.id);
     const deve = podemConversar(eu, p, conectado);
     if (deve && !conectado) {
+      foraDesde.delete(p.id);
       Midia.garantirPar(p.id);
       // O cartão de vídeo nascia só quando chegava uma faixa de mídia. Quem
       // chegava sem microfone e sem câmera não ganhava cartão no outro lado
       // — e sem cartão não entrava na grade da reunião. O cartão é de quem
       // está NA CONVERSA, com ou sem mídia.
       montarTiles();
-    } else if (!deve && conectado) Midia.fechar(p.id);
-    else if (deve) Midia.ajustarVolume(p.id, volumeEntre(eu, p));
+    } else if (!deve && conectado) {
+      const desde = foraDesde.get(p.id) || agora;
+      foraDesde.set(p.id, desde);
+      Midia.ajustarVolume(p.id, volumeEntre(eu, p));   // já vai sumindo o som
+      if (agora - desde >= CARENCIA_FORA_MS) {
+        foraDesde.delete(p.id);
+        Midia.fechar(p.id);
+      }
+    } else if (deve) {
+      foraDesde.delete(p.id);
+      Midia.ajustarVolume(p.id, volumeEntre(eu, p));
+    }
   }
+  // quem sumiu da sala não fica de castigo guardado para sempre
+  for (const id of [...foraDesde.keys()]) {
+    if (!Jogo.pessoas.has(id)) foraDesde.delete(id);
+  }
+  avisarQualidade();
   desenharListaPessoas();
+}
+
+// Quando a roda cresce, cada um passa a mandar a própria imagem para mais
+// gente e a subida da internet aperta. A imagem cai de tamanho sozinha — e a
+// pessoa precisa saber por quê, senão parece defeito.
+let qualidadeAvisada = null;
+
+function avisarQualidade() {
+  const agora = Midia.pares.size ? Midia.degrauAgora() : null;
+  if (agora === qualidadeAvisada) return;
+  const antes = qualidadeAvisada;
+  qualidadeAvisada = agora;
+  if (!agora || !antes) return;                  // acabou de entrar ou de sair da roda
+  if (agora.encolher > antes.encolher) {
+    escreverChat({ sistema: true, texto:
+      `Conversa de ${Midia.pares.size + 1} pessoas: a imagem foi reduzida para o som `
+      + 'não falhar. Desligar a câmera de quem não está falando ajuda.' });
+  } else if (agora.encolher < antes.encolher && agora.encolher === 1) {
+    escreverChat({ sistema: true, texto: 'Roda menor: a imagem voltou ao tamanho cheio.' });
+  }
 }
 
 /* ==================== desenho ==================== */

@@ -14,12 +14,13 @@ const Midia = {
   audioCtx: null,
   niveis: new Map(),       // id -> 0..1 (quanto a pessoa está falando)
 
-  configurar({ meuId, enviarSinal, aoMudarTiles, aoPararTela, aoNegar }) {
+  configurar({ meuId, enviarSinal, aoMudarTiles, aoPararTela, aoNegar, aoPerderAparelho }) {
     this.meuId = meuId;
     this.enviarSinal = enviarSinal;
     this.aoMudarTiles = aoMudarTiles;
     this.aoPararTela = aoPararTela;
     this.aoNegar = aoNegar;
+    this.aoPerderAparelho = aoPerderAparelho;
   },
 
   /* ---------- mídia local ---------- */
@@ -28,6 +29,7 @@ const Midia = {
   async pedirMidia(quais) {
     const querAudio = !quais || quais.audio !== false;
     const querVideo = !quais || quais.video !== false;
+    this._limparMortas();
     const pedido = {};
     if (querAudio && !this.temFaixa('audio')) {
       pedido.audio = { echoCancellation: true, noiseSuppression: true };
@@ -41,12 +43,14 @@ const Midia = {
     if (!this.streamLocal) this.streamLocal = new MediaStream();
     for (const faixa of novo.getTracks()) {
       this.streamLocal.addTrack(faixa);
+      faixa.onended = () => this._faixaMorreu(faixa.kind);
       // Injeta nas chamadas já abertas: quem entrou só olhando e ligou depois
       // não precisa reconectar com ninguém.
       if (faixa.kind === 'video' && this.telaStream) continue;   // a tela tem a vez
       for (const par of this.pares.values()) this._trocarFaixa(par, faixa);
     }
     if (novo.getAudioTracks().length) this._monitorarNivel('eu', this.streamLocal);
+    this.ajustarBanda();
     this.aoMudarTiles && this.aoMudarTiles();
     return this.streamLocal;
   },
@@ -68,9 +72,10 @@ const Midia = {
    *  da câmera apaga). Só desabilitar a faixa mantém o aparelho aberto. */
   desligar(tipo) {
     if (!this.streamLocal) return;
-    const faixa = tipo === 'audio' ? this.streamLocal.getAudioTracks()[0]
-                                   : this.streamLocal.getVideoTracks()[0];
+    const faixa = this._faixaViva(tipo);
+    this._limparMortas();
     if (!faixa) return;
+    faixa.onended = null;
     faixa.stop();
     this.streamLocal.removeTrack(faixa);
     if (tipo === 'video' && this.telaStream) return;      // a tela continua no ar
@@ -82,15 +87,48 @@ const Midia = {
     this.aoMudarTiles && this.aoMudarTiles();
   },
 
+  /* Uma faixa que o navegador encerrou POR FORA — outro programa tomou o
+   * microfone, o fone de ouvido saiu, o aparelho sumiu, a aba ficou horas
+   * escondida — continua dentro do stream e continua com `enabled` true. O
+   * botão mostrava o microfone ligado, ninguém ouvia nada, e clicar para ligar
+   * não fazia efeito nenhum: "já tem faixa de áudio". Só faixa VIVA conta. */
+  _faixaViva(tipo) {
+    if (!this.streamLocal) return null;
+    const f = tipo === 'audio' ? this.streamLocal.getAudioTracks()
+                               : this.streamLocal.getVideoTracks();
+    return f.find((x) => x.readyState === 'live') || null;
+  },
+
+  _limparMortas() {
+    if (!this.streamLocal) return;
+    for (const f of this.streamLocal.getTracks()) {
+      if (f.readyState !== 'live') this.streamLocal.removeTrack(f);
+    }
+  },
+
+  /** O aparelho caiu sozinho: tira a faixa morta do envio e conta para a tela,
+   *  senão a pessoa fica falando para o vazio achando que está no ar. */
+  _faixaMorreu(tipo) {
+    if (this.telaStream && tipo === 'video'
+        && !this.telaStream.getVideoTracks().some((f) => f.readyState !== 'live')) {
+      return;                                   // a tela cuida do fim dela sozinha
+    }
+    this._limparMortas();
+    for (const par of this.pares.values()) {
+      const tr = par.pc.getTransceivers().find(
+        (t) => t.sender.track && t.sender.track.kind === tipo);
+      if (tr) tr.sender.replaceTrack(null).catch(() => {});
+    }
+    this.aoPerderAparelho && this.aoPerderAparelho(tipo);
+    this.aoMudarTiles && this.aoMudarTiles();
+  },
+
   temFaixa(tipo) {
-    if (!this.streamLocal) return false;
-    const f = tipo === 'audio' ? this.streamLocal.getAudioTracks() : this.streamLocal.getVideoTracks();
-    return f.length > 0;
+    return !!this._faixaViva(tipo);
   },
 
   ligado(tipo) {
-    if (!this.streamLocal) return false;
-    const f = tipo === 'audio' ? this.streamLocal.getAudioTracks()[0] : this.streamLocal.getVideoTracks()[0];
+    const f = this._faixaViva(tipo);
     return !!f && f.enabled;
   },
 
@@ -126,6 +164,7 @@ const Midia = {
       this.aoPararTela && this.aoPararTela();
     };
     for (const par of this.pares.values()) this._trocarVideo(par, faixa, stream);
+    this.ajustarBanda();
     this.aoMudarTiles && this.aoMudarTiles();
     return true;
   },
@@ -136,6 +175,7 @@ const Midia = {
     this.telaStream = null;
     const camera = this.streamLocal ? this.streamLocal.getVideoTracks()[0] || null : null;
     for (const par of this.pares.values()) this._trocarVideo(par, camera, this.streamLocal);
+    this.ajustarBanda();
     this.aoMudarTiles && this.aoMudarTiles();
     return false;
   },
@@ -152,6 +192,58 @@ const Midia = {
     // Quem só recebia precisa passar a enviar — mudar a direção já dispara a
     // renegociação pelo onnegotiationneeded.
     if (faixa && tr.direction === 'recvonly') tr.direction = 'sendrecv';
+  },
+
+  /* ---------- banda ----------
+   *
+   * Aqui não existe servidor de vídeo: cada pessoa manda a PRÓPRIA imagem para
+   * CADA uma das outras. Numa roda de quatro são três envios ao mesmo tempo, e
+   * a subida da internet de casa não dá conta — a imagem congela, e o som, que
+   * viaja pela mesma conexão, congela junto. Quanto mais gente na conversa,
+   * menor a imagem que cada um manda. É o que toda sala de reunião faz.
+   * O som nunca é apertado: ele entra na frente do vídeo na fila.            */
+
+  degraus: [
+    // até tantas chamadas abertas: kbps de vídeo, quanto encolher, quadros/s
+    { ate: 1,  kbps: 900, encolher: 1,   fps: 24 },
+    { ate: 2,  kbps: 600, encolher: 1.5, fps: 20 },
+    { ate: 3,  kbps: 400, encolher: 2,   fps: 18 },
+    { ate: 5,  kbps: 250, encolher: 2,   fps: 15 },
+    { ate: 99, kbps: 150, encolher: 3,   fps: 12 },
+  ],
+
+  degrauAgora() {
+    const quantos = this.pares.size;
+    return this.degraus.find((d) => quantos <= d.ate) || this.degraus[this.degraus.length - 1];
+  },
+
+  /** Reaperta o envio de todo mundo. Barato: só mexe em números já abertos,
+   *  sem nova negociação e sem a chamada piscar. */
+  ajustarBanda() {
+    const d = this.degrauAgora();
+    for (const par of this.pares.values()) {
+      for (const tr of par.pc.getTransceivers()) {
+        const envio = tr.sender;
+        if (!envio || !envio.track) continue;
+        let p;
+        try { p = envio.getParameters(); } catch (e) { continue; }
+        if (!p.encodings || !p.encodings.length) continue;   // ainda não negociou
+        if (envio.track.kind === 'video') {
+          const ehTela = !!(this.telaStream
+            && envio.track === this.telaStream.getVideoTracks()[0]);
+          // tela: letra legível vale mais que movimento; câmera: o contrário
+          p.degradationPreference = ehTela ? 'maintain-resolution' : 'maintain-framerate';
+          p.encodings[0].maxBitrate = (ehTela ? Math.max(d.kbps, 500) : d.kbps) * 1000;
+          p.encodings[0].scaleResolutionDownBy = ehTela ? 1 : d.encolher;
+          p.encodings[0].maxFramerate = ehTela ? 8 : d.fps;
+        } else {
+          p.encodings[0].priority = 'high';
+          p.encodings[0].networkPriority = 'high';
+        }
+        envio.setParameters(p).catch(() => { /* navegador que não deixa: segue */ });
+      }
+    }
+    return d;
   },
 
   /* ---------- conexões ---------- */
@@ -212,6 +304,8 @@ const Midia = {
         // deu certo: zera o histórico de tentativa e a espera
         par.tentativas = 0;
         this.espera.delete(id);
+        // só depois de negociada a conexão tem os números de envio para mexer
+        this.ajustarBanda();
         return;
       }
       if (!['failed', 'closed'].includes(pc.connectionState)) return;
@@ -251,6 +345,8 @@ const Midia = {
     if (par.analise) try { par.analise.desconectar(); } catch (e) {}
     this.pares.delete(id);
     this.niveis.delete(id);
+    // saiu gente da roda: sobra banda para quem ficou
+    this.ajustarBanda();
     this.aoMudarTiles && this.aoMudarTiles();
   },
 

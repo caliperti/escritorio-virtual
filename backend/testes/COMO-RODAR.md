@@ -22,6 +22,7 @@ ADMIN_SENHA=... .venv/bin/python testes/arsenal.py
 .venv/bin/python testes/fumaca.py
 .venv/bin/python testes/reconexao.py
 CONVITE=... .venv/bin/python testes/ligacao_teimosa.py   # teto do sinal e troca de ligação
+CONVITE=... .venv/bin/python testes/banda_da_roda.py     # banda por tamanho da roda
 ```
 
 O teste do arsenal entra como administrador, porque membro comum só edita
