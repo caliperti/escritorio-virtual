@@ -32,7 +32,18 @@ const Midia = {
   /* ---------- mídia local ---------- */
 
   /** Pede só o que falta. Ligar o microfone não deve acender a câmera junto. */
-  async pedirMidia(quais) {
+  pedirMidia(quais) {
+    /* 05/11: dois pedidos ao mesmo tempo (a entrada automática da sessão salva e um
+       clique em "Entrar" enquanto ela esperava o aparelho) passavam os dois pelo
+       "o que falta" antes de o primeiro aparelho chegar: o stream local ficava com
+       duas faixas de som e duas de imagem, e voz e câmera iam em dobro para todo
+       mundo da roda. Um pedido espera o outro terminar. */
+    const fila = (this._fila || Promise.resolve()).catch(() => {}).then(() => this._pedirMidia(quais));
+    this._fila = fila;
+    return fila;
+  },
+
+  async _pedirMidia(quais) {
     const querAudio = !quais || quais.audio !== false;
     const querVideo = !quais || quais.video !== false;
     this._limparMortas();
@@ -304,12 +315,28 @@ const Midia = {
       if (candidate) this.enviarSinal(id, { candidato: candidate });
     };
 
+    /* 05/11: "tem 4 pessoas, um não ouve o outro". Quem estava com o microfone (ou a
+       câmera) desligado quando a chamada nasceu só tinha o canal aberto para receber.
+       Ao ligar depois, o som dele chega SEM stream junto, e antes a faixa era jogada
+       fora: os bytes chegavam pela rede e o cartão ficava mudo até a pessoa recarregar.
+       Agora toda faixa que chega entra no stream do cartão. E quem já estava
+       compartilhando a tela manda a voz num stream e a tela em outro: trocar de stream
+       deixava a voz para trás, então o que já tocava vem junto. */
     pc.ontrack = ({ track, streams }) => {
-      const stream = streams[0] || par.stream;
+      const anterior = par.stream;
+      const stream = streams[0] || anterior;
+      if (!stream.getTracks().includes(track)) stream.addTrack(track);
+      if (stream !== anterior) {
+        for (const f of anterior.getTracks()) {
+          if (f.readyState === 'live' && !stream.getTracks().includes(f)) stream.addTrack(f);
+        }
+      }
       par.stream = stream;
-      if (par.video) par.video.srcObject = stream;
+      // Solta o cartão para o montarTiles prender de novo e dar play (com o aviso de
+      // som barrado): faixa nova num stream que já está tocando nem todo navegador pega.
+      if (par.video) par.video.srcObject = null;
       track.onunmute = () => this.aoMudarTiles && this.aoMudarTiles();
-      this._monitorarNivel(id, stream);
+      if (track.kind === 'audio') this._monitorarNivel(id, stream);
       this.aoMudarTiles && this.aoMudarTiles();
     };
 

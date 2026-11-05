@@ -362,27 +362,41 @@ async function autenticar() {
   }
 }
 
+/* 05/11: o botão "Entrar" continuava clicável enquanto a sessão salva entrava
+   sozinha depois do F5 ("Bem-vindo de volta… Entrando…"). Um clique nessa hora
+   rodava a entrada DUAS vezes na mesma página: câmera e microfone pedidos em
+   dobro e a conta entrando duas vezes no servidor, derrubando a própria sessão de
+   um segundo antes (as duas "sessão trocada" seguidas no registro). Uma entrada
+   por vez; e com a ligação já aberta ou abrindo, o clique não faz nada. */
+let entrando = false;
 async function entrar(comMidia) {
-  if (!await autenticar()) return;
-  if (comMidia) {
-    aviso.textContent = 'Pedindo acesso à câmera e ao microfone…';
-    try {
-      await Midia.pedirMidia();
-    } catch (e) {
-      aviso.textContent = 'Sem câmera/microfone (' + e.name + '). Entrando só olhando.';
+  const ligacao = Conexao.atual;
+  if (entrando || (ligacao && ligacao.readyState <= WebSocket.OPEN)) return;
+  entrando = true;
+  try {
+    if (!await autenticar()) return;
+    if (comMidia) {
+      aviso.textContent = 'Pedindo acesso à câmera e ao microfone…';
+      try {
+        await Midia.pedirMidia();
+      } catch (e) {
+        aviso.textContent = 'Sem câmera/microfone (' + e.name + '). Entrando só olhando.';
+      }
     }
+    aviso.textContent = 'Conectando…';
+    if (modo === 'visitante') {
+      const nome = campoNome.value.trim();
+      if (!nome) { aviso.textContent = 'Escreva seu nome.'; return; }
+      const visual = BONECOS_VISITANTE[bonecoVisitante];
+      conectar({ visitante: true, nome,
+                 convite: document.getElementById('campo-convite').value,
+                 aparencia: visual, cor: visual.corCamisa });
+      return;
+    }
+    conectar({ token: sessao.token });
+  } finally {
+    entrando = false;
   }
-  aviso.textContent = 'Conectando…';
-  if (modo === 'visitante') {
-    const nome = campoNome.value.trim();
-    if (!nome) { aviso.textContent = 'Escreva seu nome.'; return; }
-    const visual = BONECOS_VISITANTE[bonecoVisitante];
-    conectar({ visitante: true, nome,
-               convite: document.getElementById('campo-convite').value,
-               aparencia: visual, cor: visual.corCamisa });
-    return;
-  }
-  conectar({ token: sessao.token });
 }
 
 /* ==================== conexão ==================== */
