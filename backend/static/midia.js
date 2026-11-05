@@ -14,14 +14,20 @@ const Midia = {
   audioCtx: null,
   niveis: new Map(),       // id -> 0..1 (quanto a pessoa está falando)
 
-  configurar({ meuId, enviarSinal, aoMudarTiles, aoPararTela, aoNegar, aoPerderAparelho }) {
+  configurar({ meuId, enviarSinal, aoMudarTiles, aoPararTela, aoNegar, aoPerderAparelho, iceServers, aoMudarChamada }) {
     this.meuId = meuId;
     this.enviarSinal = enviarSinal;
     this.aoMudarTiles = aoMudarTiles;
     this.aoPararTela = aoPararTela;
     this.aoNegar = aoNegar;
     this.aoPerderAparelho = aoPerderAparelho;
+    // Vêm do servidor a cada entrada (03/11): o STUN e, quando ligado, o servidor
+    // de reserva com uma senha que vale 24 horas. Sem eles, só o STUN, como antes.
+    if (iceServers && iceServers.length) this.iceServers = iceServers;
+    this.aoMudarChamada = aoMudarChamada;
   },
+
+  iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }],
 
   /* ---------- mídia local ---------- */
 
@@ -249,9 +255,17 @@ const Midia = {
   /* ---------- conexões ---------- */
 
   _criarPar(id) {
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }],
-    });
+    // 03/11: com o servidor de reserva (TURN) na lista, a chamada que não fecha
+    // direto passa por ele. Antes era só STUN, e quem estava atrás de celular, VPN
+    // ou rede de empresa ficava sem som nenhum ("um para de ouvir o outro").
+    let pc;
+    try {
+      pc = new RTCPeerConnection({ iceServers: this.iceServers });
+    } catch (e) {
+      // Endereço da reserva torto: a chamada segue só com o STUN, em vez de ninguém ligar.
+      console.warn('servidores da chamada recusados', e);
+      pc = new RTCPeerConnection({ iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }] });
+    }
     // "Polido" cede em caso de colisão de ofertas (perfect negotiation).
     const par = { pc, stream: new MediaStream(), video: null, tile: null,
                   polido: this.meuId < id, fazendoOferta: false, pendentes: [], volume: 1,
@@ -301,14 +315,39 @@ const Midia = {
 
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'connected') {
+        clearTimeout(par.oscilando);
+        par.oscilando = null;
         // deu certo: zera o histórico de tentativa e a espera
         par.tentativas = 0;
         this.espera.delete(id);
         // só depois de negociada a conexão tem os números de envio para mexer
         this.ajustarBanda();
+        this._contarChamada(id, par, par.jaConectou ? 'voltou' : 'conectou');
+        par.jaConectou = true;
+        return;
+      }
+      /* A internet oscilou (03/11). O navegador marca "disconnected" e só chega a
+         "failed" dezenas de segundos depois; enquanto isso ninguém se ouvia, e a
+         pessoa saía e entrava antes de a chamada tentar voltar. Agora, 3 segundos
+         em "disconnected" bastam para refazer só o caminho (restartIce), sem
+         derrubar a chamada; no máximo uma vez a cada 10 segundos. */
+      if (pc.connectionState === 'disconnected') {
+        if (!par.oscilando) {
+          par.oscilando = setTimeout(() => {
+            par.oscilando = null;
+            if (pc.connectionState !== 'disconnected' || !pc.restartIce) return;
+            if (Date.now() - (par.ultimoReinicio || 0) < 10000) return;
+            par.ultimoReinicio = Date.now();
+            this._contarChamada(id, par, 'oscilou');
+            try { pc.restartIce(); } catch (e) { /* navegador antigo: espera o failed */ }
+          }, 3000);
+        }
         return;
       }
       if (!['failed', 'closed'].includes(pc.connectionState)) return;
+      clearTimeout(par.oscilando);
+      par.oscilando = null;
+      if (pc.connectionState === 'failed') this._contarChamada(id, par, 'falhou');
       // Antes bastava falhar para a conexão ser fechada — e o vigia das
       // chamadas, que roda a cada 250 ms, criava outra na hora. Numa rede em
       // que o P2P não fecha (é comum sem TURN), isso virava laço: a pessoa do
@@ -326,6 +365,27 @@ const Midia = {
     return par;
   },
 
+  /** Conta ao servidor como a chamada ficou (só para o registro): conectou direto
+   *  ou pela reserva, oscilou, voltou, falhou. Sem isso não dava para saber, pelo
+   *  registro, por que a voz de alguém tinha sumido. */
+  async _contarChamada(id, par, estado) {
+    if (!this.aoMudarChamada) return;
+    let via = '';
+    if (estado === 'conectou' || estado === 'voltou') {
+      try {
+        const stats = await par.pc.getStats();
+        let escolhido = null;
+        stats.forEach((s) => {
+          if (s.type === 'transport' && s.selectedCandidatePairId) escolhido = stats.get(s.selectedCandidatePairId);
+        });
+        if (!escolhido) stats.forEach((s) => { if (s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded') escolhido = s; });
+        const local = escolhido && stats.get(escolhido.localCandidateId);
+        if (local) via = local.candidateType === 'relay' ? 'reserva' : 'direto';
+      } catch (e) { /* sem os números: vai sem a via */ }
+    }
+    try { this.aoMudarChamada(id, estado, via); } catch (e) {}
+  },
+
   /** Até quando não vale a pena tentar de novo com essa pessoa. */
   espera: new Map(),
 
@@ -341,6 +401,7 @@ const Midia = {
   fechar(id) {
     const par = this.pares.get(id);
     if (!par) return;
+    clearTimeout(par.oscilando);
     try { par.pc.close(); } catch (e) { /* já fechada */ }
     if (par.analise) try { par.analise.desconectar(); } catch (e) {}
     this.pares.delete(id);

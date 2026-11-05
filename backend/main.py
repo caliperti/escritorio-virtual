@@ -1,3 +1,6 @@
+import base64
+import hashlib
+import hmac
 import json
 import logging
 import math
@@ -53,6 +56,44 @@ MAX_CARACTERES_MENSAGEM = 64 * 1024
 # O maior envio que o estúdio aceita: duas folhas de roupa no limite, mais a
 # moldura do multipart.
 MAX_CORPO_ESTUDIO = 2 * mod_estudio.MAX_BYTES + 512 * 1024
+
+# O servidor de reserva da voz (TURN, 03/11/2026). Voz e vídeo vão direto de um
+# navegador para o outro; quando a rede de alguém não deixa (celular, VPN, rede de
+# empresa), sem reserva não passava som nenhum, e a pessoa saía e entrava para
+# tentar de novo. O coturn mora no servidor da Hostinger, com o mesmo segredo de
+# TURN_SEGREDO. Cada pessoa recebe uma senha que vale 24 horas, só ao entrar na
+# sala (nunca no /config, que é aberto). Isso só protege enquanto o código da sala
+# (SENHA) for segredo: veja a nota de segurança logo abaixo.
+TURN_SEGREDO = os.environ.get("TURN_SEGREDO", "").strip()
+# Só endereço "turn:"/"turns:": um erro de digitação aqui (sem o prefixo) fazia o
+# navegador recusar a chamada inteira, e ninguém ligava com ninguém (revisão, 03/11).
+TURN_URLS = [u.strip() for u in os.environ.get("TURN_URLS", "").split(",")
+             if u.strip().startswith(("turn:", "turns:"))]
+# Segurança: a reserva só vale com o código da sala fora do GitHub (o repositório é
+# público). Com o código conhecido, qualquer um entrava como visitante, levava a senha
+# e usava o servidor da Hostinger para o tráfego dele.
+TURN_VALIDADE_S = 24 * 3600
+STUN = ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]
+
+
+def servidores_ice(quem: str) -> list:
+    """Os servidores das chamadas para esta pessoa: o STUN de sempre e, com a reserva
+    ligada, o TURN com uma senha temporária (o formato "validade:nome" que o coturn
+    confere com use-auth-secret)."""
+    lista = [{"urls": STUN}]
+    if TURN_SEGREDO and TURN_URLS:
+        usuario = f"{int(time.time()) + TURN_VALIDADE_S}:{quem}"
+        senha = base64.b64encode(hmac.new(TURN_SEGREDO.encode(), usuario.encode(), hashlib.sha1).digest()).decode()
+        lista.append({"urls": TURN_URLS, "username": usuario, "credential": senha})
+    return lista
+
+
+# Como cada chamada ficou, contado pela página (03/11): sem isso o registro só
+# mostrava "entrou" e "saiu", e não dava para saber se a voz caiu por rede, por
+# falta de reserva ou por som bloqueado no navegador.
+ESTADOS_DA_CHAMADA = {"conectou", "oscilou", "voltou", "falhou"}
+VIAS_DA_CHAMADA = {"direto", "reserva", ""}
+TETO_CHAMADA = 60
 
 # Na subida, primeiro tenta trazer o estado do repositório (o disco do plano
 # gratuito é apagado quando o serviço hiberna), depois carrega do arquivo. O
@@ -500,12 +541,13 @@ async def websocket_sala(ws: WebSocket):
                 "raio_conversa": RAIO_CONVERSA,
                 "raio_silencio": RAIO_SILENCIO,
                 "cores": CORES,
+                "ice": servidores_ice(eu.id),
             },
             "participantes": [p.publico() for p in sala.participantes.values() if p.id != eu.id],
         })
         await sala.publicar({"tipo": "entrou", "participante": eu.publico()}, exceto=eu.id)
 
-        janela, contador, contador_sinal, contador_mover = time.monotonic(), 0, 0, 0
+        janela, contador, contador_sinal, contador_mover, contador_chamada = time.monotonic(), 0, 0, 0, 0
         while True:
             # Uma mensagem com o campo do tipo errado (texto onde ia número,
             # objeto onde ia texto) derrubava o WebSocket sem dizer nada, e o
@@ -518,7 +560,7 @@ async def websocket_sala(ws: WebSocket):
                 # está na sala). Andando são ~15 por segundo; 40 é folgado.
                 agora_ms = time.monotonic()
                 if agora_ms - janela > 1:
-                    janela, contador, contador_sinal, contador_mover = agora_ms, 0, 0, 0
+                    janela, contador, contador_sinal, contador_mover, contador_chamada = agora_ms, 0, 0, 0, 0
                 tipo = msg.get("tipo")
                 if tipo == "sinal":
                     contador_sinal += 1
@@ -530,6 +572,13 @@ async def websocket_sala(ws: WebSocket):
                     contador_mover += 1
                     if contador_mover > TETO_MOVER:
                         continue                      # some calado: a próxima corrige
+                elif tipo == "chamada":
+                    # O aviso de como a chamada ficou (03/11) tem balde próprio e
+                    # some calado: uma oscilação com 14 colegas manda 14 de uma vez,
+                    # e isso não pode comer o limite do chat e dos cliques da pessoa.
+                    contador_chamada += 1
+                    if contador_chamada > TETO_CHAMADA:
+                        continue
                 else:
                     # O resto é comando de gente: falar, ligar o microfone,
                     # mexer no escritório, trancar a sala. Descartar um desses
@@ -846,6 +895,14 @@ async def websocket_sala(ws: WebSocket):
 
                 elif tipo == "ping":
                     await ws.send_json({"tipo": "pong"})
+
+                elif tipo == "chamada":
+                    # Só anota: o servidor não mexe em chamada nenhuma.
+                    estado, via = str(msg.get("estado") or ""), str(msg.get("via") or "")
+                    outro = sala.participantes.get(str(msg.get("com") or ""))
+                    if estado in ESTADOS_DA_CHAMADA and via in VIAS_DA_CHAMADA and outro:
+                        log.info("chamada: %s ↔ %s %s%s", eu.nome, outro.nome, estado,
+                                 f" ({'pela reserva' if via == 'reserva' else 'direto'})" if via else "")
             except MensagemGrande:
                 # já foi lida, mas não é desmontada nem repassada — e a conexão
                 # fecha, porque isso não vem do nosso cliente

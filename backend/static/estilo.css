@@ -593,6 +593,8 @@ body.editando #tela { cursor: crosshair; }
   box-shadow: 0 6px 18px rgba(0, 0, 0, .25);
 }
 .reconectando.oculto { display: none; }
+/* O som pausado pelo navegador (03/11): mesma faixa, abaixo da de reconexão, e clicável. */
+.reconectando.ouvir { top: 54px; border: 0; cursor: pointer; font: inherit; font-size: 13px; font-weight: 700; background: #d9502b; }
 .reconectando .girando {
   width: 12px; height: 12px; border-radius: 50%;
   border: 2px solid rgba(246, 244, 239, .35); border-top-color: #f6f4ef;

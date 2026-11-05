@@ -785,6 +785,9 @@ function iniciarSala(msg) {
   Midia.configurar({
     meuId: Jogo.eu.id,
     enviarSinal: (para, dados) => enviar({ tipo: 'sinal', para, dados }),
+    // O servidor de reserva da voz (03/11) e o registro de cada chamada no servidor.
+    iceServers: Jogo.config && Jogo.config.ice,
+    aoMudarChamada: (com, estado, via) => enviar({ tipo: 'chamada', com, estado, via }),
     aoMudarTiles: montarTiles,
     aoPararTela: () => { atualizarBotoesMidia(); avisarMidia(); },
     aoNegar: (tipo, e) => escreverChat({ sistema: true, texto:
@@ -2126,6 +2129,40 @@ function salvarBoneco() {
 
 /* ==================== vídeos ==================== */
 
+/* O navegador que barra som sem um clique (03/11). O play() recusado era engolido
+   calado: a pessoa ficava sem ouvir ninguém, sem aviso, e saía e entrava para ver
+   se voltava. Agora aparece um botão "Clique para ouvir": o clique é o gesto que o
+   navegador pede, e ele toca de novo todo mundo que estava mudo. */
+function somBloqueado(e) {
+  if (!e || e.name !== 'NotAllowedError') return;
+  let botao = document.getElementById('ouvir');
+  if (!botao) {
+    botao = document.createElement('button');
+    botao.id = 'ouvir';
+    botao.type = 'button';
+    botao.className = 'reconectando ouvir';
+    botao.textContent = 'O navegador pausou o som. Clique para ouvir as pessoas';
+    botao.onclick = liberarSom;
+    document.querySelector('.palco').appendChild(botao);
+  }
+  botao.classList.remove('oculto');
+}
+
+async function liberarSom() {
+  const botao = document.getElementById('ouvir');
+  if (Midia.audioCtx && Midia.audioCtx.state === 'suspended') Midia.audioCtx.resume().catch(() => {});
+  // Todos de uma vez, no mesmo clique (revisão, 03/11): em fila, o vídeo de quem não
+  // manda nada (sem microfone nem câmera) segurava o play() para sempre e os outros
+  // nunca tocavam. O cartão sem faixa nenhuma fica de fora, e a troca de fonte no
+  // meio do clique (AbortError) não conta como som barrado.
+  const videos = [...document.querySelectorAll('#videos .video-tile:not([data-id="eu"]) video')]
+    .filter((v) => v.srcObject && v.srcObject.getTracks().length);
+  const tentativas = await Promise.allSettled(videos.map((v) => Promise.race([
+    v.play(), new Promise((ok) => setTimeout(ok, 3000))])));
+  const barrado = tentativas.some((t) => t.status === 'rejected' && t.reason && t.reason.name === 'NotAllowedError');
+  if (botao && !barrado) botao.classList.add('oculto');
+}
+
 function montarTiles() {
   const caixa = document.getElementById('videos');
   const vivos = new Set();
@@ -2176,7 +2213,7 @@ function montarTiles() {
     const tile = criar(id, (p.tela ? '🖥️ tela de ' : '') + p.nome, p.cor, p.aparencia);
     const v = tile.querySelector('video');
     par.video = v;
-    if (v.srcObject !== par.stream) { v.srcObject = par.stream; v.play().catch(() => {}); }
+    if (v.srcObject !== par.stream) { v.srcObject = par.stream; v.play().catch(somBloqueado); }
     v.volume = par.volume;
     const temVideo = (!p.sem_camera || p.tela) && par.stream.getVideoTracks().length > 0;
     v.style.display = temVideo ? '' : 'none';
