@@ -54,7 +54,32 @@ def tirar_verde(img):
 
 def caixa(img):
     alfa = img.getchannel("A").point(lambda v: 255 if v > 40 else 0)
-    return alfa.getbbox()
+    bb = alfa.getbbox()
+    if not bb:
+        return bb
+    # Uma sombrinha solta embaixo do pé (a IA às vezes desenha) não é corpo:
+    # uma faixa baixa, separada do resto por linhas vazias, sai da caixa —
+    # senão o boneco "flutua" naquela pose.
+    L = alfa.size[0]
+    cheia = [alfa.crop((0, y, L, y + 1)).getbbox() is not None for y in range(bb[1], bb[3])]
+    fim = len(cheia)
+    while True:
+        y = fim - 1
+        while y >= 0 and cheia[y]:
+            y -= 1
+        faixa = fim - 1 - y
+        vazio = 0
+        while y >= 0 and not cheia[y]:
+            y -= 1
+            vazio += 1
+        if y >= 0 and vazio >= 3 and faixa <= 10:
+            fim = y + 1
+        else:
+            break
+    if fim == len(cheia):
+        return bb
+    sub = alfa.crop((0, bb[1], L, bb[1] + fim)).getbbox()
+    return (sub[0], bb[1] + sub[1], sub[2], bb[1] + sub[3])
 
 
 def main(id_, nome, dono=None):
