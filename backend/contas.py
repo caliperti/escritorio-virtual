@@ -31,7 +31,9 @@ import nuvem
 
 log = logging.getLogger("escritorio.contas")
 
-ARQUIVO = Path(__file__).parent / "contas.json"
+# DADOS_DIR deixa um servidor de teste gravar numa pasta separada, sem tocar
+# nas contas e no mapa de verdade. Sem ele, tudo fica ao lado do código, como antes.
+ARQUIVO = Path(os.environ.get("DADOS_DIR") or Path(__file__).parent) / "contas.json"
 # Quantas contas de MEMBRO a sala aceita. **0 quer dizer sem limite**, que é o
 # padrão: quem tem o código da sala se cadastra. Pondo um número em MAX_CONTAS
 # (variável de ambiente), quem chega depois de esgotar entra como visitante —

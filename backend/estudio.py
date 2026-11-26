@@ -16,6 +16,7 @@ somadas por cima na subida, então um erro aqui nunca derruba o escritório.
 """
 
 import json
+import os
 import logging
 import re
 import struct
@@ -28,7 +29,7 @@ import nuvem
 
 log = logging.getLogger("escritorio.estudio")
 
-ARQUIVO = Path(__file__).parent / "pecas.json"
+ARQUIVO = Path(os.environ.get("DADOS_DIR") or Path(__file__).parent) / "pecas.json"   # ver contas.py
 PASTA_IMAGENS = Path(__file__).parent / "static" / "assets" / "pecas"
 PASTA_ROUPAS = Path(__file__).parent / "static" / "assets" / "lpc"
 

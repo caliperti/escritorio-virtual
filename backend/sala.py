@@ -110,7 +110,15 @@ def se_ouvem(a: Participante, b: Participante) -> bool:
     priv_b = bool(zb and zb["privada"])
     if priv_a or priv_b:
         return priv_a and priv_b and za["id"] == zb["id"]
-    return (a.x - b.x) ** 2 + (a.y - b.y) ** 2 <= RAIO_CONVERSA ** 2
+    raio = raios()[0]
+    return (a.x - b.x) ** 2 + (a.y - b.y) ** 2 <= raio ** 2
+
+
+def raios():
+    """(conversa, silêncio). O cenário pode trazer os seus: na arte da Codara o
+    boneco tem ~115 px de altura, e 150 px de raio mal passava de um ombro."""
+    c = escritorio.cenario or {}
+    return (c.get("raio_conversa", RAIO_CONVERSA), c.get("raio_silencio", RAIO_SILENCIO))
 
 
 def chave_de_castigo(conta: str, nome: str) -> str:
@@ -208,7 +216,19 @@ class Sala:
                     self.participantes[p.id] = p
                 return p
         # Espalha um pouco quem chega junto, para ninguém nascer em cima do outro.
-        for _ in range(24):
+        # Com cenário, procura em volta da entrada um lugar livre E desocupado
+        # (andar sempre para a direita jogava a quarta pessoa dentro do pilar).
+        if escritorio.cenario:
+            x0, y0 = p.x, p.y
+            passos = [(dx * 84, -dy * 56) for dy in range(0, 8) for dx in (0, 1, -1, 2, -2, 3, -3)]
+            for dx, dy in passos:
+                x, y = x0 + dx, y0 + dy
+                if mapa.livre(x, y) and not any(
+                        o.id != p.id and abs(o.x - x) < 70 and abs(o.y - y) < 48
+                        for o in self.participantes.values()):
+                    p.x, p.y = x, y
+                    break
+        for _ in range(0 if escritorio.cenario else 24):
             if not any(o.id != p.id and abs(o.x - p.x) < 24 and abs(o.y - p.y) < 24
                        for o in self.participantes.values()):
                 break
@@ -319,6 +339,15 @@ class Sala:
                 return False
         return True
 
+    @staticmethod
+    def _sentar_ou_levantar(p: Participante, x: float, y: float) -> bool:
+        perto = lambda a, b: abs(a[0] - b[0]) <= 30 and abs(a[1] - b[1]) <= 30
+        destino = escritorio.assento_do_cenario(x, y)
+        if destino and perto(destino["saida"], (p.x, p.y)):
+            return True
+        origem = escritorio.assento_do_cenario(p.x, p.y)
+        return bool(origem and perto(origem["saida"], (x, y)))
+
     def mover(self, p: Participante, x: float, y: float, direcao: str) -> bool:
         """O cliente é a autoridade do movimento (é ele que roda a 60 fps); aqui
         só recusamos posição fora do mapa ou dentro de parede. Recusa devolve
@@ -347,6 +376,11 @@ class Sala:
         # acima disso o caminho em linha reta precisa estar livre; acima do teto
         # não passa de jeito nenhum.
         salto = ((x - p.x) ** 2 + (y - p.y) ** 2) ** 0.5
+        # Sentar e levantar no cenário são um passo só entre a frente da cadeira
+        # (`saida`) e o assento, que fica DENTRO da cadeira — a linha reta passa
+        # pela cadeira, e a da fila da frente da mesa tem ~90 px.
+        if salto > PASSO_LIVRE and self._sentar_ou_levantar(p, x, y):
+            salto = 0
         if salto > PASSO_LIVRE:
             if salto > PASSO_MAXIMO or not self._linha_livre(p, x, y):
                 return False

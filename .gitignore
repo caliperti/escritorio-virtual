@@ -7,3 +7,11 @@ endereco.txt
 endereco.log
 backend/contas.json
 backend/pecas.json
+
+# Redesign Codara (26/11): ficam fora do repositório (que é público) a imagem de
+# referência (tem foto das câmeras), as cópias de contas/mapa/.env e as capturas.
+referencia-codara/referencia.png
+referencia-codara/backup/
+referencia-codara/capturas/
+referencia-codara/arte/*
+!referencia-codara/arte/salao-8-com-3-portas.png

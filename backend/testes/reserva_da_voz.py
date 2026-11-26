@@ -177,9 +177,14 @@ async def principal():
             await asyncio.sleep(1.5)
             sumiu = await c.evaluate("() => document.getElementById('ouvir').classList.contains('oculto')")
             cartoes = await c.evaluate("""() => {
+                // 26/11: todo cartão nasce com os dois canais; "vazio" agora é o
+                // de quem não manda nada (faixas mudas). O som toca nos <audio>.
                 const vs = [...document.querySelectorAll('#videos .video-tile:not([data-id="eu"]) video')];
-                const comFaixa = vs.filter(v => v.srcObject && v.srcObject.getTracks().length);
-                return { comFaixa: comFaixa.length, vazios: vs.length - comFaixa.length, tocando: comFaixa.every(v => !v.paused) }; }""")
+                const manda = v => v.srcObject && v.srcObject.getTracks().some(f => !f.muted);
+                const comFaixa = vs.filter(manda);
+                const sons = Midia.elementosDeSom().filter(manda);
+                return { comFaixa: comFaixa.length, vazios: vs.length - comFaixa.length,
+                         tocando: sons.length > 0 && sons.every(a => !a.paused) }; }""")
             print("   cartões na roda:", cartoes)
             ok("na roda tem quem fala e quem não manda nada", cartoes["comFaixa"] >= 1 and cartoes["vazios"] >= 1)
             ok("o clique solta o som", cartoes["tocando"])

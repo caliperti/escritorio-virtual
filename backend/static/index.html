@@ -6,6 +6,7 @@
 <title>Gather da Shopee</title>
 <link rel="icon" href="/static/assets/favicon.png">
 <link rel="stylesheet" href="/static/estilo.css?v=VERSAO">
+<link rel="stylesheet" href="/static/codara.css?v=VERSAO">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏢</text></svg>">
 </head>
 <body>
@@ -67,49 +68,62 @@
   </div>
 </div>
 
-<!-- ---------- aplicação ---------- -->
-<div id="app" class="app oculto">
+<!-- ---------- aplicação ----------
+     Redesign Codara Labs (26/11): cabeçalho escuro com a marca, painel escuro
+     recolhível à direita (câmeras, pessoas, chat) e a barra de mídia no rodapé
+     do palco. Os ids são os de sempre: o app.js liga cada botão pelo id. -->
+<div id="app" class="app tema-codara oculto">
   <header class="barra">
     <div class="barra-esq">
-      <img class="logo-barra" src="/static/assets/logo.png" alt="Gather da Shopee">
-      <span id="zona-atual" class="chip">Recepção</span>
+      <img class="logo-barra" src="/static/assets/logo.png" alt="">
+      <span class="marca-texto">Gather da Shopee</span>
+      <span class="divisor" aria-hidden="true"></span>
+      <span class="titulo-app">Escritório virtual</span>
+      <span id="zona-atual" class="chip">Salão</span>
       <button id="btn-trancar" class="chip botao-chip" type="button" hidden></button>
       <span id="contagem" class="chip fraco">1 na sala</span>
     </div>
     <div class="barra-dir">
-      <!-- Ícones desenhados em SVG, não emoji: emoji muda de cara em cada
-           sistema e não dá para pintar de laranja quando está ligado. -->
-      <div class="grupo-icones">
-        <button id="btn-mic" class="icone" title="Microfone (M)" aria-label="Microfone">
-          <svg class="on" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
-          <svg class="off" viewBox="0 0 24 24"><path d="M9 9v3a3 3 0 0 0 4.9 2.3"/><path d="M15 11.4V6a3 3 0 0 0-5.7-1.3"/><path d="M5 11a7 7 0 0 0 10.5 6"/><path d="M19 11a7 7 0 0 1-.7 3"/><path d="M12 18v3"/><path d="M3 3l18 18"/></svg>
+      <button id="btn-tela-cheia" class="icone" title="Tela cheia" aria-label="Tela cheia">
+        <svg viewBox="0 0 24 24"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/></svg>
+      </button>
+      <button id="btn-pessoas" class="icone" title="Pessoas e chat (Tab)" aria-label="Mostrar ou esconder o painel">
+        <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.4"/><path d="M2.8 19.5a6.2 6.2 0 0 1 12.4 0"/><path d="M15.5 4.9a3.4 3.4 0 0 1 0 6.3"/><path d="M17.6 13.7a6.2 6.2 0 0 1 3.6 5.8"/></svg>
+      </button>
+      <div class="menu-barra">
+        <button id="btn-avisos" class="icone" title="Avisos" aria-label="Avisos" aria-expanded="false">
+          <svg viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9z"/><path d="M10 20a2.2 2.2 0 0 0 4 0"/></svg>
+          <span id="avisos-contagem" class="contador" hidden></span>
         </button>
-        <button id="btn-cam" class="icone" title="Câmera (V)" aria-label="Câmera">
-          <svg class="on" viewBox="0 0 24 24"><rect x="3" y="6" width="12" height="12" rx="2"/><path d="M15 10.5l6-3.5v10l-6-3.5z"/></svg>
-          <svg class="off" viewBox="0 0 24 24"><path d="M15 10.5l6-3.5v10l-3-1.7"/><path d="M13 6H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-2"/><path d="M3 3l18 18"/></svg>
-        </button>
-        <button id="btn-tela" class="icone" title="Compartilhar tela (T)" aria-label="Compartilhar tela">
-          <svg viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8"/><path d="M12 8v5"/><path d="M9.5 10.5L12 8l2.5 2.5"/></svg>
-        </button>
+        <div id="avisos" class="suspenso" hidden>
+          <h3>Avisos</h3>
+          <ul id="lista-avisos"><li class="vazio">Nada por aqui ainda.</li></ul>
+        </div>
       </div>
-      <div class="grupo-icones">
-        <button id="btn-reuniao" class="icone" title="Modo reunião — todos em grade (C)" aria-label="Modo reunião">
-          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="3" y="13" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/></svg>
+      <div class="menu-barra">
+        <button id="btn-ajustes" class="icone" title="Ajustes" aria-label="Ajustes" aria-expanded="false">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
         </button>
-        <button id="btn-boneco" class="icone" title="Editar meu boneco (B)" aria-label="Editar meu boneco">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
-        </button>
-        <button id="btn-editor" class="icone" title="Editar o escritório (E)" aria-label="Editar o escritório">
-          <svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V9l7-5 7 5v12"/><path d="M10 21v-6h4v6"/></svg>
-        </button>
-      </div>
-      <div class="grupo-icones">
-        <button id="btn-reacao" class="icone" title="Reagir (R)" aria-label="Reagir">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01"/><path d="M15 9.5h.01"/></svg>
-        </button>
-        <button id="btn-sair" class="icone perigo" title="Sair" aria-label="Sair">
-          <svg viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/></svg>
-        </button>
+        <div id="ajustes" class="suspenso" hidden>
+          <button id="btn-boneco" class="item-menu" type="button">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+            Editar meu boneco <kbd>B</kbd></button>
+          <button id="btn-editor" class="item-menu" type="button">
+            <svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V9l7-5 7 5v12"/><path d="M10 21v-6h4v6"/></svg>
+            Editar o escritório <kbd>E</kbd></button>
+          <button id="btn-reuniao" class="item-menu" type="button">
+            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="3" y="13" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/></svg>
+            Câmeras em grade <kbd>C</kbd></button>
+          <button id="btn-reacao" class="item-menu" type="button">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01"/><path d="M15 9.5h.01"/></svg>
+            Reagir <kbd>R</kbd></button>
+          <div class="zoom" title="Aproximar e afastar (roda do mouse, + e −, 0 enquadra o salão)">
+            <span class="rotulo-zoom">Zoom</span>
+            <button id="zoom-menos" type="button">−</button>
+            <span id="zoom-nivel">100%</span>
+            <button id="zoom-mais" type="button">+</button>
+          </div>
+        </div>
       </div>
     </div>
   </header>
@@ -119,13 +133,32 @@
     <div id="reconectando" class="reconectando oculto">
       <span class="girando"></span> Reconectando…
     </div>
-    <div id="dica" class="dica">Use <kbd>W A S D</kbd> ou as setas para andar · <kbd>Enter</kbd> para o chat</div>
-    <div id="videos" class="videos"></div>
+    <div id="dica" class="dica">Use <kbd>W A S D</kbd> ou as setas para andar · clique numa cadeira para sentar · <kbd>Enter</kbd> para o chat</div>
+    <button id="acao-reuniao" class="acao-reuniao" type="button" hidden>
+      <svg viewBox="0 0 24 24"><rect x="3" y="6" width="12" height="12" rx="2"/><path d="M15 10.5l6-3.5v10l-6-3.5z"/></svg>
+      <span>Entrar na reunião</span> <kbd>F</kbd>
+    </button>
     <button id="btn-fechar-reuniao" class="fechar-reuniao" hidden>✕ sair da grade (Esc)</button>
-    <div class="zoom" title="Aproximar e afastar (roda do mouse, + e −, 0 volta ao padrão)">
-      <button id="zoom-menos" type="button">−</button>
-      <span id="zoom-nivel">100%</span>
-      <button id="zoom-mais" type="button">+</button>
+
+    <!-- barra de mídia: os controles de verdade (os mesmos ids de antes) -->
+    <div class="barra-midia" role="toolbar" aria-label="Microfone, câmera, tela e sair">
+      <button id="btn-mic" class="icone" title="Microfone (M)" aria-label="Microfone">
+        <svg class="on" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+        <svg class="off" viewBox="0 0 24 24"><path d="M9 9v3a3 3 0 0 0 4.9 2.3"/><path d="M15 11.4V6a3 3 0 0 0-5.7-1.3"/><path d="M5 11a7 7 0 0 0 10.5 6"/><path d="M19 11a7 7 0 0 1-.7 3"/><path d="M12 18v3"/><path d="M3 3l18 18"/></svg>
+      </button>
+      <span class="sep" aria-hidden="true"></span>
+      <button id="btn-cam" class="icone" title="Câmera (V)" aria-label="Câmera">
+        <svg class="on" viewBox="0 0 24 24"><rect x="3" y="6" width="12" height="12" rx="2"/><path d="M15 10.5l6-3.5v10l-6-3.5z"/></svg>
+        <svg class="off" viewBox="0 0 24 24"><path d="M15 10.5l6-3.5v10l-3-1.7"/><path d="M13 6H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-2"/><path d="M3 3l18 18"/></svg>
+      </button>
+      <span class="sep" aria-hidden="true"></span>
+      <button id="btn-tela" class="icone" title="Compartilhar tela (T)" aria-label="Compartilhar tela">
+        <svg viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8"/><path d="M12 8v5"/><path d="M9.5 10.5L12 8l2.5 2.5"/></svg>
+      </button>
+      <span class="sep" aria-hidden="true"></span>
+      <button id="btn-sair" class="icone perigo" title="Sair" aria-label="Sair">
+        <svg viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/></svg>
+      </button>
     </div>
   </main>
 
@@ -133,20 +166,29 @@
     <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
   </button>
   <aside class="lateral" id="lateral">
-    <section class="pessoas">
-      <h2>Na sala <span id="pessoas-total">1</span></h2>
+    <div id="videos" class="videos"></div>
+    <section class="pessoas bloco" id="bloco-pessoas">
+      <button class="titulo-bloco" type="button" aria-expanded="true" data-bloco="bloco-pessoas">
+        <h2>Pessoas (<span id="pessoas-total">1</span>)</h2>
+        <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
       <ul id="lista-pessoas"></ul>
     </section>
-    <section class="chat">
-      <h2>Chat</h2>
+    <section class="chat bloco" id="bloco-chat">
+      <button class="titulo-bloco" type="button" aria-expanded="true" data-bloco="bloco-chat">
+        <h2>Chat</h2>
+        <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
       <div id="mensagens" class="mensagens"></div>
       <form id="form-chat">
         <select id="escopo-chat" title="Quem recebe">
           <option value="perto">Perto</option>
           <option value="todos">Todos</option>
         </select>
-        <input id="campo-chat" placeholder="Escreva…" maxlength="500" autocomplete="off">
-        <button type="submit">↵</button>
+        <input id="campo-chat" placeholder="Mensagem..." maxlength="500" autocomplete="off">
+        <button type="submit" aria-label="Enviar">
+          <svg viewBox="0 0 24 24"><path d="M21 3L10 14"/><path d="M21 3l-7 18-4-7-7-4z"/></svg>
+        </button>
       </form>
     </section>
   </aside>
@@ -175,6 +217,7 @@
 <script src="/static/objetos.js?v=VERSAO"></script>
 <script src="/static/editor.js?v=VERSAO"></script>
 <script src="/static/midia.js?v=VERSAO"></script>
+<script src="/static/cenario.js?v=VERSAO"></script>
 <script src="/static/app.js?v=VERSAO"></script>
 </body>
 </html>

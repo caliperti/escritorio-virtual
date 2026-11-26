@@ -7,14 +7,17 @@
 const Midia = {
   streamLocal: null,
   telaStream: null,        // compartilhamento de tela (substitui a câmera no envio)
-  pares: new Map(),        // id -> { pc, stream, video, tile, polido, fazendoOferta, analise }
+  pares: new Map(),        // id -> par (ver _criarPar)
+  filas: new Map(),        // id -> promessa: os sinais de cada pessoa, um de cada vez
+  pedidos: new Map(),      // id -> quando pedimos por último que ela nos ligue
   meuId: null,
   enviarSinal: null,
   aoMudarTiles: null,
   audioCtx: null,
   niveis: new Map(),       // id -> 0..1 (quanto a pessoa está falando)
 
-  configurar({ meuId, enviarSinal, aoMudarTiles, aoPararTela, aoNegar, aoPerderAparelho, iceServers, aoMudarChamada }) {
+  configurar({ meuId, enviarSinal, aoMudarTiles, aoPararTela, aoNegar, aoPerderAparelho, iceServers, aoMudarChamada,
+                aoSomBloqueado, aoPedirChamada }) {
     this.meuId = meuId;
     this.enviarSinal = enviarSinal;
     this.aoMudarTiles = aoMudarTiles;
@@ -25,6 +28,8 @@ const Midia = {
     // de reserva com uma senha que vale 24 horas. Sem eles, só o STUN, como antes.
     if (iceServers && iceServers.length) this.iceServers = iceServers;
     this.aoMudarChamada = aoMudarChamada;
+    this.aoSomBloqueado = aoSomBloqueado;
+    this.aoPedirChamada = aoPedirChamada;
   },
 
   iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }],
@@ -61,28 +66,43 @@ const Midia = {
     for (const faixa of novo.getTracks()) {
       this.streamLocal.addTrack(faixa);
       faixa.onended = () => this._faixaMorreu(faixa.kind);
-      // Injeta nas chamadas já abertas: quem entrou só olhando e ligou depois
-      // não precisa reconectar com ninguém.
-      if (faixa.kind === 'video' && this.telaStream) continue;   // a tela tem a vez
-      for (const par of this.pares.values()) this._trocarFaixa(par, faixa);
     }
+    // Entra nas chamadas já abertas pelos canais que já existem: quem entrou só
+    // olhando e ligou depois não precisa reconectar nem renegociar com ninguém.
+    this._atualizarEnvioDeTodos();
     if (novo.getAudioTracks().length) this._monitorarNivel('eu', this.streamLocal);
     this.ajustarBanda();
     this.aoMudarTiles && this.aoMudarTiles();
     return this.streamLocal;
   },
 
-  /** Põe uma faixa nova na conexão, reaproveitando o transceptor que existir. */
-  _trocarFaixa(par, faixa) {
-    const tr = par.pc.getTransceivers().find((t) =>
-      (t.sender.track && t.sender.track.kind === faixa.kind)
-      || (t.receiver.track && t.receiver.track.kind === faixa.kind));
-    if (!tr) {
-      par.pc.addTrack(faixa, this.streamLocal);
-      return;
+  /* 26/11: cada chamada nasce com DOIS canais fixos, um de som e um de imagem, os
+     dois de mão dupla. Ligar, desligar, trocar a câmera pela tela: tudo é só
+     trocar a faixa dentro do canal (replaceTrack), sem nova negociação. Antes,
+     quem chegava sem microfone abria um canal "só receber", e ligar depois
+     dependia de uma renegociação que às vezes nunca acontecia: ninguém ouvia. */
+
+  /** O que este navegador manda agora em cada canal: a tela tem a vez sobre a câmera. */
+  _faixaParaEnviar(tipo) {
+    if (tipo === 'video' && this.telaStream) {
+      const tela = this.telaStream.getVideoTracks()[0];
+      if (tela && tela.readyState === 'live') return tela;
     }
-    tr.sender.replaceTrack(faixa).catch((e) => console.warn('troca de faixa', e));
-    if (tr.direction === 'recvonly') tr.direction = 'sendrecv';
+    return this._faixaViva(tipo);
+  },
+
+  _atualizarEnvio(par) {
+    for (const tipo of ['audio', 'video']) {
+      const tr = par.canais[tipo];
+      if (!tr || tr.stopped || tr.currentDirection === 'stopped') continue;
+      const faixa = this._faixaParaEnviar(tipo);
+      if (tr.sender.track === faixa) continue;
+      tr.sender.replaceTrack(faixa).catch((e) => console.warn('troca de faixa', e));
+    }
+  },
+
+  _atualizarEnvioDeTodos() {
+    for (const par of this.pares.values()) this._atualizarEnvio(par);
   },
 
   /** Desliga de verdade: a faixa é encerrada e o equipamento liberado (a luz
@@ -95,12 +115,7 @@ const Midia = {
     faixa.onended = null;
     faixa.stop();
     this.streamLocal.removeTrack(faixa);
-    if (tipo === 'video' && this.telaStream) return;      // a tela continua no ar
-    for (const par of this.pares.values()) {
-      const tr = par.pc.getTransceivers().find((t) =>
-        t.sender.track && t.sender.track.kind === tipo);
-      if (tr) tr.sender.replaceTrack(null).catch(() => {});
-    }
+    this._atualizarEnvioDeTodos();            // a tela, se houver, continua no ar
     this.aoMudarTiles && this.aoMudarTiles();
   },
 
@@ -131,11 +146,7 @@ const Midia = {
       return;                                   // a tela cuida do fim dela sozinha
     }
     this._limparMortas();
-    for (const par of this.pares.values()) {
-      const tr = par.pc.getTransceivers().find(
-        (t) => t.sender.track && t.sender.track.kind === tipo);
-      if (tr) tr.sender.replaceTrack(null).catch(() => {});
-    }
+    this._atualizarEnvioDeTodos();
     this.aoPerderAparelho && this.aoPerderAparelho(tipo);
     this.aoMudarTiles && this.aoMudarTiles();
   },
@@ -180,7 +191,7 @@ const Midia = {
       this.pararTela();
       this.aoPararTela && this.aoPararTela();
     };
-    for (const par of this.pares.values()) this._trocarVideo(par, faixa, stream);
+    this._atualizarEnvioDeTodos();
     this.ajustarBanda();
     this.aoMudarTiles && this.aoMudarTiles();
     return true;
@@ -190,25 +201,10 @@ const Midia = {
     if (!this.telaStream) return false;
     this.telaStream.getTracks().forEach((f) => f.stop());
     this.telaStream = null;
-    const camera = this.streamLocal ? this.streamLocal.getVideoTracks()[0] || null : null;
-    for (const par of this.pares.values()) this._trocarVideo(par, camera, this.streamLocal);
+    this._atualizarEnvioDeTodos();             // a câmera (ou nada) volta para o canal
     this.ajustarBanda();
     this.aoMudarTiles && this.aoMudarTiles();
     return false;
-  },
-
-  _trocarVideo(par, faixa, origem) {
-    const tr = par.pc.getTransceivers().find((t) =>
-      (t.sender.track && t.sender.track.kind === 'video')
-      || (t.receiver.track && t.receiver.track.kind === 'video'));
-    if (!tr) {
-      if (faixa) par.pc.addTrack(faixa, origem);
-      return;
-    }
-    tr.sender.replaceTrack(faixa).catch((e) => console.warn('troca de vídeo', e));
-    // Quem só recebia precisa passar a enviar — mudar a direção já dispara a
-    // renegociação pelo onnegotiationneeded.
-    if (faixa && tr.direction === 'recvonly') tr.direction = 'sendrecv';
   },
 
   /* ---------- banda ----------
@@ -263,47 +259,70 @@ const Midia = {
     return d;
   },
 
-  /* ---------- conexões ---------- */
+  /* ---------- conexões ----------
+   *
+   * 26/11, o conserto de "ligou o microfone e ninguém ouve" e de "escuto um e não
+   * escuto o outro". Eram três defeitos juntos:
+   *   1. os DOIS lados começavam a chamada ao mesmo tempo, e as ofertas se cruzavam;
+   *   2. quem chegava sem microfone abria canais "só receber" que não se encaixavam
+   *      na oferta do outro, e mandava uma segunda oferta logo atrás;
+   *   3. os sinais eram tratados em paralelo, e o lado "não polido" jogava fora a
+   *      oferta que chegava colada na resposta. O par ficava preso esperando uma
+   *      resposta que nunca vinha, e nada mais renegociava com ele.
+   * Agora: só UM lado liga (o de id maior); o outro só atende (e, se quiser
+   * conversar antes, pede "me liga"). A chamada nasce com os dois canais fixos.
+   * Os sinais de cada pessoa são tratados um de cada vez, na ordem em que
+   * chegaram, e cada chamada tem um número (sessão): sinal de chamada velha não
+   * mexe na nova. Fechar avisa o outro lado ("tchau"), e chamada que não liga em
+   * 15 segundos é desfeita e refeita, em vez de ficar muda para sempre. */
 
-  _criarPar(id) {
+  _souIniciador(id) {
+    return String(this.meuId) > String(id);
+  },
+
+  _novaSessao() {
+    return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+  },
+
+  _novaConexao() {
     // 03/11: com o servidor de reserva (TURN) na lista, a chamada que não fecha
-    // direto passa por ele. Antes era só STUN, e quem estava atrás de celular, VPN
-    // ou rede de empresa ficava sem som nenhum ("um para de ouvir o outro").
-    let pc;
+    // direto passa por ele. Sem ele, quem está atrás de celular, VPN ou rede de
+    // empresa fica sem som nenhum ("um para de ouvir o outro").
     try {
-      pc = new RTCPeerConnection({ iceServers: this.iceServers });
+      return new RTCPeerConnection({ iceServers: this.iceServers });
     } catch (e) {
       // Endereço da reserva torto: a chamada segue só com o STUN, em vez de ninguém ligar.
       console.warn('servidores da chamada recusados', e);
-      pc = new RTCPeerConnection({ iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }] });
+      return new RTCPeerConnection({ iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }] });
     }
-    // "Polido" cede em caso de colisão de ofertas (perfect negotiation).
-    const par = { pc, stream: new MediaStream(), video: null, tile: null,
-                  polido: this.meuId < id, fazendoOferta: false, pendentes: [], volume: 1,
-                  tentativas: 0 };
+  },
+
+  _criarPar(id, sessao, iniciador) {
+    const pc = this._novaConexao();
+    const par = {
+      id, pc, sessao, iniciador,
+      polido: !iniciador,             // quem atende cede quando as ofertas se cruzam
+      stream: new MediaStream(),      // o que chega dessa pessoa (estável: não troca)
+      canais: {},                     // 'audio' / 'video' -> transceptor
+      video: null, audio: null, tile: null,
+      fazendoOferta: false, ignorarOferta: false, aplicandoResposta: false,
+      pendentes: [], volume: 1, tentativas: 0, criadoEm: Date.now(),
+    };
     this.pares.set(id, par);
 
-    const enviar = [];
-    if (this.streamLocal) {
-      for (const faixa of this.streamLocal.getTracks()) {
-        if (faixa.kind === 'video' && this.telaStream) continue;   // a tela substitui a câmera
-        enviar.push([faixa, this.streamLocal]);
+    if (iniciador) {
+      for (const tipo of ['audio', 'video']) {
+        par.canais[tipo] = pc.addTransceiver(this._faixaParaEnviar(tipo) || tipo,
+                                             { direction: 'sendrecv' });
       }
-    }
-    if (this.telaStream) enviar.push([this.telaStream.getVideoTracks()[0], this.telaStream]);
-    for (const [faixa, origem] of enviar) pc.addTrack(faixa, origem);
-    // O que não temos para mandar, abrimos só para receber.
-    for (const tipo of ['audio', 'video']) {
-      if (!enviar.some(([faixa]) => faixa.kind === tipo)) {
-        pc.addTransceiver(tipo, { direction: 'recvonly' });
-      }
+      this._prenderRecebidos(par);
     }
 
     pc.onnegotiationneeded = async () => {
       try {
         par.fazendoOferta = true;
         await pc.setLocalDescription();
-        this.enviarSinal(id, { descricao: pc.localDescription });
+        this._enviar(par, { descricao: pc.localDescription });
       } catch (e) {
         console.warn('negociação', e);
       } finally {
@@ -312,35 +331,17 @@ const Midia = {
     };
 
     pc.onicecandidate = ({ candidate }) => {
-      if (candidate) this.enviarSinal(id, { candidato: candidate });
+      if (candidate) this._enviar(par, { candidato: candidate });
     };
 
-    /* 05/11: "tem 4 pessoas, um não ouve o outro". Quem estava com o microfone (ou a
-       câmera) desligado quando a chamada nasceu só tinha o canal aberto para receber.
-       Ao ligar depois, o som dele chega SEM stream junto, e antes a faixa era jogada
-       fora: os bytes chegavam pela rede e o cartão ficava mudo até a pessoa recarregar.
-       Agora toda faixa que chega entra no stream do cartão. E quem já estava
-       compartilhando a tela manda a voz num stream e a tela em outro: trocar de stream
-       deixava a voz para trás, então o que já tocava vem junto. */
-    pc.ontrack = ({ track, streams }) => {
-      const anterior = par.stream;
-      const stream = streams[0] || anterior;
-      if (!stream.getTracks().includes(track)) stream.addTrack(track);
-      if (stream !== anterior) {
-        for (const f of anterior.getTracks()) {
-          if (f.readyState === 'live' && !stream.getTracks().includes(f)) stream.addTrack(f);
-        }
-      }
-      par.stream = stream;
-      // Solta o cartão para o montarTiles prender de novo e dar play (com o aviso de
-      // som barrado): faixa nova num stream que já está tocando nem todo navegador pega.
-      if (par.video) par.video.srcObject = null;
-      track.onunmute = () => this.aoMudarTiles && this.aoMudarTiles();
-      if (track.kind === 'audio') this._monitorarNivel(id, stream);
+    pc.ontrack = ({ track }) => {
+      if (!par.stream.getTracks().includes(track)) par.stream.addTrack(track);
+      this._prenderRecebidos(par);
       this.aoMudarTiles && this.aoMudarTiles();
     };
 
     pc.onconnectionstatechange = () => {
+      if (this.pares.get(id) !== par) return;          // chamada já substituída
       if (pc.connectionState === 'connected') {
         clearTimeout(par.oscilando);
         par.oscilando = null;
@@ -351,13 +352,13 @@ const Midia = {
         this.ajustarBanda();
         this._contarChamada(id, par, par.jaConectou ? 'voltou' : 'conectou');
         par.jaConectou = true;
+        this._tocarSom(par);
         return;
       }
       /* A internet oscilou (03/11). O navegador marca "disconnected" e só chega a
-         "failed" dezenas de segundos depois; enquanto isso ninguém se ouvia, e a
-         pessoa saía e entrava antes de a chamada tentar voltar. Agora, 3 segundos
-         em "disconnected" bastam para refazer só o caminho (restartIce), sem
-         derrubar a chamada; no máximo uma vez a cada 10 segundos. */
+         "failed" dezenas de segundos depois; enquanto isso ninguém se ouvia. Agora,
+         3 segundos em "disconnected" bastam para refazer só o caminho (restartIce),
+         sem derrubar a chamada; no máximo uma vez a cada 10 segundos. */
       if (pc.connectionState === 'disconnected') {
         if (!par.oscilando) {
           par.oscilando = setTimeout(() => {
@@ -375,11 +376,9 @@ const Midia = {
       clearTimeout(par.oscilando);
       par.oscilando = null;
       if (pc.connectionState === 'failed') this._contarChamada(id, par, 'falhou');
-      // Antes bastava falhar para a conexão ser fechada — e o vigia das
-      // chamadas, que roda a cada 250 ms, criava outra na hora. Numa rede em
-      // que o P2P não fecha (é comum sem TURN), isso virava laço: a pessoa do
-      // seu lado com a câmera entrando e saindo sem parar. Agora tenta refazer
-      // só o caminho do ICE, e só depois desiste, com espera crescente.
+      // Falhou: tenta refazer só o caminho do ICE, e só depois desiste, com
+      // espera crescente (sem isso, numa rede em que o P2P não fecha, a chamada
+      // caía e nascia de novo sem parar).
       if (pc.connectionState === 'failed' && par.tentativas < 2 && pc.restartIce) {
         par.tentativas += 1;
         try { pc.restartIce(); return; } catch (e) { /* navegador antigo: desiste */ }
@@ -392,9 +391,69 @@ const Midia = {
     return par;
   },
 
+  /** Guarda os canais da chamada e monta, com o que chega por eles, o stream da
+   *  pessoa (para o cartão de vídeo) e o elemento que toca o som dela. */
+  _prenderRecebidos(par) {
+    for (const tr of par.pc.getTransceivers()) {
+      const faixa = tr.receiver && tr.receiver.track;
+      if (!faixa) continue;
+      if (!par.canais[faixa.kind]) par.canais[faixa.kind] = tr;
+      if (par.canais[faixa.kind] !== tr) continue;
+      if (!par.stream.getTracks().includes(faixa)) {
+        par.stream.addTrack(faixa);
+        faixa.onunmute = () => {
+          this._tocarSom(par);
+          this.aoMudarTiles && this.aoMudarTiles();
+        };
+        faixa.onmute = () => this.aoMudarTiles && this.aoMudarTiles();
+      }
+    }
+    if (!par.analise && par.stream.getAudioTracks().length) this._monitorarNivel(par.id, par.stream);
+    this._tocarSom(par);
+  },
+
+  /* O som de cada pessoa toca num <audio> só dele, fora do painel de vídeos
+     (26/11). Antes saía pelo <video> do cartão: cartão escondido, recolhido ou
+     trocado de fonte = som sumindo junto. O vídeo do cartão agora é sempre mudo. */
+  _tocarSom(par) {
+    if (this.pares.get(par.id) !== par) return;
+    const faixa = par.canais.audio && par.canais.audio.receiver.track;
+    if (!faixa) return;
+    if (!par.audio) {
+      let caixa = document.getElementById('sons');
+      if (!caixa) {
+        caixa = document.createElement('div');
+        caixa.id = 'sons';
+        caixa.setAttribute('aria-hidden', 'true');
+        caixa.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;overflow:hidden;pointer-events:none';
+        document.body.appendChild(caixa);
+      }
+      const a = document.createElement('audio');
+      a.autoplay = true;
+      a.dataset.id = par.id;
+      caixa.appendChild(a);
+      par.audio = a;
+    }
+    const a = par.audio;
+    if (!a.srcObject || !a.srcObject.getTracks().includes(faixa)) a.srcObject = new MediaStream([faixa]);
+    a.volume = Math.max(0, Math.min(1, par.volume));
+    if (a.paused) {
+      a.play().catch((e) => this.aoSomBloqueado && this.aoSomBloqueado(e));
+    }
+  },
+
+  /** Os elementos de som de todo mundo (para o botão "clique para ouvir"). */
+  elementosDeSom() {
+    return [...this.pares.values()].map((p) => p.audio).filter(Boolean);
+  },
+
+  _enviar(par, dados) {
+    if (this.enviarSinal) this.enviarSinal(par.id, { sessao: par.sessao, ...dados });
+  },
+
   /** Conta ao servidor como a chamada ficou (só para o registro): conectou direto
-   *  ou pela reserva, oscilou, voltou, falhou. Sem isso não dava para saber, pelo
-   *  registro, por que a voz de alguém tinha sumido. */
+   *  ou pela reserva, oscilou, voltou, falhou, travou. Sem isso não dava para
+   *  saber, pelo registro, por que a voz de alguém tinha sumido. */
   async _contarChamada(id, par, estado) {
     if (!this.aoMudarChamada) return;
     let via = '';
@@ -416,21 +475,53 @@ const Midia = {
   /** Até quando não vale a pena tentar de novo com essa pessoa. */
   espera: new Map(),
 
+  /** Quer conversar com essa pessoa. Quem liga é sempre o lado de id maior; o
+   *  outro lado só pede "me liga" (no máximo a cada 2 s) e espera a oferta. O
+   *  pedido existe porque o vigia de quem liga pode estar numa aba escondida,
+   *  em que o navegador segura os relógios: o sinal pela rede chega na hora. */
   garantirPar(id) {
     const ja = this.pares.get(id);
     if (ja) return ja;
+    if (!this._souIniciador(id)) {
+      const ultimo = this.pedidos.get(id) || 0;
+      if (Date.now() - ultimo > 2000 && this.enviarSinal) {
+        this.pedidos.set(id, Date.now());
+        this.enviarSinal(id, { pedir: true });
+      }
+      return null;
+    }
     const ate = this.espera.get(id) || 0;
     if (Date.now() < ate) return null;      // ainda de castigo: não insiste
     this.espera.delete(id);
-    return this._criarPar(id);
+    return this._criarPar(id, this._novaSessao(), true);
   },
 
-  fechar(id) {
+  /** Chamada que nunca chegou a ligar em 15 s é desfeita (avisando o outro lado)
+   *  e refeita do zero. Antes ela ficava pendurada, contando como "na conversa",
+   *  e a pessoa sem som até alguém recarregar a página. */
+  vigiar() {
+    const agora = Date.now();
+    for (const [id, par] of [...this.pares]) {
+      if (par.jaConectou || par.pc.connectionState === 'connected') continue;
+      if (agora - par.criadoEm < 15000) continue;
+      this._contarChamada(id, par, 'travou');
+      this.espera.set(id, agora + 1000);
+      this.fechar(id);
+    }
+  },
+
+  fechar(id, { avisar = true } = {}) {
     const par = this.pares.get(id);
     if (!par) return;
+    if (avisar) this._enviar(par, { tchau: true });
     clearTimeout(par.oscilando);
     try { par.pc.close(); } catch (e) { /* já fechada */ }
     if (par.analise) try { par.analise.desconectar(); } catch (e) {}
+    if (par.audio) {
+      try { par.audio.pause(); } catch (e) {}
+      par.audio.srcObject = null;
+      par.audio.remove();
+    }
     this.pares.delete(id);
     this.niveis.delete(id);
     // saiu gente da roda: sobra banda para quem ficou
@@ -441,45 +532,107 @@ const Midia = {
   /** Derruba só as chamadas. A câmera e o microfone da pessoa continuam
    *  ligados — numa reconexão, pedir permissão de novo seria um susto. */
   fecharPares() {
-    for (const id of [...this.pares.keys()]) this.fechar(id);
+    for (const id of [...this.pares.keys()]) this.fechar(id, { avisar: false });
+    this.filas.clear();
+    this.pedidos.clear();
   },
 
   fecharTudo() {
-    for (const id of [...this.pares.keys()]) this.fechar(id);
+    this.fecharPares();
     if (this.streamLocal) this.streamLocal.getTracks().forEach((f) => f.stop());
     this.streamLocal = null;
     if (this.telaStream) this.telaStream.getTracks().forEach((f) => f.stop());
     this.telaStream = null;
   },
 
-  async receberSinal(de, dados) {
-    // Sinal que CHEGA nunca é barrado pela espera: quem está do outro lado está
-    // tentando agora, e recusar aqui deixaria os dois sem chamada.
-    const par = this.pares.get(de) || this._criarPar(de);
-    this.espera.delete(de);
-    const pc = par.pc;
-    try {
-      if (dados.descricao) {
-        const colisao = dados.descricao.type === 'offer'
-          && (par.fazendoOferta || pc.signalingState !== 'stable');
-        if (colisao && !par.polido) return;           // o outro lado resolve
-        await pc.setRemoteDescription(dados.descricao);
-        for (const c of par.pendentes.splice(0)) {
-          try { await pc.addIceCandidate(c); } catch (e) {}
-        }
-        if (dados.descricao.type === 'offer') {
-          await pc.setLocalDescription();
-          this.enviarSinal(de, { descricao: pc.localDescription });
-        }
-      } else if (dados.candidato) {
-        if (pc.remoteDescription && pc.remoteDescription.type) {
-          await pc.addIceCandidate(dados.candidato);
-        } else {
-          par.pendentes.push(dados.candidato);        // chegou antes da SDP
-        }
+  /** Os sinais de uma pessoa são tratados UM DE CADA VEZ, na ordem em que
+   *  chegaram. Em paralelo, uma resposta e uma oferta coladas se atropelavam. */
+  receberSinal(de, dados) {
+    if (!dados) return Promise.resolve();
+    const anterior = this.filas.get(de) || Promise.resolve();
+    const proximo = anterior
+      .then(() => this._tratarSinal(de, dados))
+      .catch((e) => console.warn('sinal', e));
+    this.filas.set(de, proximo);
+    return proximo;
+  },
+
+  async _tratarSinal(de, dados) {
+    let par = this.pares.get(de);
+
+    if (dados.pedir) {
+      // O outro lado quer conversar e não tem chamada com a gente. Se temos uma
+      // velha (de mais de 3 s), ela ficou órfã do lado de lá: refaz do zero.
+      if (!this._souIniciador(de) || !this.aoPedirChamada) return;
+      if (par && Date.now() - par.criadoEm > 3000) {
+        this.fechar(de, { avisar: false });
+        this.espera.delete(de);
+        par = null;
       }
-    } catch (e) {
-      console.warn('sinal', e);
+      if (!par) this.aoPedirChamada(de);
+      return;
+    }
+
+    if (dados.tchau) {
+      if (par && par.sessao === dados.sessao) {
+        this.fechar(de, { avisar: false });
+        this.espera.set(de, Date.now() + 1500);
+      }
+      return;
+    }
+
+    const oferta = !!(dados.descricao && dados.descricao.type === 'offer');
+    if (par && par.sessao !== dados.sessao) {
+      if (!oferta) return;                    // sobra de uma chamada que já acabou
+      // o outro lado começou uma chamada nova: a velha daqui não serve mais
+      this.fechar(de, { avisar: false });
+      par = null;
+    }
+    if (!par) {
+      if (!oferta) return;                    // resposta ou candidato sem chamada: sobra
+      this.espera.delete(de);
+      par = this._criarPar(de, dados.sessao, false);
+    }
+    const pc = par.pc;
+
+    if (dados.descricao) {
+      const d = dados.descricao;
+      // "Perfect negotiation": colisão é uma oferta chegando enquanto a gente
+      // também está oferecendo — menos quando o que está em andamento é só a
+      // aplicação de uma resposta, que logo volta ao estável.
+      const pronto = !par.fazendoOferta
+        && (pc.signalingState === 'stable' || par.aplicandoResposta);
+      const colisao = oferta && !pronto;
+      par.ignorarOferta = !par.polido && colisao;
+      if (par.ignorarOferta) return;          // o outro lado (polido) cede
+      par.aplicandoResposta = d.type === 'answer';
+      try {
+        await pc.setRemoteDescription(d);     // o polido desfaz a própria oferta sozinho
+      } finally {
+        par.aplicandoResposta = false;
+      }
+      if (oferta) {
+        this._prenderRecebidos(par);
+        for (const tr of Object.values(par.canais)) {
+          if (tr.direction !== 'sendrecv') tr.direction = 'sendrecv';
+        }
+        this._atualizarEnvio(par);
+        await pc.setLocalDescription();
+        this._enviar(par, { descricao: pc.localDescription });
+      }
+      for (const c of par.pendentes.splice(0)) {
+        try { await pc.addIceCandidate(c); } catch (e) { /* candidato velho */ }
+      }
+    } else if (dados.candidato) {
+      if (!pc.remoteDescription || !pc.remoteDescription.type) {
+        par.pendentes.push(dados.candidato);   // chegou antes da descrição
+        return;
+      }
+      try {
+        await pc.addIceCandidate(dados.candidato);
+      } catch (e) {
+        if (!par.ignorarOferta) console.warn('candidato', e);
+      }
     }
   },
 
@@ -489,13 +642,15 @@ const Midia = {
     const par = this.pares.get(id);
     if (!par) return;
     par.volume = volume;
-    if (par.video) par.video.volume = Math.max(0, Math.min(1, volume));
+    if (par.audio) par.audio.volume = Math.max(0, Math.min(1, volume));
   },
 
   /* ---------- medidor de fala ---------- */
 
   _monitorarNivel(id, stream) {
     if (!stream || stream.getAudioTracks().length === 0) return;
+    const doPar = id !== 'eu' && this.pares.get(id);
+    if (doPar && doPar.analise) return;       // um medidor por chamada basta
     try {
       this.audioCtx = this.audioCtx || new (window.AudioContext || window.webkitAudioContext)();
       const fonte = this.audioCtx.createMediaStreamSource(stream);
@@ -504,7 +659,7 @@ const Midia = {
       fonte.connect(analise);                 // só análise: não vai para as caixas
       const dados = new Uint8Array(analise.frequencyBinCount);
       const ler = () => {
-        if (id !== 'eu' && !this.pares.has(id)) return;
+        if (id !== 'eu' && this.pares.get(id) !== doPar) return;   // chamada acabou ou foi refeita
         analise.getByteFrequencyData(dados);
         let soma = 0;
         for (const v of dados) soma += v;

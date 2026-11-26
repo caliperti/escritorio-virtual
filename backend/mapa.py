@@ -15,6 +15,7 @@ o que ocupa espaço, não o que é bonito.
 """
 
 import json
+import os
 import logging
 import math
 import re
@@ -28,7 +29,7 @@ log = logging.getLogger("escritorio.mapa")
 
 TAMANHO_TILE = 32
 RAIO_AVATAR = 11
-ARQUIVO = Path(__file__).parent / "mapa.json"
+ARQUIVO = Path(os.environ.get("DADOS_DIR") or Path(__file__).parent) / "mapa.json"   # ver contas.py
 
 # Teto do escritório. A planta padrão já usa 94 de largura (três diretorias
 # lado a lado, com jardim dos dois lados): com o teto em 90, qualquer
@@ -296,6 +297,12 @@ class Escritorio:
         self.nascimento: Tuple[int, int] = (20, 5)
         self.versao_planta = 0
         self.proximo_id = 1
+        # Cenário (26/11, redesign Codara): uma arte pronta faz o papel de piso e
+        # parede. O que bloqueia passa a ser FORMA em pixel (retângulo e cápsula)
+        # medida em cima da própria arte, em vez de quadradinho de 32 — senão a
+        # mesa oval e as portas estreitas do desenho nunca bateriam com a colisão.
+        # Ver planta_padrao.py para o formato.
+        self.cenario: Optional[Dict] = None
         self._bloqueados: set = set()
         self._historico: List[str] = []
 
@@ -321,6 +328,28 @@ class Escritorio:
                 z.pop("dono_nome", None)    # se alguém já tinha pegado, solta
                 z.pop("trancada", None)
                 mudou = True
+        return self._aplicar_donos_fixos() or mudou
+
+    def _aplicar_donos_fixos(self) -> bool:
+        """Diretoria com dono fixo (26/11): "cada diretor é dono da sua". Quem é
+        dono de qual vem de DONOS_SALAS="diretoria1=email;diretoria2=email" — o
+        e-mail fica fora do código e do repositório. Sem a variável, as salas
+        seguem a regra de sempre (quem chega primeiro reivindica)."""
+        from contas import _chave
+        mudou = False
+        for par in os.environ.get("DONOS_SALAS", "").replace(",", ";").split(";"):
+            if "=" not in par:
+                continue
+            id_, email = (s.strip() for s in par.split("=", 1))
+            z = self.zona_por_id(id_)
+            chave = _chave(email)
+            if not z or not chave:
+                continue
+            if z.get("dono") != chave or not z.get("dono_fixo"):
+                z["dono"] = chave
+                z["dono_fixo"] = True
+                z["dono_nome"] = z.get("dono_nome_fixo") or z.get("dono_nome") or ""
+                mudou = True
         return mudou
 
 
@@ -342,6 +371,7 @@ class Escritorio:
                 log.exception("mapa.json ilegível — voltando para a planta padrão (cópia em %s)",
                               nuvem.guardar_ilegivel(ARQUIVO))
         montar_padrao(self)
+        self._aplicar_donos_fixos()
         self.salvar()
 
     def salvar(self) -> None:
@@ -363,6 +393,7 @@ class Escritorio:
             # pelos móveis, e a próxima sala criada ganhava o id de uma que já
             # existia — e a substituía, com o dono e tudo.
             "proximo_id": self.proximo_id,
+            **({"cenario": self.cenario} if self.cenario else {}),
         }
 
     def de_json(self, dados: Dict) -> None:
@@ -382,6 +413,7 @@ class Escritorio:
         self.zonas = dados.get("zonas", [])
         self.nascimento = tuple(dados.get("nascimento", (2, 2)))
         self.versao_planta = int(dados.get("versao_planta", 0))
+        self.cenario = dados.get("cenario") or None
         # O id nunca anda para trás: vale o maior entre o contador gravado, os
         # móveis e as salas `z<n>` (mapa gravado antes de o contador existir).
         maior_objeto = max([int(o["id"]) for o in self.objetos], default=0)
@@ -422,17 +454,63 @@ class Escritorio:
         for cx, cy in ((px - r, py - r), (px + r, py - r), (px - r, py + r), (px + r, py + r)):
             if not self.tile_livre(int(cx // TAMANHO_TILE), int(cy // TAMANHO_TILE)):
                 return False
-        return True
+        return not self.bate_no_cenario(px, py)
+
+    # ---------- cenário (arte pronta) ----------
+    # A MESMA conta existe em app.js (bateNoCenario/assentoDoCenario): se mudar
+    # aqui, mude lá.
+
+    def assento_do_cenario(self, px: float, py: float, folga: float = 2.0) -> Optional[Dict]:
+        c = self.cenario
+        if not c:
+            return None
+        for a in c.get("assentos", ()):
+            if abs(px - a["x"]) <= folga and abs(py - a["y"]) <= folga:
+                return a
+        return None
+
+    def bate_no_cenario(self, px: float, py: float) -> bool:
+        """A caixinha do avatar encosta em alguma forma que bloqueia? O ponto
+        exato de um assento é livre (a pessoa senta DENTRO da cadeira e do sofá,
+        que bloqueiam para quem só passa)."""
+        c = self.cenario
+        if not c:
+            return False
+        if self.assento_do_cenario(px, py):
+            return False
+        r = RAIO_AVATAR
+        if px - r < 0 or py - r < 0 or px + r > c["largura"] or py + r > c["altura"]:
+            return True
+        for f in c.get("bloqueios", ()):
+            if "r" in f:
+                x1, y1, x2, y2 = f["r"]
+                if px + r > x1 and px - r < x2 and py + r > y1 and py - r < y2:
+                    return True
+            elif "c" in f:
+                # cápsula deitada: dois centros na mesma linha e raios rx, ry
+                xa, xb, cy, rx, ry = f["c"]
+                dx = px - xa if px < xa else (px - xb if px > xb else 0.0)
+                dy = py - cy
+                if (dx / (rx + r)) ** 2 + (dy / (ry + r)) ** 2 < 1:
+                    return True
+        return False
 
     def zona_de(self, px: float, py: float) -> Optional[Dict]:
         """Salas podem se sobrepor (uma salinha fechada dentro do coworking, por
         exemplo). Vence a menor: é a que a pessoa entende como "onde eu estou"."""
         tx, ty = px / TAMANHO_TILE, py / TAMANHO_TILE
+        # Zona "só sentado" (a mesa de reunião): conta só para quem está sentado
+        # num assento dela. Quem passa pela mesa continua no salão.
         achadas = [z for z in self.zonas
-                   if z["x1"] <= tx < z["x2"] + 1 and z["y1"] <= ty < z["y2"] + 1]
+                   if z["x1"] <= tx < z["x2"] + 1 and z["y1"] <= ty < z["y2"] + 1
+                   and (not z.get("so_sentado") or self._sentado_na(z["id"], px, py))]
         if not achadas:
             return None
         return min(achadas, key=lambda z: (z["x2"] - z["x1"] + 1) * (z["y2"] - z["y1"] + 1))
+
+    def _sentado_na(self, zona_id: str, px: float, py: float) -> bool:
+        a = self.assento_do_cenario(px, py)
+        return bool(a and a.get("zona") == zona_id)
 
     # ---------- dono da sala ----------
     # Cada pessoa pode reivindicar UMA sala individual, como no Gather. A sala
@@ -540,6 +618,8 @@ class Escritorio:
             return False, "Sala não encontrada."
         if z.get("dono") != chave:
             return False, "Essa sala não é sua."
+        if z.get("dono_fixo"):
+            return False, "%s é sua de forma fixa: não dá para soltar." % z.get("nome", "Essa sala")
         z.pop("dono", None)
         z.pop("dono_nome", None)
         z.pop("trancada", None)              # solta a sala, solta a porta junto
@@ -563,6 +643,13 @@ class Escritorio:
     def ponto_de_nascimento(self) -> Tuple[float, float]:
         """Se puserem um móvel em cima da entrada, quem chega nasce dentro dele e
         fica preso — então procuramos o chão livre mais perto."""
+        c = self.cenario
+        if c and c.get("entrada"):
+            ex, ey = c["entrada"]
+            for raio in range(0, 200, 6):           # a entrada ocupada por um móvel
+                for dx, dy in ((0, 0), (raio, 0), (-raio, 0), (0, -raio), (raio, -raio), (-raio, -raio)):
+                    if self.livre(ex + dx, ey + dy):
+                        return float(ex + dx), float(ey + dy)
         x, y = self.nascimento
         if not self._cabe(x, y):
             for raio in range(1, 12):
@@ -666,6 +753,10 @@ class Escritorio:
 
     def _aplicar(self, tipo: Optional[str], acao: Dict) -> bool:
         """Mexe no mapa. Devolve False (ou levanta) para `editar` desfazer tudo."""
+        # Com cenário, parede, piso e tamanho são da arte: mexer neles pela grade
+        # desenharia um muro claro por cima do desenho, sem mudar o desenho.
+        if self.cenario and tipo in ("parede", "piso", "tamanho", "montar_sala"):
+            return False
         if tipo == "objeto":
             if len(self.objetos) >= MAX_OBJETOS or acao["tipo"] not in CATALOGO:
                 return False

@@ -21,7 +21,7 @@ from contas import contas
 import estudio as mod_estudio
 from estudio import estudio
 from mapa import escritorio
-from sala import RAIO_CONVERSA, RAIO_SILENCIO, CORES, cor_valida, limpar_aparencia, sala
+from sala import RAIO_CONVERSA, RAIO_SILENCIO, CORES, cor_valida, limpar_aparencia, raios, sala
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("escritorio")
@@ -172,8 +172,8 @@ def _texto(valor) -> str:
 # o navegador é outro arquivo, então ele baixa. O carimbo é o relógio do arquivo
 # mais novo entre os do site, calculado a cada pedido do index (é barato: são
 # poucos arquivos e o index é pedido uma vez por visita).
-ARQUIVOS_DO_SITE = ("estilo.css", "app.js", "editor.js", "objetos.js",
-                    "boneco.js", "midia.js", "index.html")
+ARQUIVOS_DO_SITE = ("estilo.css", "codara.css", "app.js", "editor.js", "objetos.js",
+                    "boneco.js", "midia.js", "cenario.js", "index.html")
 
 
 def _carimbo() -> str:
@@ -538,8 +538,8 @@ async def websocket_sala(ws: WebSocket):
             "admin": eu.admin,
             "mapa": escritorio.para_cliente(),
             "config": {
-                "raio_conversa": RAIO_CONVERSA,
-                "raio_silencio": RAIO_SILENCIO,
+                "raio_conversa": raios()[0],
+                "raio_silencio": raios()[1],
                 "cores": CORES,
                 "ice": servidores_ice(eu.id),
             },

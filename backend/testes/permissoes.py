@@ -23,9 +23,9 @@ def conferir(nome, ok):
 
 
 montar_padrao(escritorio)
-minha = escritorio.zona_por_id("sala1")
-outra = escritorio.zona_por_id("sala2")
-escritorio.reivindicar("sala1", "dono", "Dono")
+minha = escritorio.zona_por_id("diretoria1")
+outra = escritorio.zona_por_id("diretoria2")
+escritorio.reivindicar("diretoria1", "dono", "Dono")
 
 dentro = {"acao": "objeto", "tipo": "planta", "x": minha["x1"] + 1, "y": minha["y1"] + 1}
 fora = {"acao": "objeto", "tipo": "planta", "x": outra["x1"] + 1, "y": outra["y1"] + 1}
@@ -51,7 +51,7 @@ for acao, nome in [(dentro, "coloca na sala dos outros"), (fora, "coloca em qual
                    ({"acao": "parede", "valor": 1, "tiles": [[5, 5]]}, "levanta parede"),
                    ({"acao": "tamanho", "largura": 90, "altura": 50}, "muda o tamanho"),
                    ({"acao": "desfazer"}, "desfaz"),
-                   ({"acao": "zona_remover", "id": "sala2"}, "remove sala")]:
+                   ({"acao": "zona_remover", "id": "diretoria2"}, "remove sala")]:
     conferir("admin " + nome, escritorio.pode_editar(acao, "chefe", True)[0])
 
 print("\n-- móvel que atravessa a fronteira --")
@@ -78,8 +78,8 @@ conferir("EM_PE igual no servidor e no cliente", lista_js("EM_PE") == EM_PE)
 conferir("FILEIRA igual no servidor e no cliente", lista_js("FILEIRA") == FILEIRA)
 
 print("\n-- soltar sala --")
-conferir("estranho não solta a sala", not escritorio.liberar("sala1", "zezinho")[0])
-conferir("o dono solta", escritorio.liberar("sala1", "dono")[0])
+conferir("estranho não solta a sala", not escritorio.liberar("diretoria1", "zezinho")[0])
+conferir("o dono solta", escritorio.liberar("diretoria1", "dono")[0])
 
 print("\n%d provas, %d falharam" % (provas, len(falhas)))
 sys.exit(1 if falhas else 0)

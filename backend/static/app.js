@@ -647,6 +647,7 @@ function receber(msg) {
     }
 
     case 'corrigir':                 // o servidor recusou a posição: volta para o lugar dele
+      Jogo.correcoes = (Jogo.correcoes || 0) + 1;     // os testes contam (cenário x servidor)
       Jogo.eu.x = msg.x; Jogo.eu.y = msg.y;
       Jogo.eu.xr = msg.x; Jogo.eu.yr = msg.y;
       Jogo.caminho = null;           // parar de empurrar a porta trancada
@@ -735,6 +736,12 @@ function receberMapa(mapa) {
   Jogo.raioAvatar = mapa.raio_avatar;
   Jogo.larguraPx = mapa.largura * mapa.tile;
   Jogo.alturaPx = mapa.altura * mapa.tile;
+  // Cenário (26/11): a arte pronta manda no tamanho do mundo e na colisão
+  Cenario.configurar(mapa);
+  if (Cenario.ativo()) {
+    Jogo.larguraPx = mapa.cenario.largura;
+    Jogo.alturaPx = mapa.cenario.altura;
+  }
 
   // Colisão: paredes mais a área dos móveis que bloqueiam. O servidor faz a
   // mesma conta; aqui é para o movimento responder na hora, sem esperar ida e
@@ -803,6 +810,14 @@ function iniciarSala(msg) {
     iceServers: Jogo.config && Jogo.config.ice,
     aoMudarChamada: (com, estado, via) => enviar({ tipo: 'chamada', com, estado, via }),
     aoMudarTiles: montarTiles,
+    // o som de cada pessoa toca num <audio> próprio; se o navegador barrar, o
+    // botão "clique para ouvir" aparece
+    aoSomBloqueado: somBloqueado,
+    // o outro lado quer conversar e quem liga somos nós (26/11)
+    aoPedirChamada: (id) => {
+      const p = Jogo.pessoas.get(id);
+      if (p && Jogo.eu && podemConversar(Jogo.eu, p, true) && Midia.garantirPar(id)) montarTiles();
+    },
     aoPararTela: () => { atualizarBotoesMidia(); avisarMidia(); },
     aoNegar: (tipo, e) => escreverChat({ sistema: true, texto:
       (tipo === 'audio' ? 'Microfone' : 'Câmera') + ' bloqueado pelo navegador ('
@@ -824,7 +839,7 @@ function iniciarSala(msg) {
   document.getElementById('app').classList.remove('oculto');
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   ajustarTela();
-  definirZoom(ESCALA);
+  zoomPadrao();
   desenharListaPessoas();
   atualizarBotoesMidia();
   montarTiles();
@@ -848,7 +863,8 @@ function livre(px, py) {
   const r = Jogo.raioAvatar;
   const t = Jogo.tile;
   return [[-r, -r], [r, -r], [-r, r], [r, r]]
-    .every(([dx, dy]) => tileLivre(Math.floor((px + dx) / t), Math.floor((py + dy) / t)));
+    .every(([dx, dy]) => tileLivre(Math.floor((px + dx) / t), Math.floor((py + dy) / t)))
+    && !(Cenario.ativo() && Cenario.bate(px, py, r));
 }
 
 function zonaDe(px, py) {
@@ -858,6 +874,8 @@ function zonaDe(px, py) {
   let melhor = null, menor = Infinity;
   for (const z of Jogo.zonas) {
     if (tx < z.x1 || tx >= z.x2 + 1 || ty < z.y1 || ty >= z.y2 + 1) continue;
+    // a mesa de reunião é zona só de quem SENTA nela (mapa.py: zona_de)
+    if (z.so_sentado && !Cenario.sentadoNa(z.id, px, py)) continue;
     const area = (z.x2 - z.x1 + 1) * (z.y2 - z.y1 + 1);
     if (area < menor) { menor = area; melhor = z; }
   }
@@ -872,10 +890,11 @@ function zonaDe(px, py) {
  *  ficavam cortadas na borda, sem nenhum jeito de ver o andar todo. */
 function zoomMinimo() {
   if (!Jogo.mapa) return ZOOM_MIN;
+  // um salão só: afastar além dele inteiro não mostra nada novo (26/11)
+  if (Cenario.ativo()) return zoomEnquadrar();
   const r = tela.getBoundingClientRect();
   if (!r.width || !r.height) return ZOOM_MIN;
-  const cabe = Math.min(r.width / (Jogo.mapa.largura * Jogo.tile),
-                        r.height / (Jogo.mapa.altura * Jogo.tile));
+  const cabe = Math.min(r.width / Jogo.larguraPx, r.height / Jogo.alturaPx);
   return Math.max(ZOOM_CHAO, Math.min(ZOOM_MIN, cabe));
 }
 
@@ -887,7 +906,25 @@ function definirZoom(valor) {
   if (marca) marca.textContent = Math.round(ESCALA / 1.5 * 100) + '%';
 }
 
-function ajustarZoom(fator) { definirZoom(ESCALA * fator); }
+function ajustarZoom(fator) {
+  localStorage.setItem('escritorio:zoom-manual', '1');
+  definirZoom(ESCALA * fator);
+}
+
+/** O zoom em que o salão PREENCHE a área toda (tela cheia, sem faixa escura em
+ *  volta). Numa tela de outro formato sobra uma beirada fora, e a câmera segue
+ *  a pessoa até lá; entrada, mesa e as três portas continuam visíveis juntas. */
+function zoomEnquadrar() {
+  const r = tela.getBoundingClientRect();
+  if (!r.width || !r.height) return ESCALA;
+  return Math.max(r.width / Jogo.larguraPx, r.height / Jogo.alturaPx);
+}
+
+/** Com cenário, o padrão é enquadrar o salão inteiro (até a pessoa mexer no zoom). */
+function zoomPadrao() {
+  if (Cenario.ativo() && !localStorage.getItem('escritorio:zoom-manual')) definirZoom(zoomEnquadrar());
+  else definirZoom(ESCALA);
+}
 
 /* ==================== entrada do teclado ==================== */
 
@@ -965,11 +1002,15 @@ document.addEventListener('keydown', (e) => {
   // reação saía em rajada. Só andar e zoom podem repetir.
   if (e.repeat) return;
   if (e.key.toLowerCase() === 'm') alternarMic();
+  if (e.key.toLowerCase() === 'f') acionarReuniao();      // entrar/sair da mesa de reunião
   if (e.key.toLowerCase() === 'v') alternarCam();
   if (e.key.toLowerCase() === 't') alternarTela();
   if (e.key.toLowerCase() === 'b') abrirEditor();
   if (e.key.toLowerCase() === 'e' && !Jogo.visitante) Editor.alternar();
-  if (e.key === '0') definirZoom(1.5);
+  if (e.key === '0') {
+    if (Cenario.ativo()) { localStorage.removeItem('escritorio:zoom-manual'); definirZoom(zoomEnquadrar()); }
+    else definirZoom(1.5);
+  }
   if ((e.key === 'Delete' || e.key === 'Backspace') && Editor.ativo) Editor.removerSelecionado();
   // G gira o móvel: o que está na mão, o selecionado, ou o próximo a ser posto
   if (e.key.toLowerCase() === 'g' && (Editor.ativo || Editor.movendo)) Editor.girar();
@@ -1110,14 +1151,124 @@ tela.addEventListener('pointerup', (e) => {
   }
   Editor.fecharMenu();
   if (Editor.ativo) return;
-  Jogo.caminho = tracarCaminho(Jogo.eu.x, Jogo.eu.y, c.ponto.x, c.ponto.y)
+  // Com cenário, clicar numa cadeira (ou no sofá) é sentar nela: anda até a
+  // frente dela e senta ao chegar. Inclusive na mesa de reunião.
+  if (Cenario.ativo()) {
+    const cadeira = Cenario.assentoPerto(c.ponto.x, c.ponto.y, 46);
+    if (cadeira) { irSentar(cadeira); return; }
+    Jogo.querSentar = null;
+  }
+  const o = origemDoCaminho();
+  Jogo.caminho = tracarCaminho(o.x, o.y, c.ponto.x, c.ponto.y)
               || caminhoPertoDe(c.ponto);
 });
+
+/* ---------- sentar e levantar no cenário ----------
+ * O assento é um ponto DENTRO da cadeira (que bloqueia para quem passa). Senta
+ * quem parou na frente dela pedindo para sentar (clique na cadeira, botão
+ * "Entrar na reunião"), ou quem parou colado numa cadeira de trabalho ou no
+ * sofá. Levantar põe a pessoa na `saida` do assento antes do primeiro passo. */
+/** Onde a pessoa está sentada AGORA (ela sentou de verdade). Passar por cima
+ *  do ponto da cadeira andando não conta: a cadeira de trabalho fica no
+ *  caminho de quem anda dentro da diretoria, e contar isso como "sentado"
+ *  levantava a pessoa de volta para a frente da cadeira, sem fim. */
+function sentadoAgora() {
+  const s = Jogo.sentadoEm;
+  if (!s) return null;
+  if (Math.abs(Jogo.eu.x - s.x) > 2 || Math.abs(Jogo.eu.y - s.y) > 2) { Jogo.sentadoEm = null; return null; }
+  return s;
+}
+
+function origemDoCaminho() {
+  const s = Cenario.ativo() && sentadoAgora();
+  return s ? { x: s.saida[0], y: s.saida[1] } : { x: Jogo.eu.x, y: Jogo.eu.y };
+}
+
+function irSentar(cadeira) {
+  const eu = Jogo.eu;
+  Jogo.querSentar = cadeira;
+  const o = origemDoCaminho();
+  if (Math.hypot(o.x - cadeira.saida[0], o.y - cadeira.saida[1]) < 6) {
+    levantar();
+    sentarAgora(cadeira);
+    return;
+  }
+  Jogo.caminho = tracarCaminho(o.x, o.y, cadeira.saida[0], cadeira.saida[1])
+              || caminhoPertoDe({ x: cadeira.saida[0], y: cadeira.saida[1] });
+  if (!Jogo.caminho) Jogo.querSentar = null;
+  else if (sentadoAgora()) levantar();
+}
+
+function sentarAgora(a) {
+  const eu = Jogo.eu;
+  if (Cenario.ocupado(a, eu)) {
+    escreverChat({ sistema: true, texto: 'Essa cadeira já está ocupada.' });
+    return;
+  }
+  eu.x = a.x; eu.y = a.y; eu.xr = a.x; eu.yr = a.y;
+  eu.direcao = a.dir;
+  Jogo.querSentar = null;
+  Jogo.sentadoEm = a;
+  enviar({ tipo: 'mover', x: eu.x, y: eu.y, direcao: eu.direcao });
+}
+
+function levantar() {
+  const eu = Jogo.eu;
+  const s = Cenario.ativo() && sentadoAgora();
+  if (!s) return false;
+  Jogo.sentadoEm = null;
+  eu.x = s.saida[0]; eu.y = s.saida[1]; eu.xr = eu.x; eu.yr = eu.y;
+  enviar({ tipo: 'mover', x: eu.x, y: eu.y, direcao: eu.direcao });
+  return true;
+}
+
+/** O botão "Entrar na reunião" aparece em cima da cadeira livre da mesa mais
+ *  perto (até ~1,3 m), e vira "Sair da reunião" para quem está sentado nela.
+ *  Quem só passa pela mesa vê o botão, mas continua andando normalmente. */
+function atualizarAcaoReuniao() {
+  const botao = document.getElementById('acao-reuniao');
+  if (!botao) return;
+  const eu = Jogo.eu;
+  let alvo = null, sentado = false;
+  if (Cenario.ativo() && !Editor.ativo) {
+    const s = sentadoAgora();
+    if (s && s.zona) { alvo = s; sentado = true; }
+    else if (!s) {
+      // perto da FRENTE da cadeira (de onde se senta), não do meio da mesa
+      let melhor = null, dist = 48;     // colado na frente da cadeira (a entrada fica a ~56 px da do meio)
+      for (const a of Jogo.mapa.cenario.assentos) {
+        if (!a.zona || Cenario.ocupado(a)) continue;
+        const d = Math.hypot(a.saida[0] - eu.x, a.saida[1] - eu.y);
+        if (d < dist) { dist = d; melhor = a; }
+      }
+      alvo = melhor;
+    }
+  }
+  if (!alvo) { botao.hidden = true; Jogo.acaoReuniao = null; return; }
+  Jogo.acaoReuniao = { alvo, sentado };
+  botao.hidden = false;
+  botao.classList.toggle('sair', sentado);
+  botao.querySelector('span').textContent = sentado ? 'Sair da reunião' : 'Entrar na reunião';
+  // fica fixo acima da barra de mídia: em cima da cadeira ele cobria o nome
+  // de quem estava ali (o próprio ou o vizinho de mesa)
+}
+
+function acionarReuniao() {
+  const a = Jogo.acaoReuniao;
+  if (!a) return;
+  if (a.sentado) { levantar(); Jogo.caminho = null; return; }
+  irSentar(a.alvo);
+}
 
 /** Quando o ponto clicado é ocupado (uma mesa, por exemplo), anda até o tile
  *  livre mais perto dele. Sem isso o clique em cima de um móvel não fazia nada
  *  e o jogo parecia travado. */
 function caminhoPertoDe(ponto) {
+  if (Cenario.ativo()) {
+    const o = origemDoCaminho();
+    const perto = Cenario.pertoLivre(ponto, livre);
+    return perto ? tracarCaminho(o.x, o.y, perto.x, perto.y) : null;
+  }
   const t = Jogo.tile;
   const tx = Math.floor(ponto.x / t), ty = Math.floor(ponto.y / t);
   for (let raio = 1; raio <= 4; raio++) {
@@ -1169,6 +1320,7 @@ function pontoNoMapa(e) {
  *  chegar — é o que faz o clique parecer o do Gather em vez de empurrar o
  *  boneco contra a mesa. */
 function tracarCaminho(x0, y0, x1, y1) {
+  if (Cenario.ativo()) return Cenario.caminho(x0, y0, x1, y1, livre);
   const T = Jogo.tile;
   const ini = { x: Math.floor(x0 / T), y: Math.floor(y0 / T) };
   const fim = { x: Math.floor(x1 / T), y: Math.floor(y1 / T) };
@@ -1241,15 +1393,25 @@ function atualizar() {
   if (Jogo.teclas.has('cima')) dy -= 1;
   if (Jogo.teclas.has('baixo')) dy += 1;
 
-  if (dx || dy) Jogo.caminho = null;             // o teclado cancela o trajeto
+  if (dx || dy) { Jogo.caminho = null; Jogo.querSentar = null; }   // o teclado cancela o trajeto
+  // sentado no cenário: o primeiro passo levanta (a pessoa aparece na frente da cadeira)
+  if (Cenario.ativo() && (dx || dy || (Jogo.caminho && Jogo.caminho.length) || tela.dataset.alvo)) levantar();
 
   if (!dx && !dy && Jogo.caminho && Jogo.caminho.length) {
-    const passo = Jogo.caminho[0];
-    const vx = passo.x - eu.x, vy = passo.y - eu.y;
-    const d = Math.hypot(vx, vy);
-    if (d < 4) Jogo.caminho.shift();
-    else { dx = vx / d; dy = vy / d; }
-    if (!Jogo.caminho.length) Jogo.caminho = null;
+    // Chegou num ponto do trajeto: já mira o próximo no MESMO quadro. Antes esse
+    // quadro ficava parado, e parar conta como "parou" (manda a posição, tenta
+    // sentar): o pedido de sentar se perdia na primeira curva do caminho.
+    while (Jogo.caminho.length && Math.hypot(Jogo.caminho[0].x - eu.x, Jogo.caminho[0].y - eu.y) < 4) {
+      Jogo.caminho.shift();
+    }
+    if (Jogo.caminho.length) {
+      const passo = Jogo.caminho[0];
+      const vx = passo.x - eu.x, vy = passo.y - eu.y;
+      const d = Math.hypot(vx, vy);
+      dx = vx / d; dy = vy / d;
+    } else {
+      Jogo.caminho = null;
+    }
   }
 
   if (!dx && !dy && tela.dataset.alvo) {          // segurando o botão: anda para lá
@@ -1406,6 +1568,18 @@ function ehAssento(tipo, info) {
 const GRUPOS_MESA = new Set(['Mesas', 'Escrivaninhas']);
 
 function acomodarNoAssento(eu) {
+  if (Cenario.ativo()) {
+    if (Jogo.caminho) return;                  // ainda a caminho: o pedido continua de pé
+    const pedido = Jogo.querSentar;
+    Jogo.querSentar = null;
+    let a = pedido && Math.hypot(pedido.saida[0] - eu.x, pedido.saida[1] - eu.y) < 40 ? pedido : null;
+    // sem pedido, só a cadeira de trabalho e o sofá sentam por parar colado:
+    // a da reunião é pelo botão (ou clique nela), senão quem para perto da
+    // mesa para conversar entraria na reunião sem querer
+    if (!a) a = Cenario.assentoPerto(eu.x, eu.y, 22, (s) => !s.zona);
+    if (a) sentarAgora(a);
+    return;
+  }
   const assento = assentoEm(eu.x, eu.y);
   if (!assento || !Jogo.mapa) return;
   const t = Jogo.tile;
@@ -1443,6 +1617,7 @@ function ladoDaMesa(assento, m) {
 
 function assentoEm(px, py) {
   if (!Jogo.mapa) return null;
+  if (Cenario.ativo()) return Cenario.assentoEm(px, py);
   const t = Jogo.tile;
   const tx = Math.floor(px / t), ty = Math.floor(py / t);
   for (const o of Jogo.mapa.objetos) {
@@ -1478,12 +1653,18 @@ function podemConversar(a, b, jaConectados) {
   return d <= (jaConectados ? Jogo.config.raio_silencio : Jogo.config.raio_conversa);
 }
 
+/* 26/11: volume cheio dentro do raio de conversa. Antes ele já caía a partir de
+   70 px: a 150 px (a borda de abrir a chamada) a pessoa chegava com 43% do som,
+   e a 200 px com 7% — "estou conectado e não escuto ninguém". Agora só cai na
+   faixa entre o raio de conversa e o de silêncio, e nunca abaixo da metade
+   enquanto a chamada existe. */
 function volumeEntre(a, b) {
   const z = zonaDe(a.x, a.y);
   if (z && z.privada && mesmaSala(a, b)) return 1;   // sala fechada: volume cheio
   const d = Math.hypot(a.x - b.x, a.y - b.y);
-  const perto = 70, longe = Jogo.config.raio_silencio;
-  return Math.max(0, Math.min(1, (longe - d) / (longe - perto)));
+  const perto = Jogo.config.raio_conversa, longe = Jogo.config.raio_silencio;
+  if (d <= perto) return 1;
+  return Math.max(0.5, 1 - 0.5 * (d - perto) / Math.max(1, longe - perto));
 }
 
 // Quem anda na borda do raio cruzava a linha para um lado e para o outro a
@@ -1501,12 +1682,12 @@ function cuidarDasChamadas() {
     const deve = podemConversar(eu, p, conectado);
     if (deve && !conectado) {
       foraDesde.delete(p.id);
-      Midia.garantirPar(p.id);
       // O cartão de vídeo nascia só quando chegava uma faixa de mídia. Quem
       // chegava sem microfone e sem câmera não ganhava cartão no outro lado
       // — e sem cartão não entrava na grade da reunião. O cartão é de quem
-      // está NA CONVERSA, com ou sem mídia.
-      montarTiles();
+      // está NA CONVERSA, com ou sem mídia. (Quem só atende ganha o cartão
+      // quando a oferta chega.)
+      if (Midia.garantirPar(p.id)) montarTiles();
     } else if (!deve && conectado) {
       const desde = foraDesde.get(p.id) || agora;
       foraDesde.set(p.id, desde);
@@ -1524,6 +1705,7 @@ function cuidarDasChamadas() {
   for (const id of [...foraDesde.keys()]) {
     if (!Jogo.pessoas.has(id)) foraDesde.delete(id);
   }
+  Midia.vigiar();                 // chamada que não liga em 15 s é refeita
   avisarQualidade();
   desenharListaPessoas();
 }
@@ -1561,7 +1743,7 @@ window.addEventListener('resize', () => {
   if (!Jogo.eu) return;
   ajustarTela();
   // a janela encolheu: o zoom que cabia antes pode não caber mais
-  definirZoom(ESCALA);
+  zoomPadrao();
 });
 
 // Paleta clara, tirada da referência: o chão é neutro e quem colore o ambiente
@@ -1591,7 +1773,9 @@ function desenhar() {
     : Math.max(0, Math.min(Jogo.alturaPx - alt, Jogo.eu.y - alt / 2));
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = '#efe7dd';           // fora do mapa: bege da marca, não preto
+  const comArte = Cenario.ativo();
+  ctx.fillStyle = comArte ? (Jogo.mapa.cenario.cor_fora || '#121014')
+                          : '#efe7dd';           // fora do mapa: bege da marca, não preto
   ctx.fillRect(0, 0, tela.width / dpr, tela.height / dpr);
   ctx.setTransform(ESCALA * dpr, 0, 0, ESCALA * dpr,
                    -Jogo.camera.x * ESCALA * dpr, -Jogo.camera.y * ESCALA * dpr);
@@ -1604,6 +1788,10 @@ function desenhar() {
   const y1 = Math.min(mapa.altura, Math.ceil((Jogo.camera.y + alt) / t) + 1);
 
   // ---------- piso ----------
+  // (a face da parede, mais abaixo, também pergunta se tem parede)
+  let ehParede = () => false;
+  if (comArte) Cenario.desenharFundo(ctx);
+  else {
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
       const tipo = mapa.piso[y][x];
@@ -1626,7 +1814,7 @@ function desenhar() {
   // DESENHADA mais fina: o miolo do tile é dela, e sobra uma folga de cada lado
   // que não tem vizinho de parede. Assim o muro fica com a espessura de um muro
   // e não de um corredor, e as quinas continuam fechando sozinhas.
-  const ehParede = (x, y) => y >= 0 && y < mapa.altura && x >= 0 && x < mapa.largura
+  ehParede = (x, y) => y >= 0 && y < mapa.altura && x >= 0 && x < mapa.largura
     && mapa.paredes[y][x] === '1';
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
@@ -1650,6 +1838,8 @@ function desenhar() {
     }
   }
 
+  }   // fim do piso e das paredes de quadradinho (sem cenário)
+
   // ---------- tapetes (ficam no chão, sob todo o resto) ----------
   const noQuadro = (o) => {
     const info = mapa.catalogo[o.tipo] || { l: 1, a: 1 };
@@ -1670,8 +1860,8 @@ function desenhar() {
   const zonaEu = zonaDe(eu.x, eu.y);
   if (!(zonaEu && zonaEu.privada)) {
     ctx.beginPath();
-    ctx.arc(eu.x, eu.y, Jogo.config.raio_conversa, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(120,140,200,.28)';
+    ctx.arc(eu.x, eu.y + (comArte ? 13 : 0), Jogo.config.raio_conversa, 0, Math.PI * 2);
+    ctx.strokeStyle = comArte ? 'rgba(196,181,253,.22)' : 'rgba(120,140,200,.28)';
     ctx.setLineDash([5, 9]);
     ctx.lineWidth = 1.5;
     ctx.stroke();
@@ -1708,6 +1898,11 @@ function desenhar() {
 
   // ---------- as portas das salas ----------
   for (const z of mapa.zonas) {
+    if (comArte && z.porta_px) {
+      fila.push({ base: z.porta_px.y + 8, peso: PESO_PAREDE + 0.5,
+                  desenhar: () => Cenario.desenharPorta(ctx, z) });
+      continue;
+    }
     if (!z.porta) continue;
     const p = z.porta;
     if (p.x + 2 < x0 || p.x > x1 || p.y + 2 < y0 || p.y > y1) continue;
@@ -1728,11 +1923,13 @@ function desenhar() {
     // Sentado, a pessoa tem que sair depois da cadeira na fila — senão a
     // cadeira (cuja base é o fim do tile) é desenhada por cima dela.
     const cad = assentoEm(pes.xr, pes.yr);
-    const base = cad
-      ? (cad.y + Objetos.medida(cad.tipo, mapa.catalogo[cad.tipo], cad.g).a) * t + 0.5
+    const base = cad && cad.base !== undefined ? cad.base
+      : cad ? (cad.y + Objetos.medida(cad.tipo, mapa.catalogo[cad.tipo], cad.g).a) * t + 0.5
       : pes.yr + 13;
     fila.push({ base, peso: PESO_PESSOA, desenhar: () => desenharAvatar(pes, pes === eu) });
   }
+  // a arte que fica na frente de quem passa atrás (tampo da mesa, cadeiras, vidro…)
+  if (comArte) Cenario.porNaFila(fila, ctx);
   fila.sort((a, b) => a.base - b.base || a.peso - b.peso);
   for (const item of fila) item.desenhar();
 
@@ -1752,6 +1949,11 @@ function desenhar() {
   // flutuante no topo, como no Gather. Retângulo tingido deixava tudo embarrado.
   Jogo.etiquetas = [];
   for (const z of mapa.zonas) {
+    if (comArte) {
+      if (z.sem_placa) continue;
+      const r = Cenario.desenharPlaca(ctx, z);
+      if (r) { Jogo.etiquetas.push({ id: z.id, ...r }); continue; }
+    }
     const zx = z.x1 * t, zy = z.y1 * t;
     const zw = (z.x2 - z.x1 + 1) * t;
     const texto = (z.privada ? '🔒 ' : '') + z.nome + (z.dono_nome ? ' · ' + z.dono_nome : '');
@@ -1774,6 +1976,8 @@ function desenhar() {
 
 
   for (const pes of gente) desenharBolha(pes);
+  if (comArte) Cenario.desenharDepuracao(ctx);
+  atualizarAcaoReuniao();
 
   if (typeof Editor !== 'undefined') {
     if (Editor.ativo) Editor.desenhar(ctx, x0, y0, x1, y1);
@@ -1914,31 +2118,36 @@ function arredondado(x, y, w, h, r) {
 
 function desenharAvatar(p, souEu) {
   const pes = p.yr + 13;                     // os pés ficam na base da caixa de colisão
+  const k = Cenario.ativo() ? Cenario.escalaBoneco() / 2 : 1;
+  const assentoAqui = assentoEm(p.xr, p.yr);
 
-  ctx.fillStyle = 'rgba(0,0,0,.22)';
-  ctx.beginPath();
-  ctx.ellipse(p.xr, pes, 11, 4, 0, 0, Math.PI * 2);
-  ctx.fill();
+  if (!assentoAqui) {
+    ctx.fillStyle = k > 1 ? 'rgba(0,0,0,.32)' : 'rgba(0,0,0,.22)';
+    ctx.beginPath();
+    ctx.ellipse(p.xr, pes, 11 * k, 4 * k, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   const mudo = souEu ? !Midia.ligado('audio') : p.mudo;
   const nivel = Midia.nivel(souEu ? 'eu' : p.id);
-  if (souEu) {
+  if (souEu && !assentoAqui) {
     ctx.beginPath();
-    ctx.ellipse(p.xr, pes, 12, 5, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255,255,255,.7)';
+    ctx.ellipse(p.xr, pes, 12 * k, 5 * k, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = k > 1 ? 'rgba(196,181,253,.75)' : 'rgba(255,255,255,.7)';
     ctx.lineWidth = 1.5;
     ctx.stroke();
   }
-  if (nivel > 0.12 && !mudo) {               // anel verde de quem está falando
+  if (nivel > 0.12 && !mudo && !assentoAqui) {   // anel verde de quem está falando
     ctx.beginPath();
-    ctx.ellipse(p.xr, pes, 13 + nivel * 4, 5.5 + nivel * 2, 0, 0, Math.PI * 2);
+    ctx.ellipse(p.xr, pes, (13 + nivel * 4) * k, (5.5 + nivel * 2) * k, 0, 0, Math.PI * 2);
     ctx.strokeStyle = 'rgba(34,197,94,.9)';
     ctx.lineWidth = 2.5;
     ctx.stroke();
   }
 
-  const assento = assentoEm(p.xr, p.yr);
-  Boneco.desenhar(ctx, p.aparencia, p.xr, p.yr, p.direcao, Math.floor(p.passo || 0), 2, !!assento);
+  const assento = assentoAqui;
+  Boneco.desenhar(ctx, p.aparencia, p.xr, p.yr, p.direcao, Math.floor(p.passo || 0), 2 * k, !!assento);
+  if (k > 1) { desenharCracha(p, souEu, mudo, nivel, !!assento, k); return; }
 
   // placa com o nome, logo abaixo dos pés
   ctx.textAlign = 'center';
@@ -1968,8 +2177,87 @@ function desenharAvatar(p, souEu) {
   }
 }
 
+/** O nome em cima da cabeça, como na referência: pílula escura com o ponto
+ *  verde de "está aqui", o microfone fechado quando está mudo, e o anel de fala
+ *  acendendo o ponto. As reações sobem a partir dele. */
+function alturaDaCabeca(p, sentado, k) {
+  const lado = 64 * 2 * k * 0.46;
+  const topo = p.yr + 13 - lado * (sentado ? 0.93 : 0.955);
+  return topo + lado * 0.16;                 // o quadro do LPC tem folga em cima
+}
+
+function desenharCracha(p, souEu, mudo, nivel, sentado, k) {
+  const cabeca = alturaDaCabeca(p, sentado, k);
+  const nome = p.nome;
+  ctx.font = '600 14px Inter, -apple-system, "Segoe UI", sans-serif';
+  const w = ctx.measureText(nome).width + 34 + (mudo ? 18 : 0);
+  const h = 26, x = p.xr - w / 2, y = cabeca - h - 12;
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,.4)';
+  ctx.shadowBlur = 8;
+  ctx.shadowOffsetY = 2;
+  ctx.fillStyle = 'rgba(28,25,31,.9)';
+  arredondado(x, y, w, h, 13);
+  ctx.fill();
+  ctx.beginPath();                            // o biquinho apontando para a cabeça
+  ctx.moveTo(p.xr - 6, y + h - 1);
+  ctx.lineTo(p.xr + 6, y + h - 1);
+  ctx.lineTo(p.xr, y + h + 6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+  if (souEu) {
+    ctx.strokeStyle = 'rgba(167,139,250,.85)';
+    ctx.lineWidth = 1.5;
+    arredondado(x + .75, y + .75, w - 1.5, h - 1.5, 12.5);
+    ctx.stroke();
+  }
+  const falando = nivel > 0.12 && !mudo;
+  ctx.fillStyle = '#22c55e';
+  ctx.beginPath();
+  ctx.arc(x + 14, y + h / 2, falando ? 5.5 : 4.5, 0, Math.PI * 2);
+  ctx.fill();
+  if (falando) {
+    ctx.strokeStyle = 'rgba(34,197,94,.45)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x + 14, y + h / 2, 8 + nivel * 3, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#f5f3f7';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(nome, x + 25, y + h / 2 + 0.5);
+  if (mudo) {                                 // microfone cortado, desenhado
+    const mx = x + w - 15, my = y + h / 2;
+    ctx.strokeStyle = '#f87171';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(mx - 5, my - 5); ctx.lineTo(mx + 5, my + 5);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(245,243,247,.8)';
+    arredondado(mx - 2.5, my - 6, 5, 8, 2.5);
+    ctx.stroke();
+  }
+  if (souEu ? !!Midia.telaStream : p.tela) {
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = '600 11px Inter, -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('apresentando', p.xr, y - 9);
+  }
+  if (p.reacao && p.reacao.ate > Date.now()) {
+    const sobe = (p.reacao.ate - Date.now()) / 2500;
+    ctx.font = '30px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.globalAlpha = Math.min(1, sobe * 1.6);
+    ctx.fillText(p.reacao.emoji, p.xr, y - 22 - (1 - sobe) * 30);
+    ctx.globalAlpha = 1;
+  }
+}
+
 function desenharBolha(p) {
   if (!p.bolha || p.bolha.ate < Date.now()) return;
+  if (Cenario.ativo()) return desenharBolhaEscura(p);
   const texto = p.bolha.texto.length > 70 ? p.bolha.texto.slice(0, 70) + '…' : p.bolha.texto;
   ctx.font = '12px -apple-system, sans-serif';
   ctx.textAlign = 'center';
@@ -1986,6 +2274,26 @@ function desenharBolha(p) {
   ctx.fillStyle = '#efe7dd';
   ctx.textBaseline = 'middle';
   ctx.fillText(texto, p.xr, y + 12);
+}
+
+/** O balão do chat no cenário: escuro como o resto, em cima do crachá. */
+function desenharBolhaEscura(p) {
+  const k = Cenario.escalaBoneco() / 2;
+  const texto = p.bolha.texto.length > 70 ? p.bolha.texto.slice(0, 70) + '…' : p.bolha.texto;
+  ctx.font = '14px Inter, -apple-system, sans-serif';
+  const w = Math.min(280, ctx.measureText(texto).width + 24), h = 30;
+  const topo = alturaDaCabeca(p, !!assentoEm(p.xr, p.yr), k) - 26 - 12;
+  const x = p.xr - w / 2, y = topo - h - 10;
+  ctx.fillStyle = 'rgba(245,243,247,.97)';
+  arredondado(x, y, w, h, 12);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(p.xr - 6, y + h - 1); ctx.lineTo(p.xr + 6, y + h - 1); ctx.lineTo(p.xr, y + h + 7);
+  ctx.fill();
+  ctx.fillStyle = '#1c191f';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(texto, p.xr, y + h / 2 + 0.5);
 }
 
 /* ==================== barra e mídia ==================== */
@@ -2169,8 +2477,11 @@ async function liberarSom() {
   // manda nada (sem microfone nem câmera) segurava o play() para sempre e os outros
   // nunca tocavam. O cartão sem faixa nenhuma fica de fora, e a troca de fonte no
   // meio do clique (AbortError) não conta como som barrado.
-  const videos = [...document.querySelectorAll('#videos .video-tile:not([data-id="eu"]) video')]
-    .filter((v) => v.srcObject && v.srcObject.getTracks().length);
+  // Só o que tem mídia chegando de verdade: o canal de quem não manda nada existe
+  // (nasce com a chamada, 26/11), mas o play() dele só termina quando chega som.
+  const videos = [...document.querySelectorAll('#videos .video-tile:not([data-id="eu"]) video'),
+                  ...Midia.elementosDeSom()]
+    .filter((v) => v.srcObject && v.srcObject.getTracks().some((f) => f.readyState === 'live' && !f.muted));
   const tentativas = await Promise.allSettled(videos.map((v) => Promise.race([
     v.play(), new Promise((ok) => setTimeout(ok, 3000))])));
   const barrado = tentativas.some((t) => t.status === 'rejected' && t.reason && t.reason.name === 'NotAllowedError');
@@ -2187,7 +2498,7 @@ function montarTiles() {
       tile = document.createElement('div');
       tile.className = 'video-tile';
       tile.dataset.id = id;
-      tile.innerHTML = `<video autoplay playsinline${id === 'eu' ? ' muted' : ''}></video>
+      tile.innerHTML = `<video autoplay playsinline muted></video>
         <div class="sem-video"></div>
         <div class="rotulo"><span class="nome"></span><span class="estado"></span></div>`;
       tile.onclick = () => {
@@ -2227,8 +2538,8 @@ function montarTiles() {
     const tile = criar(id, (p.tela ? '🖥️ tela de ' : '') + p.nome, p.cor, p.aparencia);
     const v = tile.querySelector('video');
     par.video = v;
-    if (v.srcObject !== par.stream) { v.srcObject = par.stream; v.play().catch(somBloqueado); }
-    v.volume = par.volume;
+    v.muted = true;                  // o som vem do <audio> da pessoa (Midia._tocarSom)
+    if (v.srcObject !== par.stream) { v.srcObject = par.stream; v.play().catch(() => {}); }
     const temVideo = (!p.sem_camera || p.tela) && par.stream.getVideoTracks().length > 0;
     v.style.display = temVideo ? '' : 'none';
     tile.querySelector('.sem-video').style.display = temVideo ? 'none' : 'grid';
@@ -2384,7 +2695,8 @@ function desenharListaPessoas() {
     li.dataset.id = p.id;
     li.innerHTML = `<img class="bolinha" src="${Boneco.retrato(p.aparencia)}" alt="">
       <span>${escapar(p.nome)}${souEu ? ' (você)' : ''}${p.silenciado ? ' <b class="calado">calado</b>' : ''}</span>
-      <span class="onde ${perto ? 'perto' : ''}">${mostraTela ? '🖥️ ' : ''}${perto ? '🔊 perto' : (zona ? escapar(zona.nome) : 'corredor')}</span>`;
+      <span class="onde ${perto ? 'perto' : ''}">${mostraTela ? '🖥️ ' : ''}${perto ? '🔊 perto' : (zona ? escapar(zona.nome) : 'corredor')}</span>
+      <span class="online" title="online"></span>`;
     if (Jogo.admin && !souEu) {
       // as duas ferramentas de dono de sala: calar e tirar de dentro
       const acoes = document.createElement('span');
@@ -2433,12 +2745,91 @@ function escreverChat(msg) {
   } else {
     div.className = 'msg';
     const marca = msg.escopo === 'todos' ? 'todos' : 'perto';
-    div.innerHTML = `<span class="quem" style="color:${msg.cor}">${escapar(msg.nome)}</span>
-      <span class="marca">${marca}${msg.proprio && msg.escopo === 'perto' ? ' · ' + msg.ouviram + ' ouviram' : ''}</span><br>${escapar(msg.texto)}`;
+    const hora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const autor = [...Jogo.pessoas.values(), Jogo.eu].find((p) => p && p.nome === msg.nome);
+    div.classList.add('com-retrato');
+    div.innerHTML = `<img class="retrato" src="${autor ? Boneco.retrato(autor.aparencia) : ''}" alt="">
+      <span class="quem">${escapar(msg.nome)}</span>
+      <span class="hora">${hora} · ${marca}${msg.proprio && msg.escopo === 'perto' ? ' · ' + msg.ouviram + ' ouviram' : ''}</span><br><span class="texto-msg">${escapar(msg.texto)}</span>`;
   }
+  if (msg.sistema) Avisos.anotar(msg.texto);
   caixa.appendChild(div);
   while (caixa.children.length > 200) caixa.removeChild(caixa.firstChild);
   if (noFim || msg.proprio) caixa.scrollTop = caixa.scrollHeight;
+}
+
+/* ---------- cabeçalho Codara (26/11): painel, avisos, ajustes ----------
+ * O sino guarda os avisos do escritório (quem entrou, quem bateu na porta,
+ * microfone que caiu) — os mesmos que passam no chat, só que num lugar só. */
+const Avisos = {
+  lista: [], naoLidos: 0,
+  anotar(texto) {
+    this.lista.unshift({ texto, quando: new Date() });
+    this.lista.length = Math.min(this.lista.length, 30);
+    const aberto = !document.getElementById('avisos').hidden;
+    if (!aberto) this.naoLidos++;
+    this.desenhar();
+  },
+  desenhar() {
+    const ul = document.getElementById('lista-avisos');
+    const n = document.getElementById('avisos-contagem');
+    if (!ul || !n) return;
+    n.hidden = !this.naoLidos;
+    n.textContent = this.naoLidos > 9 ? '9+' : String(this.naoLidos);
+    ul.innerHTML = this.lista.length ? this.lista.map((a) => `<li>${escapar(a.texto)}<span class="quando">${
+      a.quando.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span></li>`).join('')
+      : '<li class="vazio">Nada por aqui ainda.</li>';
+  },
+};
+
+function alternarSuspenso(botaoId, caixaId, abrir) {
+  const botao = document.getElementById(botaoId), caixa = document.getElementById(caixaId);
+  const vai = abrir === undefined ? caixa.hidden : abrir;
+  for (const [b, c] of [['btn-avisos', 'avisos'], ['btn-ajustes', 'ajustes']]) {
+    if (c === caixaId) continue;
+    document.getElementById(c).hidden = true;
+    document.getElementById(b).setAttribute('aria-expanded', 'false');
+  }
+  caixa.hidden = !vai;
+  botao.setAttribute('aria-expanded', String(vai));
+  if (vai && caixaId === 'avisos') { Avisos.naoLidos = 0; Avisos.desenhar(); }
+}
+document.getElementById('btn-pessoas').onclick = () => alternarLateral();
+// Tela cheia de verdade (some a barra do navegador). O 'resize' que vem junto
+// reenquadra o salão sozinho.
+document.getElementById('btn-tela-cheia').onclick = () => {
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  else document.documentElement.requestFullscreen().catch(() => {});
+};
+document.addEventListener('fullscreenchange', () => {
+  document.getElementById('btn-tela-cheia').classList.toggle('ativo', !!document.fullscreenElement);
+});
+document.getElementById('btn-avisos').onclick = (e) => { e.stopPropagation(); alternarSuspenso('btn-avisos', 'avisos'); };
+document.getElementById('btn-ajustes').onclick = (e) => { e.stopPropagation(); alternarSuspenso('btn-ajustes', 'ajustes'); };
+// os itens do menu de ajustes fazem o que faziam na barra antiga e fecham o menu
+for (const id of ['btn-boneco', 'btn-editor', 'btn-reuniao', 'btn-reacao']) {
+  document.getElementById(id).addEventListener('click', () => alternarSuspenso('btn-ajustes', 'ajustes', false));
+}
+document.addEventListener('pointerdown', (e) => {
+  if (!e.target.closest || e.target.closest('.menu-barra')) return;
+  alternarSuspenso('btn-avisos', 'avisos', false);
+  alternarSuspenso('btn-ajustes', 'ajustes', false);
+});
+document.getElementById('acao-reuniao').onclick = () => acionarReuniao();
+// Pessoas e Chat recolhem pelo título; o que fica aberto é lembrado
+for (const botao of document.querySelectorAll('.titulo-bloco')) {
+  const bloco = document.getElementById(botao.dataset.bloco);
+  const chave = 'escritorio:recolhido:' + botao.dataset.bloco;
+  const aplicar = (recolher) => {
+    bloco.classList.toggle('recolhido', recolher);
+    botao.setAttribute('aria-expanded', String(!recolher));
+  };
+  aplicar(localStorage.getItem(chave) === '1');
+  botao.onclick = () => {
+    const recolher = !bloco.classList.contains('recolhido');
+    localStorage.setItem(chave, recolher ? '1' : '0');
+    aplicar(recolher);
+  };
 }
 
 document.getElementById('form-chat').addEventListener('submit', (e) => {

@@ -1,0 +1,276 @@
+/* Tema Codara Labs (26/11): grafite, madeira escura e o roxo do logo.
+   Vem DEPOIS do estilo.css e só sobrepõe. O escuro vale para o cabeçalho, o
+   painel da direita, a barra de mídia e a tela de entrada; as janelinhas do
+   editor continuam claras (legíveis), com o acento roxo no lugar do laranja. */
+
+:root {
+  --acento: #7c3aed;
+  --acento-claro: #ede9fe;
+  --roxo: #8b5cf6;
+  --roxo-claro: #a78bfa;
+}
+
+.tema-codara .barra, .tema-codara .lateral, .tema-codara .puxador,
+.tema-codara .barra-midia, .tema-codara .suspenso, .entrada.tema-codara,
+.tema-codara .acao-reuniao {
+  --fundo: #121014;
+  --painel: #17141a;
+  --painel-2: #221e27;
+  --borda: rgba(255, 255, 255, .08);
+  --texto: #f3f1f6;
+  --fraco: #a7a1b2;
+  color: var(--texto);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* ---------- layout ---------- */
+.app.tema-codara {
+  grid-template-columns: 1fr 324px;
+  grid-template-rows: 62px 1fr;
+  background: #121014;
+}
+.app.tema-codara.sem-lateral { grid-template-columns: 1fr 0; }
+.tema-codara .palco { background: #121014; }
+
+/* ---------- cabeçalho ---------- */
+.tema-codara .barra {
+  background: #141217; border-bottom: 1px solid rgba(255, 255, 255, .07);
+  padding: 0 18px 0 22px; min-height: 62px;
+}
+.tema-codara .barra-esq { gap: 12px; }
+.tema-codara .logo-barra { width: 46px; height: 46px; object-fit: contain; }
+.marca-texto {
+  font-weight: 700; font-size: 18px; letter-spacing: .01em; color: #f5f3f8; white-space: nowrap;
+}
+.divisor { width: 1px; height: 26px; background: rgba(255, 255, 255, .16); margin: 0 8px; }
+.titulo-app { font-size: 18px; font-weight: 500; color: #ece9f1; white-space: nowrap; margin-right: 10px; }
+.tema-codara .chip {
+  background: rgba(255, 255, 255, .05); border-color: rgba(255, 255, 255, .1);
+  color: #d9d4e2; font-size: 12px;
+}
+.tema-codara .chip.fraco { color: var(--fraco); }
+.tema-codara .botao-chip { cursor: pointer; }
+.tema-codara .botao-chip:hover { border-color: var(--roxo); color: #fff; }
+.tema-codara .barra-dir { gap: 8px; }
+.tema-codara .barra .icone { width: 42px; height: 40px; color: #e9e6ef; border-radius: 10px; }
+.tema-codara .barra .icone svg { width: 23px; height: 23px; stroke-width: 1.7; }
+.tema-codara .barra .icone:hover { background: rgba(255, 255, 255, .07); color: #fff; }
+.tema-codara .barra .icone[aria-expanded="true"], .tema-codara .barra .icone.ativo {
+  background: rgba(139, 92, 246, .18); color: #fff;
+}
+
+/* menus suspensos do cabeçalho (avisos, ajustes) */
+.menu-barra { position: relative; }
+.suspenso {
+  position: absolute; top: calc(100% + 10px); right: 0; z-index: 60; min-width: 250px;
+  background: #1b1720; border: 1px solid rgba(255, 255, 255, .09); border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, .5); padding: 8px;
+}
+.suspenso h3 { margin: 4px 8px 8px; font-size: 13px; color: var(--fraco); font-weight: 600; }
+.suspenso ul { list-style: none; margin: 0; padding: 0; max-height: 320px; overflow-y: auto; }
+.suspenso li { padding: 8px; border-radius: 8px; font-size: 13.5px; color: #e6e2ec; }
+.suspenso li + li { border-top: 1px solid rgba(255, 255, 255, .05); }
+.suspenso li .quando { display: block; font-size: 11px; color: var(--fraco); margin-top: 2px; }
+.suspenso li.vazio { color: var(--fraco); }
+.item-menu {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px;
+  background: none; border: 0; border-radius: 8px; color: #ece9f1; font-size: 14px;
+  cursor: pointer; text-align: left;
+}
+.item-menu:hover { background: rgba(255, 255, 255, .06); }
+.item-menu.ativo { background: rgba(139, 92, 246, .2); }
+.item-menu svg {
+  width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round; flex: none;
+}
+.item-menu kbd, .acao-reuniao kbd {
+  margin-left: auto; background: rgba(255, 255, 255, .08); border: 0; color: var(--fraco);
+  font-size: 11px; border-radius: 5px; padding: 1px 6px;
+}
+.contador {
+  position: absolute; top: 4px; right: 4px; min-width: 16px; height: 16px; border-radius: 8px;
+  background: var(--roxo); color: #fff; font-size: 10px; line-height: 16px; text-align: center;
+  padding: 0 4px; font-weight: 700;
+}
+.tema-codara .suspenso .zoom {
+  position: static; display: flex; margin-top: 6px; padding: 6px 8px; background: none;
+  border: 0; border-top: 1px solid rgba(255, 255, 255, .07); border-radius: 0;
+}
+.rotulo-zoom { flex: 1; font-size: 14px; color: #ece9f1; text-align: left !important; }
+.tema-codara .suspenso .zoom button {
+  background: rgba(255, 255, 255, .06); border-color: rgba(255, 255, 255, .1); color: #fff;
+}
+
+/* ---------- palco: barra de mídia e ação da mesa ---------- */
+.barra-midia {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 25;
+  display: flex; align-items: center; gap: 4px; padding: 7px 12px;
+  background: rgba(18, 16, 21, .92); border: 1px solid rgba(255, 255, 255, .09);
+  border-radius: 999px; box-shadow: 0 14px 34px rgba(0, 0, 0, .55);
+  backdrop-filter: blur(10px);
+}
+.barra-midia .sep { width: 1px; height: 22px; background: rgba(255, 255, 255, .14); margin: 0 6px; }
+.barra-midia .icone { width: 46px; height: 40px; color: #f1eef5; border-radius: 12px; }
+.barra-midia .icone svg { width: 23px; height: 23px; stroke-width: 1.7; }
+.barra-midia .icone:hover { background: rgba(255, 255, 255, .08); color: #fff; }
+.barra-midia .icone.ligado { background: var(--roxo); border-color: var(--roxo); color: #fff; }
+/* desligado: o ícone cortado em branco, sem alarde (o roxo marca o que está ligado) */
+.barra-midia .icone.desligado { color: #f1eef5; }
+.barra-midia .icone.desligado:hover { background: rgba(255, 255, 255, .08); }
+.barra-midia #btn-mic:not(.desligado), .barra-midia #btn-cam:not(.desligado) {
+  background: rgba(139, 92, 246, .22); color: #fff;
+}
+.barra-midia .icone.perigo { color: #f05252; }
+.barra-midia .icone.perigo:hover { background: #dc2626; color: #fff; }
+
+.tema-codara .dica {
+  bottom: 136px; background: rgba(18, 16, 21, .85); border-color: rgba(255, 255, 255, .08);
+  color: #d4cfdc;
+}
+.tema-codara .dica kbd { background: rgba(255, 255, 255, .1); color: #fff; border-color: transparent; }
+
+/* fica logo acima da barra de mídia (perto da cadeira ele cobria o nome de quem
+   estava ali); só aparece perto de uma cadeira livre da mesa, ou sentado nela */
+.acao-reuniao {
+  position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 24; display: flex; align-items: center; gap: 8px;
+  padding: 9px 14px 9px 12px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+  background: linear-gradient(180deg, #8b5cf6, #6d28d9); color: #fff;
+  border: 1px solid rgba(255, 255, 255, .18); font-size: 14px; font-weight: 600;
+  box-shadow: 0 10px 26px rgba(109, 40, 217, .45);
+}
+.acao-reuniao svg {
+  width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.9;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.acao-reuniao kbd { margin-left: 4px; color: rgba(255, 255, 255, .8); background: rgba(0, 0, 0, .2); }
+.acao-reuniao.sair { background: rgba(24, 21, 28, .94); box-shadow: 0 10px 26px rgba(0, 0, 0, .45); }
+.acao-reuniao:hover { filter: brightness(1.1); }
+
+.tema-codara .reconectando { background: rgba(24, 21, 28, .95); color: #fff; border-color: var(--roxo); }
+
+/* ---------- painel da direita ---------- */
+.tema-codara .lateral {
+  background: #151219; border-left: 1px solid rgba(255, 255, 255, .07);
+  display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+}
+.tema-codara .puxador { background: #1b1720; border-color: rgba(255, 255, 255, .1); color: #d9d4e2; }
+.tema-codara .puxador:hover { color: var(--roxo-claro); }
+
+/* câmeras no topo do painel, duas por linha (a grade da reunião continua tela cheia) */
+.tema-codara .lateral .videos:not(.reuniao) {
+  position: static; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  padding: 14px 14px 16px; max-width: none; flex: none;
+  border-bottom: 1px solid rgba(255, 255, 255, .07);
+}
+.tema-codara .lateral .videos:not(.reuniao):empty { display: none; }
+.tema-codara .lateral .videos:not(.reuniao) .video-tile {
+  width: auto; aspect-ratio: 4 / 3.3; border-radius: 10px; border: 1px solid rgba(255, 255, 255, .08);
+  box-shadow: none; background: #0f0d12;
+}
+.tema-codara .lateral .videos:not(.reuniao) .video-tile.tela { grid-column: 1 / -1; width: auto; }
+.tema-codara .lateral .videos .video-tile.falando { border-color: #22c55e; box-shadow: 0 0 0 1px #22c55e; }
+.tema-codara .lateral .videos .video-tile.compartilhando { border-color: var(--roxo); }
+.tema-codara .video-tile .rotulo { font-size: 11.5px; padding: 4px 8px; color: #fff; }
+.tema-codara .video-tile .sem-video { background: #1d1922 !important; }
+.tema-codara .video-tile .sem-video img { border-radius: 50%; background: rgba(255, 255, 255, .06); }
+
+.bloco { border-bottom: 1px solid rgba(255, 255, 255, .07); min-height: 0; }
+.titulo-bloco {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+  background: none; border: 0; padding: 16px 18px 12px; cursor: pointer; color: #f3f1f6;
+}
+.titulo-bloco h2 {
+  margin: 0; padding: 0; font-size: 17px; font-weight: 600; text-transform: none;
+  letter-spacing: 0; color: #f3f1f6;
+}
+.titulo-bloco svg {
+  width: 18px; height: 18px; fill: none; stroke: #cfc9d8; stroke-width: 2; transition: transform .15s;
+}
+.bloco.recolhido .titulo-bloco svg { transform: rotate(-90deg); }
+.bloco.recolhido > :not(.titulo-bloco) { display: none !important; }
+
+.tema-codara .pessoas { max-height: 34vh; overflow-y: auto; flex: none; border-bottom: 1px solid rgba(255, 255, 255, .07); }
+.tema-codara .pessoas ul { padding: 0 10px 12px; }
+.tema-codara .pessoas li { font-size: 15px; padding: 7px 8px; gap: 12px; color: #ece9f1; }
+.tema-codara .pessoas li:hover { background: rgba(255, 255, 255, .04); }
+.tema-codara .bolinha { width: 34px; height: 34px; border-radius: 50%; background: #2a2430; }
+.tema-codara .pessoas .onde { color: var(--fraco); }
+.tema-codara .pessoas .perto { color: #22c55e; }
+.tema-codara .pessoas .onde { font-size: 11.5px; }
+.tema-codara .pessoas .online {
+  width: 9px; height: 9px; border-radius: 50%; background: #22c55e; flex: none;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, .14);
+}
+.tema-codara .pessoas li > span:nth-child(2) { flex: 1; min-width: 0; }
+
+.tema-codara .chat { display: flex; flex-direction: column; flex: 1; min-height: 0; border-bottom: 0; }
+.tema-codara .mensagens { flex: 1; min-height: 0; padding: 4px 18px 12px; font-size: 14.5px; color: #ece9f1; }
+.tema-codara .mensagens .msg { margin-bottom: 12px; }
+.tema-codara .mensagens .quem { color: #fff; }
+.tema-codara .mensagens .msg.com-retrato {
+  display: grid; grid-template-columns: 32px auto 1fr; column-gap: 10px; align-items: center;
+}
+.tema-codara .mensagens .msg.com-retrato br { display: none; }
+.tema-codara .mensagens .retrato {
+  width: 32px; height: 32px; border-radius: 50%; background: #2a2430; image-rendering: pixelated;
+  grid-row: 1 / span 2; align-self: start;
+}
+.tema-codara .mensagens .quem { font-weight: 600; font-size: 14px; }
+.tema-codara .mensagens .hora { color: var(--fraco); font-size: 12px; white-space: nowrap; }
+.tema-codara .mensagens .com-retrato .texto-msg { grid-column: 2 / -1; justify-self: start; }
+.tema-codara .mensagens .sistema { color: #8f889b; font-size: 12.5px; }
+.tema-codara .mensagens .texto-msg {
+  display: inline-block; margin-top: 5px; padding: 8px 12px; border-radius: 10px;
+  background: #26212b; color: #f1eef5; max-width: 100%;
+}
+.tema-codara #form-chat {
+  margin: 10px 14px 16px; padding: 4px 4px 4px 8px; gap: 6px; align-items: center;
+  border: 1px solid rgba(255, 255, 255, .14); border-radius: 14px; background: #1a161e;
+}
+.tema-codara #form-chat:focus-within { border-color: var(--roxo); }
+.tema-codara #form-chat select {
+  background: rgba(255, 255, 255, .06); border: 0; color: #cfc9d8; font-size: 12px;
+  padding: 6px 4px; border-radius: 8px;
+}
+.tema-codara #form-chat input {
+  background: none; border: 0; color: #fff; font-size: 15px; padding: 10px 4px;
+}
+.tema-codara #form-chat input::placeholder { color: #8f889b; }
+.tema-codara #form-chat input:focus { outline: none; }
+.tema-codara #form-chat button {
+  width: 40px; height: 40px; background: none; border: 0; display: grid; place-items: center;
+}
+.tema-codara #form-chat button svg {
+  width: 21px; height: 21px; fill: none; stroke: #e9e6ef; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.tema-codara #form-chat button:hover svg { stroke: var(--roxo-claro); }
+
+/* ---------- tela de entrada ---------- */
+.entrada.tema-codara {
+  background: radial-gradient(1200px 600px at 50% -10%, #2a1d3f 0%, #121014 55%), #121014;
+}
+.entrada.tema-codara .cartao {
+  background: #18151c; border: 1px solid rgba(255, 255, 255, .08); color: #f3f1f6;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, .5);
+}
+.entrada.tema-codara .marca { display: grid; justify-items: center; gap: 2px; margin-bottom: 8px; }
+.entrada.tema-codara .marca img { width: 120px; height: auto; }
+.marca-nome { margin: 0; font-weight: 700; letter-spacing: .3em; font-size: 15px; color: #f5f3f8; }
+.marca-sub { margin: 0 0 6px; font-size: 13px; color: var(--fraco); }
+.entrada.tema-codara input, .entrada.tema-codara select {
+  background: #221e27; border-color: rgba(255, 255, 255, .1); color: #fff;
+}
+.entrada.tema-codara .abas-conta button { color: #cfc9d8; }
+.entrada.tema-codara .abas-conta button[aria-pressed="true"] { color: #fff; border-color: var(--roxo); }
+.entrada.tema-codara button.principal { background: linear-gradient(180deg, #8b5cf6, #6d28d9); border-color: transparent; }
+.entrada.tema-codara button.secundario { background: transparent; color: #cfc9d8; border-color: rgba(255, 255, 255, .14); }
+.entrada.tema-codara .previa canvas { background: #221e27; border-radius: 12px; }
+
+@media (max-width: 860px) {
+  .app.tema-codara { grid-template-columns: 1fr; grid-template-rows: 56px 1fr 260px; }
+  .app.tema-codara.sem-lateral { grid-template-columns: 1fr; grid-template-rows: 56px 1fr; }
+  .titulo-app, .divisor { display: none; }
+  .tema-codara .lateral .videos:not(.reuniao) { grid-template-columns: repeat(3, 1fr); }
+  .barra-midia { bottom: 10px; }
+}
