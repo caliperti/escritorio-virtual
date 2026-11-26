@@ -4,10 +4,14 @@
    editor continuam claras (legíveis), com o acento roxo no lugar do laranja. */
 
 :root {
-  --acento: #7c3aed;
-  --acento-claro: #ede9fe;
   --roxo: #8b5cf6;
   --roxo-claro: #a78bfa;
+}
+/* o acento roxo vale dentro do escritório; a tela de entrada fica com as
+   cores dela de sempre (laranja da Gather da Shopee) */
+.tema-codara, .modal, .editor-painel, .menu-movel {
+  --acento: #7c3aed;
+  --acento-claro: #ede9fe;
 }
 
 .tema-codara .barra, .tema-codara .lateral, .tema-codara .puxador,
@@ -274,3 +278,189 @@
   .tema-codara .lateral .videos:not(.reuniao) { grid-template-columns: repeat(3, 1fr); }
   .barra-midia { bottom: 10px; }
 }
+
+/* ---------- tela de chamada, estilo Google Meet (26/11) ----------
+   Cobre o escritório (o painel da direita continua, como o painel do Meet).
+   O #videos vem para cá enquanto ela está aberta. */
+.chamada { position: absolute; inset: 0; z-index: 30; background: #202124; }
+.palco-chamada { position: absolute; inset: 16px 16px 84px 16px; display: flex; }
+.tema-codara .chamada .videos.reuniao {
+  position: static; inset: auto; z-index: auto; padding: 0; background: none; max-width: none;
+  flex: 1; min-width: 0; display: flex; flex-wrap: wrap; justify-content: center;
+  align-content: center; gap: 12px; overflow: hidden;
+}
+.tema-codara .chamada .videos.reuniao .video-tile {
+  width: var(--tile-w, 320px); height: auto; min-height: 0; aspect-ratio: 16 / 9;
+  border-radius: 12px; border: 0; background: #3c4043; box-shadow: none; cursor: pointer;
+  transition: width .2s;
+}
+.tema-codara .chamada .video-tile video { object-fit: cover; background: #3c4043; }
+.tema-codara .chamada .video-tile.falando { outline: 3px solid #8ab4f8; outline-offset: -3px; }
+.tema-codara .chamada .video-tile .sem-video { background: #3c4043 !important; }
+.tema-codara .chamada .video-tile .sem-video img {
+  width: min(30%, 150px); height: auto; aspect-ratio: 1; border-radius: 50%;
+  image-rendering: auto; background: #5f6368;
+}
+.tema-codara .chamada .video-tile .rotulo {
+  left: 12px; right: 12px; bottom: 10px; padding: 0; background: none;
+  font-size: 14px; font-weight: 500; color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, .7);
+}
+.tema-codara .chamada .video-tile .estado { display: none; }
+.video-tile .mic-tile { display: none; }
+.tema-codara .chamada .video-tile.mudo .mic-tile {
+  display: grid; place-items: center; position: absolute; top: 10px; right: 10px;
+  width: 30px; height: 30px; border-radius: 50%; background: rgba(32, 33, 36, .72);
+}
+.tema-codara .chamada .video-tile .mic-tile svg {
+  width: 17px; height: 17px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round;
+}
+/* quem apresenta (ou foi fixado) vai para o palco; os outros, para a tira à direita */
+.tema-codara .chamada .videos.reuniao.com-destaque {
+  display: grid; grid-template-columns: minmax(0, 1fr) 248px; height: 100%;
+  grid-template-rows: repeat(var(--fileiras, 1), minmax(0, 1fr)); align-content: stretch;
+}
+.tema-codara .chamada .videos.reuniao.com-destaque .video-tile.destaque {
+  grid-column: 1; grid-row: 1 / -1; width: 100%; height: 100%; aspect-ratio: auto;
+}
+.tema-codara .chamada .videos.reuniao.com-destaque .video-tile:not(.destaque) {
+  grid-column: 2; width: 248px; max-height: none; align-self: center;
+}
+.tema-codara .chamada .video-tile.destaque video,
+.tema-codara .chamada .video-tile.tela video { object-fit: contain; background: #000; }
+
+/* a barra de baixo vira a do Meet enquanto a chamada está aberta */
+.barra-midia .controles { display: flex; align-items: center; gap: 4px; }
+.barra-midia .info-chamada, .barra-midia .lado-chamada, .barra-midia .so-chamada { display: none; }
+.palco.em-chamada .barra-midia {
+  left: 0; right: 0; bottom: 0; transform: none; border-radius: 0; border: 0;
+  background: #202124; box-shadow: none; backdrop-filter: none; padding: 14px 22px;
+  justify-content: space-between; z-index: 35;
+}
+.palco.em-chamada .barra-midia .info-chamada {
+  display: flex; flex: 1; align-items: center; gap: 12px; color: #e8eaed; font-size: 16px; min-width: 0;
+}
+.palco.em-chamada .barra-midia .info-chamada #nome-chamada { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.info-chamada .barrinha { width: 1px; height: 18px; background: rgba(255, 255, 255, .3); }
+.palco.em-chamada .barra-midia .lado-chamada { display: flex; flex: 1; justify-content: flex-end; gap: 6px; }
+.palco.em-chamada .barra-midia .so-chamada { display: inline-flex; }
+.palco.em-chamada .barra-midia .fora-chamada { display: none; }
+.palco.em-chamada .barra-midia .controles { gap: 10px; }
+.palco.em-chamada .barra-midia .controles .sep { display: none; }
+.palco.em-chamada .barra-midia .controles .icone {
+  width: 48px; height: 48px; border-radius: 50%; background: #3c4043; border: 0; color: #e8eaed;
+}
+.palco.em-chamada .barra-midia .controles .icone:hover { background: #4a4e52; }
+.palco.em-chamada .barra-midia #btn-mic.desligado,
+.palco.em-chamada .barra-midia #btn-cam.desligado { background: #ea4335; color: #fff; }
+.palco.em-chamada .barra-midia #btn-mic:not(.desligado),
+.palco.em-chamada .barra-midia #btn-cam:not(.desligado) { background: #3c4043; }
+.palco.em-chamada .barra-midia #btn-tela.ligado { background: #8ab4f8; color: #202124; }
+.palco.em-chamada .barra-midia .lado-chamada .icone {
+  width: 44px; height: 44px; border-radius: 50%; color: #e8eaed; background: transparent; border: 0;
+}
+.palco.em-chamada .barra-midia .lado-chamada .icone:hover { background: rgba(255, 255, 255, .08); }
+.desligar {
+  width: 64px; height: 48px; border-radius: 24px; background: #ea4335; border: 0; cursor: pointer;
+  display: grid; place-items: center;
+}
+.desligar:hover { background: #d33b2c; }
+.desligar svg { width: 28px; height: 28px; fill: #fff; stroke: none; }
+.palco.em-chamada .acao-reuniao, .palco.em-chamada .dica { display: none; }
+
+/* ---------- foto e arquivo no chat (26/11) ---------- */
+.tema-codara #form-chat .anexar {
+  width: 36px; height: 36px; display: grid; place-items: center; background: none; border: 0;
+  border-radius: 10px; cursor: pointer; flex: none;
+}
+.tema-codara #form-chat .anexar svg {
+  width: 20px; height: 20px; fill: none; stroke: #cfc9d8; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.tema-codara #form-chat .anexar:hover { background: rgba(255, 255, 255, .06); }
+.tema-codara #form-chat .anexar:hover svg { stroke: var(--roxo-claro); }
+.tema-codara .mensagens .com-retrato .anexo-foto,
+.tema-codara .mensagens .com-retrato .anexo-arquivo { grid-column: 2 / -1; justify-self: start; margin-top: 6px; }
+.anexo-foto {
+  padding: 0; border: 0; background: #26212b; border-radius: 10px; overflow: hidden; cursor: zoom-in;
+  max-width: 100%; display: block;
+}
+.anexo-foto img { display: block; max-width: 220px; max-height: 220px; width: auto; height: auto; }
+.anexo-arquivo {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px 8px 8px; border-radius: 10px;
+  background: #26212b; color: #f1eef5; text-decoration: none; max-width: 240px;
+}
+.anexo-arquivo:hover { background: #2f2935; }
+.anexo-ext {
+  width: 38px; height: 44px; border-radius: 6px; background: var(--roxo); color: #fff; flex: none;
+  display: grid; place-items: center; font-size: 10.5px; font-weight: 700; letter-spacing: .02em;
+}
+.anexo-info { display: grid; min-width: 0; }
+.anexo-info b { font-weight: 500; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.anexo-info small { color: var(--fraco); font-size: 11.5px; }
+.tema-codara .mensagens a { color: var(--roxo-claro); word-break: break-all; }
+.bloco.soltando { outline: 2px dashed var(--roxo); outline-offset: -6px; background: rgba(139, 92, 246, .06); }
+.foto-cheia {
+  position: fixed; inset: 0; z-index: 90; background: rgba(10, 8, 12, .92); display: grid;
+  place-items: center; cursor: zoom-out;
+}
+.foto-cheia img { max-width: 92vw; max-height: 86vh; border-radius: 8px; box-shadow: 0 20px 60px rgba(0, 0, 0, .6); }
+.foto-cheia .baixar-foto {
+  position: fixed; top: 18px; right: 22px; color: #fff; background: rgba(255, 255, 255, .12);
+  padding: 8px 14px; border-radius: 999px; text-decoration: none; font-size: 14px;
+}
+
+/* ---------- janela "Áudio e vídeo" (26/11, como a do Meet) ---------- */
+.modal-midia {
+  position: fixed; inset: 0; z-index: 80; background: rgba(8, 6, 10, .6);
+  display: grid; place-items: center;
+}
+.caixa-midia {
+  position: relative; width: min(760px, 94vw); min-height: 440px; display: grid;
+  grid-template-columns: 190px 1fr; background: #1b1720; color: #f3f1f6; border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, .08); box-shadow: 0 30px 80px rgba(0, 0, 0, .6); overflow: hidden;
+}
+.fechar-midia {
+  position: absolute; top: 12px; right: 14px; width: 36px; height: 36px; border-radius: 50%;
+  background: none; border: 0; color: #cfc9d8; font-size: 18px; cursor: pointer;
+}
+.fechar-midia:hover { background: rgba(255, 255, 255, .08); color: #fff; }
+.abas-midia { display: flex; flex-direction: column; gap: 4px; padding: 22px 10px; background: #17141b; }
+.abas-midia button {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 0; border-radius: 0 999px 999px 0;
+  background: none; color: #cfc9d8; font-size: 15px; cursor: pointer; text-align: left;
+}
+.abas-midia button svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.abas-midia button[aria-pressed="true"] { background: rgba(139, 92, 246, .22); color: #fff; }
+.pagina-midia { padding: 26px 30px 24px; overflow-y: auto; max-height: 86vh; }
+.pagina-midia h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: #a78bfa; }
+.pagina-midia h3:not(:first-child) { margin-top: 22px; }
+.linha-midia { display: flex; align-items: center; gap: 12px; }
+.linha-midia select {
+  flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px; font-size: 14px;
+  background: #221e27; color: #f3f1f6; border: 1px solid rgba(255, 255, 255, .12);
+}
+.medidor { width: 90px; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, .1); overflow: hidden; flex: none; }
+.medidor span { display: block; height: 100%; width: 0; background: #22c55e; transition: width .08s; }
+.botao-claro {
+  padding: 9px 16px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .16);
+  background: rgba(255, 255, 255, .06); color: #f3f1f6; font-size: 14px; cursor: pointer;
+}
+.botao-claro:hover { border-color: #8b5cf6; }
+.nota-midia { margin: 14px 0 0; font-size: 12.5px; color: #a7a1b2; min-height: 16px; }
+.previa-camera {
+  margin-top: 12px; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: #2a2530;
+  display: grid; place-items: center; max-height: 240px;
+}
+.previa-camera video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.previa-camera p { margin: 0; color: #cfc9d8; display: flex; gap: 12px; align-items: center; }
+.efeitos { display: flex; gap: 10px; flex-wrap: wrap; }
+.efeito {
+  width: 104px; display: grid; gap: 6px; padding: 6px; border-radius: 12px; cursor: pointer;
+  background: none; border: 2px solid transparent; color: #cfc9d8; font-size: 12px; text-align: center;
+}
+.efeito .amostra { display: block; height: 58px; border-radius: 8px; background: #2a2530; position: relative; overflow: hidden; }
+.efeito[aria-pressed="true"] { border-color: #8b5cf6; color: #fff; }
+.efeito-nenhum .amostra::after { content: "⊘"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 22px; color: #a7a1b2; }
+.efeito-leve .amostra { background: url(/static/assets/codara/fundo.png) center / cover; filter: blur(2px); }
+.efeito-forte .amostra { background: url(/static/assets/codara/fundo.png) center / cover; filter: blur(6px); }
+.efeito-escritorio .amostra { background: url(/static/assets/codara/fundo.png) center / cover; }

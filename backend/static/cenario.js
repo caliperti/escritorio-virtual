@@ -102,11 +102,19 @@ const Cenario = {
 
   PASSO: 8,
 
+  /** Trajeto com 1 px de folga das formas; se não houver (a pessoa está num
+   *  ponto apertado, como o corredor entre o vidro das salas e as cadeiras de
+   *  trás da mesa), tenta de novo sem folga em vez de desistir no meio. */
   caminho(x0, y0, x1, y1, livreDeVerdade) {
-    // O trajeto passa com 1 px de folga das formas: colado nelas, o boneco
-    // raspava na quina (um décimo de pixel de arredondamento) e travava ali.
-    // O ponto final pode ser colado (é onde a pessoa clicou).
-    const folga = (Jogo.raioAvatar || 11) + 1;
+    const r = Jogo.raioAvatar || 11;
+    return this._caminho(x0, y0, x1, y1, livreDeVerdade, r + 1)
+        || this._caminho(x0, y0, x1, y1, livreDeVerdade, r);
+  },
+
+  _caminho(x0, y0, x1, y1, livreDeVerdade, folga) {
+    // Colado nas formas, o boneco raspava na quina (um décimo de pixel de
+    // arredondamento) e travava ali. O ponto final pode ser colado (é onde a
+    // pessoa clicou).
     const livre = (x, y) => livreDeVerdade(x, y) && !this.bate(x, y, folga);
     const P = this.PASSO;
     const L = Math.ceil(this.dados.largura / P), A = Math.ceil(this.dados.altura / P);

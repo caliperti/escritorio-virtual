@@ -508,6 +508,28 @@ class Escritorio:
             return None
         return min(achadas, key=lambda z: (z["x2"] - z["x1"] + 1) * (z["y2"] - z["y1"] + 1))
 
+    def vincular_dono_por_nome(self, nome: str, chave: str) -> bool:
+        """Diretoria com dono pelo NOME da conta (26/11): a conta "Gustavo" entra
+        e a sala "Gustavo" vira dela, sem e-mail em configuração. Nome de membro
+        é único no escritório. Por segurança só vale para sala SEM dono: uma
+        sala nunca troca de dono por aqui (alguém que pegasse o nome depois de
+        uma troca de nome não herdaria a sala)."""
+        from contas import _chave_nome
+        if not chave:
+            return False
+        eu = _chave_nome(nome or "")
+        mudou = False
+        for z in self.zonas:
+            fixo = z.get("dono_nome_fixo")
+            if fixo and not z.get("dono") and _chave_nome(fixo) == eu:
+                z["dono"] = chave
+                z["dono_nome"] = fixo
+                z["dono_fixo"] = True
+                mudou = True
+        if mudou:
+            self.salvar()
+        return mudou
+
     def _sentado_na(self, zona_id: str, px: float, py: float) -> bool:
         a = self.assento_do_cenario(px, py)
         return bool(a and a.get("zona") == zona_id)

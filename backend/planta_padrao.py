@@ -34,7 +34,7 @@ referencia-codara/backup/planta-codara-6-lugares.py.
 # o que está gravado e, se for mais nova, remonta o escritório. Sem isso, o mapa
 # salvo (ou restaurado do espelho) vence para sempre e a planta nova nunca
 # aparece — foi exatamente o que aconteceu.
-VERSAO = 17
+VERSAO = 18
 
 ARTE_L, ARTE_A = 1264, 848                  # tamanho da arte, em px do mundo
 LARGURA, ALTURA = 40, 27                    # em tiles de 32 (cobre a arte)
@@ -52,7 +52,10 @@ DIRETORIAS = [
     ("diretoria2", "Christian", (16, 5, 26, 10), (814, 862, 340), (516, 44),
      {"mesa": (590, 800), "vaso": (534, 569), "visitas": [(605, 682), (712, 789)], "dono": 701}),
     ("diretoria3", "Felipe Vargas", (28, 5, 36, 10), (1133, 1179, 340), (904, 44),
-     {"mesa": (959, 1152), "vaso": (914, 941), "visitas": [(985, 1060), (1081, 1150)], "dono": 1050}),
+     {"mesa": (959, 1148), "vaso": (914, 941), "visitas": [(985, 1060), (1081, 1148)], "dono": 1050}),
+    # (a mesa e a poltrona da direita bloqueiam até 1148, não até a borda do
+    #  desenho: o corredor até a porta do Felipe ficava com 27 px e o boneco
+    #  às vezes travava nele)
 ]
 
 # ---------------------------------------------------------------- bloqueios

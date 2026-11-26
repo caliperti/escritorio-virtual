@@ -44,15 +44,16 @@ const Jogo = {
 
 /** Monta os botões de aparência e a prévia andando. Usado duas vezes: na tela
  *  de entrada e no modal de editar dentro da sala. */
+// 26/11: só personagem 3D (o boneco de pixel e as abas de roupa saíram)
 const ABAS = [
-  ['Corpo', ['corpo', 'pele']],
-  ['Cabelo', ['cabelo', 'corCabelo', 'barba']],
-  ['Roupa', ['camisaTipo', 'corCamisa', 'calcaTipo', 'corCalca']],
-  ['Calçado', ['sapatoTipo', 'corSapato', 'chapeuTipo']],
+  ['Personagem 3D', ['personagem']],
 ];
 
-function criarEditor(canvas, container, aparenciaInicial) {
+function criarEditor(canvas, container, aparenciaInicial, opcoes = {}) {
   let ap = Boneco.normalizar(aparenciaInicial);
+  // na tela de login a escolha do personagem 3D não aparece (a tela de entrada
+  // fica como sempre foi); ela mora no "Editar meu boneco", dentro do escritório
+  const ABAS_AQUI = opcoes.semPersonagem ? ABAS.filter(([, c]) => !c.includes('personagem')) : ABAS;
   const ctx = canvas.getContext('2d');
   const botoes = {};
   const grupos = {};
@@ -61,7 +62,7 @@ function criarEditor(canvas, container, aparenciaInicial) {
   const barra = document.createElement('div');
   barra.className = 'abas';
   container.appendChild(barra);
-  ABAS.forEach(([titulo, chaves], i) => {
+  ABAS_AQUI.forEach(([titulo, chaves], i) => {
     const aba = document.createElement('button');
     aba.type = 'button';
     aba.textContent = titulo;
@@ -96,9 +97,11 @@ function criarEditor(canvas, container, aparenciaInicial) {
   }
 
   for (const chave of Object.keys(Boneco.CATALOGO)) {
+    if (opcoes.semPersonagem && chave === 'personagem') continue;
+    if (!ABAS_AQUI.some(([, c]) => c.includes(chave))) continue;   // sem as do boneco de pixel
     const grupo = document.createElement('div');
     grupo.className = 'grupo';
-    grupo.hidden = !ABAS[0][1].includes(chave);
+    grupo.hidden = !ABAS_AQUI[0][1].includes(chave);
     grupos[chave] = grupo;
     const titulo = document.createElement('div');
     titulo.className = 'titulo';
@@ -186,10 +189,11 @@ function aparenciaSalva() {
 /* Os dois bonecos do visitante. São fixos: um de corpo largo e um esguio, cada
    um com uma cara própria, para dois visitantes na sala não ficarem idênticos
    ao ponto de ninguém distinguir quem é quem. */
+// visitante escolhe entre o homem e a mulher 3D genéricos (personagens.js)
 const BONECOS_VISITANTE = {
-  homem: { corpo: 'm', pele: '#e5b487', cabelo: 'parted', corCabelo: '#4a2f1b',
+  homem: { personagem: 'barbudo', corpo: 'm', pele: '#e5b487', cabelo: 'parted', corCabelo: '#4a2f1b',
            barba: '5oclock_shadow', corCamisa: '#4f7fd9', corCalca: '#3d4457' },
-  mulher: { corpo: 'f', pele: '#e5b487', cabelo: 'bob', corCabelo: '#241a12',
+  mulher: { personagem: 'mulher', corpo: 'f', pele: '#e5b487', cabelo: 'bob', corCabelo: '#241a12',
             barba: 'nenhuma', corCamisa: '#d94f5c', corCalca: '#2f3a52' },
 };
 let bonecoVisitante = 'homem';
@@ -201,6 +205,7 @@ function montarBonecosVisitante() {
     const qual = b.dataset.boneco;
     const img = b.querySelector('img');
     const pintar = () => { img.src = Boneco.retrato(BONECOS_VISITANTE[qual]) || ''; };
+    pintar();                                  // personagem 3D: o retrato já existe
     Boneco.quandoCarregar(pintar);
     pintar();
     b.onclick = () => {
@@ -224,7 +229,8 @@ fetch('/catalogo').then((r) => r.json()).then((d) => {
 
 const editorEntrada = criarEditor(
   document.getElementById('previa'), document.getElementById('opcoes'),
-  localStorage.getItem('escritorio:aparencia') ? aparenciaSalva() : Boneco.aleatoria());
+  localStorage.getItem('escritorio:aparencia') ? aparenciaSalva() : Boneco.aleatoria(),
+  { semPersonagem: true });
 
 document.getElementById('btn-sortear').onclick = () => editorEntrada.sortear();
 montarBonecosVisitante();
@@ -636,7 +642,8 @@ function receber(msg) {
     case 'chat': {
       escreverChat(msg);
       const p = msg.proprio ? Jogo.eu : Jogo.pessoas.get(msg.de);
-      if (p) p.bolha = { texto: msg.texto, ate: Date.now() + DURACAO_BOLHA };
+      const legenda = msg.anexo ? (msg.anexo.imagem ? '📷 Foto' : '📎 ' + msg.anexo.nome) : '';
+      if (p) p.bolha = { texto: msg.texto || legenda, ate: Date.now() + DURACAO_BOLHA };
       break;
     }
 
@@ -738,6 +745,12 @@ function receberMapa(mapa) {
   Jogo.alturaPx = mapa.altura * mapa.tile;
   // Cenário (26/11): a arte pronta manda no tamanho do mundo e na colisão
   Cenario.configurar(mapa);
+  // "Editar o escritório" perdeu o propósito com a arte pronta (26/11): parede,
+  // piso e tamanho são do desenho, e móvel solto no meio dele destoa. O menu da
+  // sala (clique na plaquinha: nome, tranca) continua.
+  const botaoEditor = document.getElementById('btn-editor');
+  if (botaoEditor) botaoEditor.hidden = Cenario.ativo();
+  if (Cenario.ativo() && typeof Editor !== 'undefined' && Editor.ativo) Editor.alternar();
   if (Cenario.ativo()) {
     Jogo.larguraPx = mapa.cenario.largura;
     Jogo.alturaPx = mapa.cenario.altura;
@@ -767,6 +780,7 @@ function iniciarSala(msg) {
   Jogo.eu = { ...msg.voce, xr: msg.voce.x, yr: msg.voce.y, bolha: null, reacao: null };
   receberMapa(msg.mapa);
   Jogo.config = msg.config;
+  Jogo.chaveEnvio = msg.chave_envio || '';        // para mandar foto/arquivo no chat
   Jogo.visitante = !!msg.visitante;
   Jogo.admin = !!msg.admin;
   if (Jogo.admin) {
@@ -1006,7 +1020,8 @@ document.addEventListener('keydown', (e) => {
   if (e.key.toLowerCase() === 'v') alternarCam();
   if (e.key.toLowerCase() === 't') alternarTela();
   if (e.key.toLowerCase() === 'b') abrirEditor();
-  if (e.key.toLowerCase() === 'e' && !Jogo.visitante) Editor.alternar();
+  // com o escritório desenhado (cenário) não há o que editar: a planta é a arte
+  if (e.key.toLowerCase() === 'e' && !Jogo.visitante && !Cenario.ativo()) Editor.alternar();
   if (e.key === '0') {
     if (Cenario.ativo()) { localStorage.removeItem('escritorio:zoom-manual'); definirZoom(zoomEnquadrar()); }
     else definirZoom(1.5);
@@ -1463,6 +1478,7 @@ function atualizar() {
     desenharListaPessoas();
     ofereceSala(zona);
     abrirMidiaDaSala(zona);
+    atualizarRelogioChamada();
   }
   atualizarBotaoTrancar(zona);
 }
@@ -1521,6 +1537,7 @@ const salasOferecidas = new Set();
 /** Entrou numa sala livre? ela se oferece. Antes a única forma de reivindicar
  *  era descobrir que a plaquinha flutuante era clicável, e ninguém descobre. */
 function ofereceSala(zona) {
+  if (Cenario.ativo()) return;      // diretoria com dono pela conta (26/11): ninguém "pega" sala
   if (!zona || !zona.privada || zona.sem_dono || Jogo.visitante) return;
   if (zona.dono_nome) {                      // já tem dono
     if (zona.dono_nome === Jogo.eu.nome && !salasOferecidas.has('minha:' + zona.id)) {
@@ -1706,6 +1723,7 @@ function cuidarDasChamadas() {
     if (!Jogo.pessoas.has(id)) foraDesde.delete(id);
   }
   Midia.vigiar();                 // chamada que não liga em 15 s é refeita
+  cuidarDaTelaDeChamada(eu);
   avisarQualidade();
   desenharListaPessoas();
 }
@@ -1722,11 +1740,10 @@ function avisarQualidade() {
   qualidadeAvisada = agora;
   if (!agora || !antes) return;                  // acabou de entrar ou de sair da roda
   if (agora.encolher > antes.encolher) {
-    escreverChat({ sistema: true, texto:
-      `Conversa de ${Midia.pares.size + 1} pessoas: a imagem foi reduzida para o som `
-      + 'não falhar. Desligar a câmera de quem não está falando ajuda.' });
+    Avisos.anotar(`Conversa de ${Midia.pares.size + 1} pessoas: a imagem foi reduzida para o som `
+      + 'não falhar. Desligar a câmera de quem não está falando ajuda.');
   } else if (agora.encolher < antes.encolher && agora.encolher === 1) {
-    escreverChat({ sistema: true, texto: 'Roda menor: a imagem voltou ao tamanho cheio.' });
+    Avisos.anotar('Roda menor: a imagem voltou ao tamanho cheio.');
   }
 }
 
@@ -2181,6 +2198,8 @@ function desenharAvatar(p, souEu) {
  *  verde de "está aqui", o microfone fechado quando está mudo, e o anel de fala
  *  acendendo o ponto. As reações sobem a partir dele. */
 function alturaDaCabeca(p, sentado, k) {
+  const doPersonagem = Personagens.topo(p.aparencia, p.xr, p.yr, 2 * k, sentado, p.direcao);
+  if (doPersonagem !== null) return doPersonagem;
   const lado = 64 * 2 * k * 0.46;
   const topo = p.yr + 13 - lado * (sentado ? 0.93 : 0.955);
   return topo + lado * 0.16;                 // o quadro do LPC tem folga em cima
@@ -2426,6 +2445,8 @@ function abrirEditor() {
     return;
   }
   if (!editorSala) {
+    // na escolha do personagem 3D só aparecem o seu e os livres
+    Boneco.CATALOGO.personagem = Personagens.permitidos(Jogo.eu.nome, Jogo.visitante);
     editorSala = criarEditor(document.getElementById('previa-editar'),
                              document.getElementById('opcoes-editar'), Jogo.eu.aparencia);
     document.getElementById('btn-sortear-editar').onclick = () => editorSala.sortear();
@@ -2500,6 +2521,7 @@ function montarTiles() {
       tile.dataset.id = id;
       tile.innerHTML = `<video autoplay playsinline muted></video>
         <div class="sem-video"></div>
+        <span class="mic-tile" title="Microfone desligado"><svg viewBox="0 0 24 24"><path d="M9 9v3a3 3 0 0 0 4.9 2.3"/><path d="M15 11.4V6a3 3 0 0 0-5.7-1.3"/><path d="M5 11a7 7 0 0 0 10.5 6"/><path d="M19 11a7 7 0 0 1-.7 3"/><path d="M12 18v3"/><path d="M3 3l18 18"/></svg></span>
         <div class="rotulo"><span class="nome"></span><span class="estado"></span></div>`;
       tile.onclick = () => {
         // Fora da grade, clicar em alguém abre a reunião com essa pessoa no palco.
@@ -2517,7 +2539,7 @@ function montarTiles() {
     return tile;
   };
 
-  const meuStream = Midia.telaStream || Midia.streamLocal;
+  const meuStream = Midia.streamDeExibicao();     // com o efeito de fundo, se tiver
   if (meuStream) {
     const nome = (Jogo.eu ? Jogo.eu.nome : 'Você') + (Midia.telaStream ? ' — sua tela' : ' (você)');
     const tile = criar('eu', nome, Jogo.eu ? Jogo.eu.cor : '#333', Jogo.eu && Jogo.eu.aparencia);
@@ -2527,6 +2549,7 @@ function montarTiles() {
     v.style.display = temVideo ? '' : 'none';
     tile.querySelector('.sem-video').style.display = temVideo ? 'none' : 'grid';
     tile.querySelector('.estado').textContent = Midia.ligado('audio') ? '' : '🔇';
+    tile.classList.toggle('mudo', !Midia.ligado('audio'));
     tile.classList.toggle('tela', !!Midia.telaStream);
     tile.classList.toggle('compartilhando', !!Midia.telaStream);
     vivos.add('eu');
@@ -2544,6 +2567,7 @@ function montarTiles() {
     v.style.display = temVideo ? '' : 'none';
     tile.querySelector('.sem-video').style.display = temVideo ? 'none' : 'grid';
     tile.querySelector('.estado').textContent = p.mudo ? '🔇' : '';
+    tile.classList.toggle('mudo', !!p.mudo);
     tile.classList.toggle('tela', !!p.tela);
     tile.classList.toggle('compartilhando', !!p.tela);
     vivos.add(id);
@@ -2552,7 +2576,7 @@ function montarTiles() {
   for (const tile of [...caixa.children]) {
     if (!vivos.has(tile.dataset.id)) tile.remove();
   }
-  if (Reuniao.ativa) atualizarDestaque();
+  if (Reuniao.ativa) { atualizarDestaque(); arrumarGrade(); }
 }
 
 /* ---------- modo reunião ----------
@@ -2578,73 +2602,138 @@ function fecharReuniao() {
   Reuniao.ativa = false;
   Reuniao.fixado = null;
   Reuniao.destaque = null;
+  // fechou na mão (Esc, "voltar ao escritório") ainda sentado: não reabre
+  // sozinha até a pessoa sair da mesa
+  if (Jogo.chamadaAuto) Jogo.chamadaDispensada = true;
+  Jogo.chamadaAuto = false;
   aplicarReuniao();
+}
+
+/** Sentado na mesa de reunião, a tela de chamada abre sozinha quando tem mais
+ *  alguém sentado nela (sozinho, abrir uma chamada só com o próprio vídeo
+ *  parecia defeito). Saiu da mesa, ela fecha. */
+function cuidarDaTelaDeChamada(eu) {
+  const z = zonaDe(eu.x, eu.y);
+  if (z && z.so_sentado) {
+    const outros = [...Jogo.pessoas.values()].some((p) => {
+      const zp = zonaDe(p.x, p.y);
+      return zp && zp.id === z.id;
+    });
+    if (outros && !Reuniao.ativa && !Jogo.chamadaDispensada) { abrirReuniao(); Jogo.chamadaAuto = true; }
+  } else {
+    if (Jogo.chamadaAuto && Reuniao.ativa) fecharReuniao();
+    Jogo.chamadaDispensada = false;
+  }
 }
 
 function alternarReuniao() {
   if (Reuniao.ativa) fecharReuniao(); else abrirReuniao();
 }
 
+/* ---------- tela de chamada, estilo Google Meet (26/11) ----------
+ * O #videos sai do painel e vai para a tela de chamada, por cima do escritório.
+ * Fechar (Esc, "voltar ao escritório") traz ele de volta: a chamada continua,
+ * só a tela muda. A barra de baixo vira a do Meet: hora e sala à esquerda,
+ * controles no meio com o botão vermelho de sair, pessoas e chat à direita. */
 function aplicarReuniao() {
   const caixa = document.getElementById('videos');
   encolherTiles();
+  const destino = Reuniao.ativa ? document.getElementById('palco-chamada')
+                                : document.getElementById('lateral');
+  if (caixa.parentElement !== destino) {
+    if (Reuniao.ativa) destino.appendChild(caixa);
+    else destino.insertBefore(caixa, destino.firstChild);
+    // mudar o vídeo de lugar pausa ele (o som não: mora nos <audio> da Midia)
+    for (const v of caixa.querySelectorAll('video')) v.play().catch(() => {});
+  }
+  document.getElementById('chamada').hidden = !Reuniao.ativa;
+  document.querySelector('.palco').classList.toggle('em-chamada', Reuniao.ativa);
   caixa.classList.toggle('reuniao', Reuniao.ativa);
   document.getElementById('btn-reuniao').classList.toggle('ativo', Reuniao.ativa);
-  document.getElementById('btn-fechar-reuniao').hidden = !Reuniao.ativa;
+  document.getElementById('btn-fechar-reuniao').hidden = true;   // a barra da chamada tem o "voltar"
+  atualizarRelogioChamada();
   if (!Reuniao.ativa) {
     caixa.classList.remove('com-destaque');
     for (const t of caixa.children) t.classList.remove('destaque');
+    caixa.style.removeProperty('--tile-w');
     return;
   }
   atualizarDestaque();
+  arrumarGrade();
 }
 
-/** Escolhe quem fica no palco: quem foi fixado > quem apresenta > quem fala.
- *  A troca por voz exige 1s de fala estável, senão o palco piscaria a cada
- *  "uhum" de quem está ouvindo. */
+/** Palco grande só quando alguém apresenta a tela ou quando você fixa uma
+ *  pessoa (clique no quadro). Quem fala ganha a borda acesa, sem a tela pular
+ *  de um para outro a cada "uhum" — como o Meet faz na grade. */
 function atualizarDestaque() {
   if (!Reuniao.ativa) return;
   const caixa = document.getElementById('videos');
   const tiles = [...caixa.children];
-  let alvo = null;
-
-  // Alguém que ACABOU de abrir a tela leva o palco na hora, mesmo que você
-  // tivesse prendido outra pessoa — é o motivo de estar todo mundo ali. Depois
-  // disso você pode clicar em quem quiser, que a sua escolha volta a valer.
-  const apresentador = (tiles.find((t) => t.classList.contains('tela')) || {}).dataset;
-  const idApresentando = apresentador ? apresentador.id : null;
+  const apresentador = tiles.find((t) => t.classList.contains('tela'));
+  const idApresentando = apresentador ? apresentador.dataset.id : null;
+  // quem ACABOU de abrir a tela leva o palco; depois o clique de cada um vale
   if (idApresentando && idApresentando !== Reuniao._apresentador) Reuniao.fixado = idApresentando;
   Reuniao._apresentador = idApresentando;
-
-  if (Reuniao.fixado && tiles.some((t) => t.dataset.id === Reuniao.fixado)) {
-    alvo = Reuniao.fixado;
-  } else {
-    Reuniao.fixado = null;
-    const apresentando = tiles.find((t) => t.classList.contains('tela'));
-    if (apresentando) {
-      alvo = apresentando.dataset.id;
-    } else {
-      let melhor = null, maior = 0.15;
-      for (const t of tiles) {
-        const n = Midia.nivel(t.dataset.id);
-        if (n > maior) { maior = n; melhor = t.dataset.id; }
-      }
-      const agora = Date.now();
-      if (melhor && melhor !== Reuniao._candidato) { Reuniao._candidato = melhor; Reuniao._desde = agora; }
-      alvo = (melhor && agora - Reuniao._desde >= 1000) ? melhor : Reuniao.destaque;
-      if (alvo && !tiles.some((t) => t.dataset.id === alvo)) alvo = null;   // saiu da conversa
-    }
-  }
-
+  if (Reuniao.fixado && !tiles.some((t) => t.dataset.id === Reuniao.fixado)) Reuniao.fixado = null;
+  const alvo = Reuniao.fixado || idApresentando || null;
+  const mudou = alvo !== Reuniao.destaque;
   Reuniao.destaque = alvo;
   for (const t of tiles) t.classList.toggle('destaque', t.dataset.id === alvo);
   caixa.classList.toggle('com-destaque', !!alvo && tiles.length > 1);
-  // Quantas fileiras a tira lateral tem: o CSS abre uma linha da grade para
-  // cada cartão e o palco ocupa todas. Era um "span 99" fixo — 99 linhas
-  // davam um palco de 980px numa janela de 820, e os cartões da tira, com
-  // 10px de linha cada, se empilhavam uns por cima dos outros.
+  // quantas fileiras a tira lateral tem: o palco ocupa todas
   caixa.style.setProperty('--fileiras', Math.max(1, tiles.length - 1));
+  if (mudou) arrumarGrade();
 }
+
+/** O maior quadro 16:9 que cabe: testa de 1 a N colunas, como a grade do Meet. */
+function arrumarGrade() {
+  if (!Reuniao.ativa) return;
+  const caixa = document.getElementById('videos');
+  const area = document.getElementById('palco-chamada').getBoundingClientRect();
+  const n = Math.max(1, caixa.children.length), vao = 12;
+  if (!area.width || !area.height) return;
+  let melhor = 0;
+  for (let cols = 1; cols <= n; cols++) {
+    const linhas = Math.ceil(n / cols);
+    const w = Math.min((area.width - vao * (cols - 1)) / cols,
+                       ((area.height - vao * (linhas - 1)) / linhas) * 16 / 9);
+    melhor = Math.max(melhor, w);
+  }
+  caixa.style.setProperty('--tile-w', Math.floor(melhor) + 'px');
+}
+window.addEventListener('resize', arrumarGrade);
+
+function atualizarRelogioChamada() {
+  const relogio = document.getElementById('relogio-chamada');
+  if (!relogio) return;
+  relogio.textContent = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const z = Jogo.eu && zonaDe(Jogo.eu.x, Jogo.eu.y);
+  document.getElementById('nome-chamada').textContent = z && z.privada ? z.nome : 'Conversa por perto';
+}
+setInterval(atualizarRelogioChamada, 15000);
+
+/** O botão vermelho: sai da chamada de verdade. Sentado na mesa, levanta (e a
+ *  bolha da reunião acaba para você); em conversa de salão, só fecha a tela. */
+function sairDaChamada() {
+  const s = Cenario.ativo() && sentadoAgora();
+  if (s && s.zona) { levantar(); Jogo.caminho = null; }
+  fecharReuniao();
+}
+
+function abrirPainelEm(bloco, focar) {
+  alternarLateral(true);
+  const b = document.getElementById(bloco);
+  if (b && b.classList.contains('recolhido')) {
+    const t = b.querySelector('.titulo-bloco');
+    if (t) t.click();
+  }
+  if (focar) document.getElementById(focar).focus();
+}
+document.getElementById('btn-desligar').onclick = sairDaChamada;
+document.getElementById('btn-reagir-chamada').onclick = () => reagir();
+document.getElementById('btn-chamada-mapa').onclick = fecharReuniao;
+document.getElementById('btn-chamada-pessoas').onclick = () => abrirPainelEm('bloco-pessoas');
+document.getElementById('btn-chamada-chat').onclick = () => abrirPainelEm('bloco-chat', 'campo-chat');
 
 function encolherTiles() {
   document.querySelectorAll('.video-tile.expandido').forEach((t) => t.classList.remove('expandido'));
@@ -2750,7 +2839,10 @@ function escreverChat(msg) {
     div.classList.add('com-retrato');
     div.innerHTML = `<img class="retrato" src="${autor ? Boneco.retrato(autor.aparencia) : ''}" alt="">
       <span class="quem">${escapar(msg.nome)}</span>
-      <span class="hora">${hora} · ${marca}${msg.proprio && msg.escopo === 'perto' ? ' · ' + msg.ouviram + ' ouviram' : ''}</span><br><span class="texto-msg">${escapar(msg.texto)}</span>`;
+      <span class="hora">${hora} · ${marca}${msg.proprio && msg.escopo === 'perto' ? ' · ' + msg.ouviram + ' ouviram' : ''}</span><br>${
+        msg.anexo ? htmlDoAnexo(msg.anexo) : ''}${msg.texto ? `<span class="texto-msg">${comLinks(msg.texto)}</span>` : ''}`;
+    const foto = div.querySelector('.anexo-foto img');
+    if (foto) foto.addEventListener('load', () => { if (noFim || msg.proprio) caixa.scrollTop = caixa.scrollHeight; });
   }
   if (msg.sistema) Avisos.anotar(msg.texto);
   caixa.appendChild(div);
@@ -2831,6 +2923,92 @@ for (const botao of document.querySelectorAll('.titulo-bloco')) {
     aplicar(recolher);
   };
 }
+
+/* ---------- foto, arquivo e link no chat (26/11, como no Meet e no WhatsApp) ---------- */
+function comLinks(texto) {
+  // escapa primeiro; só então vira link o que for http(s)
+  return escapar(texto).replace(/\bhttps?:\/\/[^\s<]+[^\s<.,;:!?)\]'"]/g,
+    (u) => `<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`);
+}
+
+function tamanhoLegivel(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
+  return (n / 1024 / 1024).toFixed(1).replace('.', ',') + ' MB';
+}
+
+function htmlDoAnexo(a) {
+  const url = escapar(a.url), nome = escapar(a.nome);
+  if (a.imagem) {
+    return `<button type="button" class="anexo-foto" data-url="${url}" title="Abrir a foto"><img src="${url}" alt="${nome}" loading="lazy"></button>`;
+  }
+  const ext = (a.nome.split('.').pop() || '').slice(0, 4).toUpperCase();
+  return `<a class="anexo-arquivo" href="${url}" download="${nome}">
+    <span class="anexo-ext">${escapar(ext || 'ARQ')}</span>
+    <span class="anexo-info"><b>${nome}</b><small>${tamanhoLegivel(a.tamanho)} · baixar</small></span></a>`;
+}
+
+// foto em tela cheia ao clicar (clique ou Esc fecha)
+document.getElementById('mensagens').addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('.anexo-foto');
+  if (!b) return;
+  const fundo = document.createElement('div');
+  fundo.className = 'foto-cheia';
+  fundo.innerHTML = `<img src="${b.dataset.url}" alt=""><a href="${b.dataset.url}" download class="baixar-foto">Baixar</a>`;
+  fundo.onclick = (ev) => { if (ev.target.tagName !== 'A') fundo.remove(); };
+  document.body.appendChild(fundo);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') document.querySelectorAll('.foto-cheia').forEach((x) => x.remove());
+}, true);
+
+async function enviarArquivos(lista) {
+  const campo = document.getElementById('campo-chat');
+  for (const arq of [...lista]) {
+    if (arq.size > 15 * 1024 * 1024) {
+      escreverChat({ sistema: true, texto: `"${arq.name}" passa de 15 MB e não foi enviado.` });
+      continue;
+    }
+    escreverChat({ sistema: true, texto: `Enviando "${arq.name || 'foto'}"…` });
+    try {
+      const r = await fetch('/chat/anexo', { method: 'POST', body: arq, headers: {
+        'X-Chave': Jogo.chaveEnvio || '', 'X-Nome': encodeURIComponent(arq.name || 'foto.png'),
+        'Content-Type': 'application/octet-stream' } });
+      const d = await r.json();
+      if (!r.ok || d.erro) throw new Error(d.erro || 'falhou');
+      // o texto que estava escrito vai junto, como legenda (igual no WhatsApp)
+      enviar({ tipo: 'chat', texto: campo.value.trim(), escopo: document.getElementById('escopo-chat').value,
+               anexo: d.id });
+      campo.value = '';
+    } catch (err) {
+      escreverChat({ sistema: true, texto: `Não consegui enviar "${arq.name}": ${err.message}` });
+    }
+  }
+}
+document.getElementById('btn-anexo').onclick = () => document.getElementById('arquivo-chat').click();
+document.getElementById('arquivo-chat').onchange = (e) => {
+  enviarArquivos(e.target.files);
+  e.target.value = '';
+};
+// colar foto (Ctrl+V / Cmd+V) no campo do chat
+document.getElementById('campo-chat').addEventListener('paste', (e) => {
+  const arquivos = [...(e.clipboardData ? e.clipboardData.files : [])];
+  if (arquivos.length) { e.preventDefault(); enviarArquivos(arquivos); }
+});
+// arrastar para dentro do chat
+const blocoChat = document.getElementById('bloco-chat');
+blocoChat.addEventListener('dragover', (e) => {
+  if (![...e.dataTransfer.types].includes('Files')) return;
+  e.preventDefault();
+  blocoChat.classList.add('soltando');
+});
+blocoChat.addEventListener('dragleave', (e) => { if (!blocoChat.contains(e.relatedTarget)) blocoChat.classList.remove('soltando'); });
+blocoChat.addEventListener('drop', (e) => {
+  blocoChat.classList.remove('soltando');
+  if (!e.dataTransfer.files.length) return;
+  e.preventDefault();
+  enviarArquivos(e.dataTransfer.files);
+});
 
 document.getElementById('form-chat').addEventListener('submit', (e) => {
   e.preventDefault();

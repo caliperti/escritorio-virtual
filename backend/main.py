@@ -1,4 +1,5 @@
 import base64
+import mimetypes
 import hashlib
 import hmac
 import json
@@ -10,10 +11,12 @@ from pathlib import Path
 
 from typing import Optional
 
-from fastapi import FastAPI, File, Form, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi import FastAPI, File, Form, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+import anexos
+import personagens
 import contas as mod_contas
 import mapa
 import nuvem
@@ -27,6 +30,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 log = logging.getLogger("escritorio")
 
 STATIC_DIR = Path(__file__).parent / "static"
+# O desfoque de fundo (static/fundo.js) carrega um módulo .mjs e um .wasm: com o
+# tipo errado o navegador recusa os dois. O Python 3.9 não conhece nenhum deles.
+mimetypes.add_type("text/javascript", ".mjs")
+mimetypes.add_type("application/wasm", ".wasm")
 
 # Sala aberta por padrão (uso interno). Com SENHA definida — o caso de deixar o
 # endereço na internet — ninguém entra sem ela.
@@ -173,7 +180,9 @@ def _texto(valor) -> str:
 # mais novo entre os do site, calculado a cada pedido do index (é barato: são
 # poucos arquivos e o index é pedido uma vez por visita).
 ARQUIVOS_DO_SITE = ("estilo.css", "codara.css", "app.js", "editor.js", "objetos.js",
-                    "boneco.js", "midia.js", "cenario.js", "index.html")
+                    "boneco.js", "midia.js", "cenario.js", "personagens.js", "fundo.js",
+                    "ajustes-midia.js",
+                    "assets/personagens/lista.js", "index.html")
 
 
 def _carimbo() -> str:
@@ -189,6 +198,41 @@ def _carimbo() -> str:
 async def raiz():
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     return HTMLResponse(html.replace("?v=VERSAO", "?v=" + _carimbo()))
+
+
+@app.post("/chat/anexo")
+async def anexo_enviar(request: Request):
+    """Foto ou arquivo para o chat (26/11). Quem manda precisa estar NA SALA: a
+    chave de envio vem no `bemvindo` de cada conexão, e morre com ela."""
+    chave = request.headers.get("x-chave") or ""
+    quem = next((p for p in sala.participantes.values() if chave and p.chave_envio == chave), None)
+    if not quem:
+        return JSONResponse({"erro": "Entre no escritório para mandar arquivos."}, status_code=403)
+    tamanho = int(request.headers.get("content-length") or 0)
+    if tamanho > anexos.MAX_ARQUIVO:
+        return JSONResponse({"erro": "Arquivo grande demais (máximo 15 MB)."}, status_code=413)
+    corpo = await request.body()
+    from urllib.parse import unquote
+    try:
+        a = anexos.guardar(corpo, unquote(request.headers.get("x-nome") or "arquivo"))
+    except ValueError as e:
+        return JSONResponse({"erro": str(e)}, status_code=400)
+    log.info("anexo: %s mandou %s (%d KB)", quem.nome, a["nome"], a["tamanho"] // 1024)
+    return a
+
+
+@app.get("/anexo/{id_}/{nome}")
+async def anexo_abrir(id_: str, nome: str):
+    a = anexos.ler(id_)
+    if not a:
+        return JSONResponse({"erro": "Esse arquivo não existe mais (os anexos duram 24 horas)."},
+                            status_code=404)
+    cabecalho = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=86400"}
+    if a["imagem"]:
+        return FileResponse(a["caminho"], media_type=a["tipo"], headers=cabecalho)
+    # qualquer outra coisa é download: um .html ou .svg não roda na página
+    return FileResponse(a["caminho"], media_type="application/octet-stream",
+                        filename=a["nome"], headers=cabecalho)
 
 
 @app.get("/config")
@@ -501,6 +545,13 @@ async def websocket_sala(ws: WebSocket):
         # A sala reivindicada é do E-MAIL, não do nome. Assim trocar o nome não
         # deixa a sala órfã, que era um problema de verdade antes.
         eu.conta = "" if visitante else mod_contas._chave(conta.get("email") or conta["nome"])
+        # personagem 3D vinculado à conta: o dono já entra com o seu; o dos
+        # outros ninguém usa (personagens.py)
+        eu.aparencia = personagens.ajustar(eu.aparencia, eu.nome, eu.visitante)
+        # a diretoria com o nome desta conta vira dela (só se ainda não tem dono)
+        if not visitante and escritorio.vincular_dono_por_nome(eu.nome, eu.conta):
+            nuvem.marcar(mapa.ARQUIVO)
+            await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(), "por": eu.nome})
         eu.admin = (not visitante) and mod_contas.eh_admin(conta.get("email") or conta["nome"])
         if sala.esta_calado(eu.conta, eu.nome):     # o castigo sobrevive ao F5
             eu.silenciado = True
@@ -534,6 +585,7 @@ async def websocket_sala(ws: WebSocket):
         await ws.send_json({
             "tipo": "bemvindo",
             "voce": eu.publico(),
+            "chave_envio": eu.chave_envio,      # para mandar foto/arquivo no chat
             "visitante": eu.visitante,
             "admin": eu.admin,
             "mapa": escritorio.para_cliente(),
@@ -615,12 +667,16 @@ async def websocket_sala(ws: WebSocket):
                     }, exceto=eu.id)
 
                 elif tipo == "chat":
-                    texto = (msg.get("texto") or "").strip()[:500]
-                    if not texto:
+                    texto = (msg.get("texto") or "").strip()[:2000]
+                    # foto ou arquivo já enviado por /chat/anexo (26/11)
+                    anexo = anexos.ler(msg.get("anexo")) if msg.get("anexo") else None
+                    if not texto and not anexo:
                         continue
                     escopo = "todos" if msg.get("escopo") == "todos" else "perto"
                     pacote = {"tipo": "chat", "de": eu.id, "nome": eu.nome, "cor": eu.cor,
                               "texto": texto, "escopo": escopo}
+                    if anexo:
+                        pacote["anexo"] = anexos.publico(anexo)
                     if escopo == "todos":
                         await sala.publicar(pacote, exceto=eu.id)
                         ouviram = [p.id for p in sala.participantes.values() if p.id != eu.id]
@@ -664,7 +720,8 @@ async def websocket_sala(ws: WebSocket):
                         eu.cor = msg["cor"]
                     eu.emoji = (_texto(msg.get("emoji")) or eu.emoji)[:4]
                     if msg.get("aparencia"):
-                        eu.aparencia = limpar_aparencia(msg["aparencia"])
+                        eu.aparencia = personagens.ajustar(limpar_aparencia(msg["aparencia"]),
+                                                           eu.nome, eu.visitante)
                     if nome_novo != eu.nome and sala.nome_em_uso(nome_novo, eu.id):
                         await ws.send_json({"tipo": "erro",
                                             "texto": "Já tem alguém com esse nome na sala. Ficou o de antes."})

@@ -1,0 +1,5 @@
+MediaPipe Tasks Vision (@mediapipe/tasks-vision 1.2.3, Google) — licença Apache 2.0
+https://github.com/google-ai-edge/mediapipe/blob/master/LICENSE
+Modelo: selfie_segmenter (float16), MediaPipe Image Segmenter — Apache 2.0.
+Usado em static/fundo.js para desfocar ou trocar o fundo da câmera.
+Guardado aqui (e não lido de um site de fora) para o escritório não depender de terceiros.

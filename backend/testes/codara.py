@@ -171,12 +171,17 @@ async def main():
         ok("o botão senta na cadeira e entra na reunião", pa["sentado"] and pa["zona"] == "reuniao", pa)
         botao = await a.evaluate("() => document.getElementById('acao-reuniao').textContent")
         ok("sentado, o botão vira 'Sair da reunião'", "Sair da reunião" in botao)
+        sozinho = await a.evaluate("() => !document.getElementById('chamada').hidden && Reuniao.ativa")
+        ok("sozinho na mesa, a tela de chamada não abre", not sozinho)
 
         await andar(b, 805, 356)                       # a cadeira da fila de trás, do outro lado
         await b.keyboard.press("f")
         await asyncio.sleep(2.5)
         pb = await onde(b)
         ok("a tecla F senta na cadeira da fila de trás", pb["sentado"] and pb["zona"] == "reuniao", pb)
+        await asyncio.sleep(1)
+        chamada = await a.evaluate("() => !document.getElementById('chamada').hidden && Reuniao.ativa")
+        ok("com mais alguém sentado, a tela de chamada (estilo Meet) abre sozinha", chamada)
         try:
             await a.wait_for_function("() => [...Midia.pares.values()].some(p => p.pc.connectionState === 'connected')", timeout=20000)
             ligou = True
@@ -198,11 +203,12 @@ async def main():
         chegou = await a.evaluate("() => document.getElementById('mensagens').textContent.includes('Estou na mesa.')")
         ok("o chat chega de um para o outro", chegou)
 
-        # sair da reunião
-        await a.click("#acao-reuniao")
+        # sair da reunião: o botão vermelho da tela de chamada
+        await a.click("#btn-desligar")
         await asyncio.sleep(1)
         pa = await onde(a)
-        ok("'Sair da reunião' levanta e volta para o salão", not pa["sentado"] and pa["zona"] == "salao", pa)
+        ok("o botão vermelho levanta e volta para o salão", not pa["sentado"] and pa["zona"] == "salao", pa)
+        ok("  e a tela de chamada fecha", await a.evaluate("() => document.getElementById('chamada').hidden"))
 
         # ---- porta da diretoria: o dono tranca, quem é de fora é barrado
         await andar(a, 440, 250)

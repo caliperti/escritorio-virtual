@@ -553,4 +553,6 @@ const Boneco = {
   },
 };
 
-Boneco.iniciar();
+// 26/11: o boneco de pixel saiu de cena (todo mundo é personagem 3D, ver
+// personagens.js). As 174 folhas do LPC não são mais baixadas.
+// Boneco.iniciar();

@@ -74,6 +74,8 @@ class Participante:
     visitante: bool = False              # entrou sem cadastro: olha, anda e conversa
     admin: bool = False                  # manda no escritório inteiro
     silenciado: bool = False             # calado pelo admin: não conecta áudio
+    # chave para mandar foto/arquivo no chat: vale só enquanto esta conexão existir
+    chave_envio: str = field(default_factory=lambda: secrets.token_urlsafe(18))
     ws: Any = field(default=None, repr=False)
 
     def publico(self) -> Dict:

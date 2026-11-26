@@ -34,6 +34,66 @@ const Midia = {
 
   iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }],
 
+  /* ---------- aparelhos e efeito de fundo (26/11, como no Meet) ----------
+   * A escolha fica no navegador: microfone, câmera, alto-falante e o efeito de
+   * fundo. Trocar no meio da conversa só troca a faixa dentro do canal (nada
+   * de reconectar). O efeito de fundo (fundo.js) devolve uma faixa processada,
+   * que vai para as chamadas no lugar da câmera crua. */
+  pref: {
+    mic: localStorage.getItem('escritorio:mic') || '',
+    cam: localStorage.getItem('escritorio:cam') || '',
+    saida: localStorage.getItem('escritorio:saida') || '',
+    fundo: localStorage.getItem('escritorio:fundo') || 'nenhum',
+  },
+
+  _guardar(chave, valor) {
+    this.pref[chave] = valor || '';
+    if (valor) localStorage.setItem('escritorio:' + chave, valor);
+    else localStorage.removeItem('escritorio:' + chave);
+  },
+
+  async trocarAparelho(tipo, id) {
+    this._guardar(tipo === 'audio' ? 'mic' : 'cam', id);
+    if (!this.ligado(tipo)) return;
+    this.desligar(tipo);
+    await this.pedirMidia({ audio: tipo === 'audio', video: tipo === 'video' });
+  },
+
+  definirSaida(id) {
+    this._guardar('saida', id);
+    for (const par of this.pares.values()) {
+      if (par.audio && par.audio.setSinkId) par.audio.setSinkId(id || '').catch(() => {});
+    }
+  },
+
+  async definirFundo(modo) {
+    this._guardar('fundo', modo === 'nenhum' ? '' : modo);
+    if (!this.pref.fundo) this.pref.fundo = 'nenhum';
+    await this._aplicarFundo();
+  },
+
+  async _aplicarFundo() {
+    const cam = this._faixaViva('video');
+    if (typeof Fundo === 'undefined') return;
+    if (!cam || this.pref.fundo === 'nenhum') Fundo.parar();
+    else await Fundo.aplicar(this.pref.fundo, cam);
+    this._exibicao = null;
+    this._atualizarEnvioDeTodos();
+    this.ajustarBanda();
+    this.aoMudarTiles && this.aoMudarTiles();
+  },
+
+  /** O que o meu quadrinho mostra: a tela, ou a câmera com o efeito, ou a câmera. */
+  streamDeExibicao() {
+    if (this.telaStream) return this.telaStream;
+    const f = typeof Fundo !== 'undefined' && Fundo.faixa;
+    if (f && f.readyState === 'live') {
+      if (!this._exibicao || !this._exibicao.getTracks().includes(f)) this._exibicao = new MediaStream([f]);
+      return this._exibicao;
+    }
+    return this.streamLocal;
+  },
+
   /* ---------- mídia local ---------- */
 
   /** Pede só o que falta. Ligar o microfone não deve acender a câmera junto. */
@@ -54,14 +114,24 @@ const Midia = {
     this._limparMortas();
     const pedido = {};
     if (querAudio && !this.temFaixa('audio')) {
-      pedido.audio = { echoCancellation: true, noiseSuppression: true };
+      pedido.audio = { echoCancellation: true, noiseSuppression: true,
+                       ...(this.pref.mic ? { deviceId: { exact: this.pref.mic } } : {}) };
     }
     if (querVideo && !this.temFaixa('video')) {
-      pedido.video = { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } };
+      pedido.video = { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 },
+                       ...(this.pref.cam ? { deviceId: { exact: this.pref.cam } } : {}) };
     }
     if (!Object.keys(pedido).length) return this.streamLocal;
 
-    const novo = await navigator.mediaDevices.getUserMedia(pedido);
+    let novo;
+    try {
+      novo = await navigator.mediaDevices.getUserMedia(pedido);
+    } catch (e) {
+      // o aparelho escolhido sumiu (fone desplugado, câmera emprestada): usa o padrão
+      if (!['OverconstrainedError', 'NotFoundError'].includes(e.name)) throw e;
+      for (const k of Object.keys(pedido)) delete pedido[k].deviceId;
+      novo = await navigator.mediaDevices.getUserMedia(pedido);
+    }
     if (!this.streamLocal) this.streamLocal = new MediaStream();
     for (const faixa of novo.getTracks()) {
       this.streamLocal.addTrack(faixa);
@@ -70,6 +140,7 @@ const Midia = {
     // Entra nas chamadas já abertas pelos canais que já existem: quem entrou só
     // olhando e ligou depois não precisa reconectar nem renegociar com ninguém.
     this._atualizarEnvioDeTodos();
+    if (novo.getVideoTracks().length && this.pref.fundo !== 'nenhum') await this._aplicarFundo();
     if (novo.getAudioTracks().length) this._monitorarNivel('eu', this.streamLocal);
     this.ajustarBanda();
     this.aoMudarTiles && this.aoMudarTiles();
@@ -88,6 +159,9 @@ const Midia = {
       const tela = this.telaStream.getVideoTracks()[0];
       if (tela && tela.readyState === 'live') return tela;
     }
+    // com efeito de fundo, vai a câmera processada no lugar da crua
+    if (tipo === 'video' && typeof Fundo !== 'undefined' && Fundo.faixa
+        && Fundo.faixa.readyState === 'live' && this._faixaViva('video')) return Fundo.faixa;
     return this._faixaViva(tipo);
   },
 
@@ -113,6 +187,7 @@ const Midia = {
     this._limparMortas();
     if (!faixa) return;
     faixa.onended = null;
+    if (tipo === 'video' && typeof Fundo !== 'undefined') Fundo.parar();
     faixa.stop();
     this.streamLocal.removeTrack(faixa);
     this._atualizarEnvioDeTodos();            // a tela, se houver, continua no ar
@@ -431,6 +506,7 @@ const Midia = {
       const a = document.createElement('audio');
       a.autoplay = true;
       a.dataset.id = par.id;
+      if (this.pref.saida && a.setSinkId) a.setSinkId(this.pref.saida).catch(() => {});
       caixa.appendChild(a);
       par.audio = a;
     }
