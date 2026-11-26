@@ -270,6 +270,31 @@ async def main():
         await asyncio.sleep(1.5)
         await a.screenshot(path=str(CAPTURAS / "codara-escritorio.png"))
 
+        # ---- baia: quem senta nela fica numa bolha fechada, sem tela de chamada
+        await a.evaluate("() => irSentar(Cenario.assentoPerto(180, 433, 12))")
+        await b.evaluate("() => irSentar(Cenario.assentoPerto(190, 345, 12))")
+        for pg in (a, b):                              # quem vem do outro lado demora
+            try:
+                await pg.wait_for_function("() => !!sentadoAgora() && !Jogo.caminho", timeout=25000)
+            except Exception:
+                pass
+        await asyncio.sleep(1)
+        pa, pb = await onde(a), await onde(b)
+        ok("os dois sentam na baia 2 (um de cada lado da divisória)",
+           pa["sentado"] and pb["sentado"] and pa["zona"] == pb["zona"] == "baia2", (pa, pb))
+        tela = await a.evaluate("() => !document.getElementById('chamada').hidden")
+        botao = await a.evaluate("() => !document.getElementById('acao-reuniao').hidden")
+        ok("na baia não abre a tela de chamada nem o botão de reunião", not tela and not botao, (tela, botao))
+        # ---- reação: a paleta abre e o emoji escolhido chega ao outro
+        await a.click("#btn-reagir-chamada")
+        await asyncio.sleep(0.3)
+        n = await a.evaluate("() => !document.getElementById('paleta-reacoes').hidden && document.querySelectorAll('#paleta-reacoes button').length")
+        ok("o botão de reagir abre a paleta de emojis", n == 8, n)
+        await a.click("#paleta-reacoes button:nth-child(1)")
+        await asyncio.sleep(0.8)
+        chegou = await b.evaluate("() => [...Jogo.pessoas.values()].some(p => p.reacao && p.reacao.emoji === '👍')")
+        ok("o emoji escolhido aparece para o outro", chegou)
+
         erros = a.erros + b.erros
         ok("nenhum erro de página", not erros, erros[:3])
         await nav.close()

@@ -653,7 +653,11 @@ function receber(msg) {
 
     case 'reacao': {
       const p = Jogo.pessoas.get(msg.id);
-      if (p) p.reacao = { emoji: msg.emoji, ate: Date.now() + 2500 };
+      if (p && EMOJIS_REACAO.includes(msg.emoji)) {
+        p.reacao = { emoji: msg.emoji, ate: Date.now() + DURACAO_REACAO };
+        // na tela de chamada, só a de quem está na conversa comigo
+        if (Midia.pares.has(msg.id) || Midia.pares.has(String(msg.id))) mostrarReacaoNaChamada(p.nome, msg.emoji);
+      }
       break;
     }
 
@@ -1244,6 +1248,14 @@ function levantar() {
 /** O botão "Entrar na reunião" aparece em cima da cadeira livre da mesa mais
  *  perto (até ~1,3 m), e vira "Sair da reunião" para quem está sentado nela.
  *  Quem só passa pela mesa vê o botão, mas continua andando normalmente. */
+/** Assento da mesa de reunião (a zona que abre câmera e chamada). As baias
+ *  também são zona de quem está sentado, mas não são reunião. */
+function ehReuniao(a) {
+  if (!a || !a.zona || !Jogo.mapa) return false;
+  const z = Jogo.mapa.zonas.find((z) => z.id === a.zona);
+  return !!(z && z.abre_midia);
+}
+
 function atualizarAcaoReuniao() {
   const botao = document.getElementById('acao-reuniao');
   if (!botao) return;
@@ -1251,12 +1263,12 @@ function atualizarAcaoReuniao() {
   let alvo = null, sentado = false;
   if (Cenario.ativo() && !Editor.ativo) {
     const s = sentadoAgora();
-    if (s && s.zona) { alvo = s; sentado = true; }
+    if (s && ehReuniao(s)) { alvo = s; sentado = true; }
     else if (!s) {
       // perto da FRENTE da cadeira (de onde se senta), não do meio da mesa
       let melhor = null, dist = 48;     // colado na frente da cadeira (a entrada fica a ~56 px da do meio)
       for (const a of Jogo.mapa.cenario.assentos) {
-        if (!a.zona || Cenario.ocupado(a)) continue;
+        if (!ehReuniao(a) || Cenario.ocupado(a)) continue;
         const d = Math.hypot(a.saida[0] - eu.x, a.saida[1] - eu.y);
         if (d < dist) { dist = d; melhor = a; }
       }
@@ -1597,7 +1609,7 @@ function acomodarNoAssento(eu) {
     // sem pedido, só a cadeira de trabalho e o sofá sentam por parar colado:
     // a da reunião é pelo botão (ou clique nela), senão quem para perto da
     // mesa para conversar entraria na reunião sem querer
-    if (!a) a = Cenario.assentoPerto(eu.x, eu.y, 22, (s) => !s.zona);
+    if (!a) a = Cenario.assentoPerto(eu.x, eu.y, 22, (s) => !ehReuniao(s));
     if (a) sentarAgora(a);
     return;
   }
@@ -2190,7 +2202,7 @@ function desenharAvatar(p, souEu) {
   if (souEu ? !!Midia.telaStream : p.tela) ctx.fillText('🖥️', p.xr - largura / 2 - 7, pes + 12);
 
   if (p.reacao && p.reacao.ate > Date.now()) {
-    const sobe = (p.reacao.ate - Date.now()) / 2500;
+    const sobe = (p.reacao.ate - Date.now()) / DURACAO_REACAO;
     ctx.font = '22px -apple-system, sans-serif';
     ctx.globalAlpha = Math.min(1, sobe * 1.6);
     ctx.fillText(p.reacao.emoji, p.xr, p.yr - 44 - (1 - sobe) * 22);
@@ -2269,7 +2281,7 @@ function desenharCracha(p, souEu, mudo, nivel, sentado, k) {
     ctx.fillText('apresentando', p.xr, y - 9);
   }
   if (p.reacao && p.reacao.ate > Date.now()) {
-    const sobe = (p.reacao.ate - Date.now()) / 2500;
+    const sobe = (p.reacao.ate - Date.now()) / DURACAO_REACAO;
     ctx.font = '30px -apple-system, sans-serif';
     ctx.textAlign = 'center';
     ctx.globalAlpha = Math.min(1, sobe * 1.6);
@@ -2374,12 +2386,79 @@ function atualizarBotoesMidia() {
   btn.title = Midia.telaStream ? 'Parar de compartilhar (T)' : 'Compartilhar tela (T)';
 }
 
-function reagir() {
-  const opcoes = ['👋', '👍', '😂', '🎉', '❤️', '☕', '🔥', '🤔'];
-  const emoji = opcoes[Math.floor(Math.random() * opcoes.length)];
-  Jogo.eu.reacao = { emoji, ate: Date.now() + 2500 };
-  enviar({ tipo: 'reacao', emoji });
+/* ---------- reações (26/11, como no Meet) ----------
+ * O botão (ou a tecla R) abre a paleta e a pessoa ESCOLHE o emoji — antes ele
+ * era sorteado. O escolhido sobe em cima do boneco no mapa e, na tela de
+ * chamada, sobe do canto com o nome de quem mandou (antes ia só para o mapa,
+ * que fica escondido atrás da chamada: parecia que o botão não fazia nada). */
+const EMOJIS_REACAO = ['👍', '❤️', '😂', '😮', '👏', '🎉', '🤔', '👋'];
+const DURACAO_REACAO = 3000;
+
+function montarPaleta() {
+  const pal = document.getElementById('paleta-reacoes');
+  if (!pal.childElementCount) {
+    for (const e of EMOJIS_REACAO) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = e;
+      b.setAttribute('role', 'menuitem');
+      b.setAttribute('aria-label', 'Reagir com ' + e);
+      b.onclick = (ev) => { ev.stopPropagation(); fecharPaleta(); reagir(e); };
+      pal.appendChild(b);
+    }
+  }
+  return pal;
 }
+
+function fecharPaleta() {
+  const pal = document.getElementById('paleta-reacoes');
+  if (pal) pal.hidden = true;
+}
+
+function alternarPaleta() {
+  const pal = montarPaleta();
+  if (!pal.hidden) { fecharPaleta(); return; }
+  pal.hidden = false;
+  // em cima do botão de reagir da barra, centralizada nele
+  const btn = document.getElementById('btn-reagir-chamada');
+  const r = btn.getBoundingClientRect(), pr = pal.offsetParent.getBoundingClientRect();
+  const x = r.left + r.width / 2 - pr.left - pal.offsetWidth / 2;
+  pal.style.left = Math.max(8, Math.min(pr.width - pal.offsetWidth - 8, x)) + 'px';
+  pal.style.top = (r.top - pr.top - pal.offsetHeight - 10) + 'px';
+  pal.firstElementChild.focus();
+}
+
+/** Sem emoji, abre a paleta; com emoji, manda a reação. */
+function reagir(emoji) {
+  if (typeof emoji !== 'string' || !EMOJIS_REACAO.includes(emoji)) { alternarPaleta(); return; }
+  Jogo.eu.reacao = { emoji, ate: Date.now() + DURACAO_REACAO };
+  enviar({ tipo: 'reacao', emoji });
+  mostrarReacaoNaChamada('Você', emoji);
+}
+
+/** Na tela de chamada, o emoji sobe do canto de baixo com o nome, como no Meet. */
+function mostrarReacaoNaChamada(nome, emoji) {
+  if (!Reuniao.ativa) return;
+  const caixa = document.getElementById('reacoes-voando');
+  if (!caixa) return;
+  const el = document.createElement('div');
+  el.className = 'reacao-voando';
+  el.style.left = Math.round(Math.random() * 60) + 'px';
+  el.innerHTML = `<span class="emoji">${escapar(emoji)}</span><span class="quem">${escapar(nome)}</span>`;
+  caixa.appendChild(el);
+  setTimeout(() => el.remove(), DURACAO_REACAO + 300);
+}
+
+document.addEventListener('pointerdown', (e) => {
+  const pal = document.getElementById('paleta-reacoes');
+  if (!pal || pal.hidden || !e.target.closest) return;
+  if (e.target.closest('#paleta-reacoes') || e.target.closest('#btn-reagir-chamada')) return;
+  fecharPaleta();
+});
+document.addEventListener('keydown', (e) => {
+  const pal = document.getElementById('paleta-reacoes');
+  if (e.key === 'Escape' && pal && !pal.hidden) { fecharPaleta(); e.stopPropagation(); }
+}, true);
 
 document.getElementById('btn-mic').onclick = alternarMic;
 document.getElementById('btn-cam').onclick = alternarCam;
@@ -2425,7 +2504,7 @@ document.getElementById('app').addEventListener('click', (e) => {
   if (botao && e.detail > 0) botao.blur();
 });
 
-document.getElementById('btn-reacao').onclick = reagir;
+document.getElementById('btn-reacao').onclick = () => reagir();
 document.getElementById('btn-reuniao').onclick = () => alternarReuniao();
 document.getElementById('btn-fechar-reuniao').onclick = fecharReuniao;
 document.getElementById('btn-sair').onclick = () => {
@@ -2618,7 +2697,7 @@ function fecharReuniao() {
  *  parecia defeito). Saiu da mesa, ela fecha. */
 function cuidarDaTelaDeChamada(eu) {
   const z = zonaDe(eu.x, eu.y);
-  if (z && z.so_sentado) {
+  if (z && z.so_sentado && z.abre_midia) {      // a mesa de reunião, não as baias
     const outros = [...Jogo.pessoas.values()].some((p) => {
       const zp = zonaDe(p.x, p.y);
       return zp && zp.id === z.id;
@@ -2734,7 +2813,7 @@ function abrirPainelEm(bloco, focar) {
   if (focar) document.getElementById(focar).focus();
 }
 document.getElementById('btn-desligar').onclick = sairDaChamada;
-document.getElementById('btn-reagir-chamada').onclick = () => reagir();
+document.getElementById('btn-reagir-chamada').onclick = (e) => { e.stopPropagation(); reagir(); };
 document.getElementById('btn-chamada-mapa').onclick = fecharReuniao;
 document.getElementById('btn-chamada-pessoas').onclick = () => abrirPainelEm('bloco-pessoas');
 document.getElementById('btn-chamada-chat').onclick = () => abrirPainelEm('bloco-chat', 'campo-chat');

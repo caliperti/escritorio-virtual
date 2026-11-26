@@ -147,9 +147,11 @@
          enquanto ela está aberta (app.js: aplicarReuniao) -->
     <div id="chamada" class="chamada" hidden>
       <div class="palco-chamada" id="palco-chamada"></div>
+      <div class="reacoes-voando" id="reacoes-voando" aria-live="polite"></div>
     </div>
 
     <!-- barra de mídia: os controles de verdade (os mesmos ids de antes) -->
+    <div class="paleta-reacoes" id="paleta-reacoes" role="menu" aria-label="Reações" hidden></div>
     <div class="barra-midia" role="toolbar" aria-label="Microfone, câmera, tela e sair">
       <div class="info-chamada" aria-hidden="true">
         <span id="relogio-chamada">--:--</span><span class="barrinha"></span><span id="nome-chamada">Chamada</span>
@@ -169,7 +171,7 @@
         <svg viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8"/><path d="M12 8v5"/><path d="M9.5 10.5L12 8l2.5 2.5"/></svg>
       </button>
       <span class="sep" aria-hidden="true"></span>
-      <button id="btn-reagir-chamada" class="icone so-chamada" title="Reagir (R)" aria-label="Reagir">
+      <button id="btn-reagir-chamada" class="icone" title="Reagir (R)" aria-label="Reagir" aria-haspopup="true">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01"/><path d="M15 9.5h.01"/></svg>
       </button>
       <span class="sep fora-chamada" aria-hidden="true"></span>

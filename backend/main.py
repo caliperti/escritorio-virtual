@@ -701,8 +701,10 @@ async def websocket_sala(ws: WebSocket):
                         await ws.send_json({**estado, "proprio": True})
 
                 elif tipo == "reacao":
-                    emoji = (msg.get("emoji") or "")[:4]
-                    await sala.publicar({"tipo": "reacao", "id": eu.id, "emoji": emoji}, exceto=eu.id)
+                    # só texto curto: um objeto aqui derrubava a conexão de quem mandou
+                    emoji = msg.get("emoji")
+                    if isinstance(emoji, str) and 0 < len(emoji) <= 8:
+                        await sala.publicar({"tipo": "reacao", "id": eu.id, "emoji": emoji}, exceto=eu.id)
 
                 elif tipo == "perfil":
                     # Mesmas regras do cadastro para o nome novo; se não serve,

@@ -17,6 +17,10 @@ const Fundo = {
     escritorio: { nome: 'Escritório', imagem: '/static/assets/codara/fundo.png' },
   },
   QPS: 20,
+  // O Safari (até a versão 17) não tem `filter` no canvas: o desfoque não
+  // acontecia e o fundo saía nítido. Sem ele, borra encolhendo e esticando.
+  TEM_FILTRO: typeof CanvasRenderingContext2D !== 'undefined'
+    && 'filter' in CanvasRenderingContext2D.prototype,
   modo: 'nenhum',
   faixa: null,               // a faixa processada (o que vai para as chamadas)
   _seg: null, _carregando: null, _laco: null, _cam: null, _video: null,
@@ -52,6 +56,11 @@ const Fundo = {
       const L = Math.min(640, cfg.width || 640), A = Math.round(L * ((cfg.height || 480) / (cfg.width || 640)));
       const video = document.createElement('video');
       video.muted = true; video.playsInline = true;
+      video.setAttribute('playsinline', '');
+      // fora da página, o Safari às vezes não entrega quadro nenhum: fica na
+      // página, invisível
+      video.style.cssText = 'position:fixed;left:-10px;top:-10px;width:2px;height:2px;opacity:0;pointer-events:none';
+      document.body.appendChild(video);
       video.srcObject = new MediaStream([faixaCamera]);
       await video.play().catch(() => {});
       const tela = Object.assign(document.createElement('canvas'), { width: L, height: A });
@@ -105,22 +114,40 @@ const Fundo = {
     p.globalCompositeOperation = 'copy';
     p.drawImage(video, 0, 0, L, A);
     p.globalCompositeOperation = 'destination-in';
-    p.filter = 'blur(2px)';                       // borda macia, sem serrilhado
+    p.imageSmoothingEnabled = true;
+    if (this.TEM_FILTRO) p.filter = 'blur(2px)';  // borda macia, sem serrilhado
     p.drawImage(this._mascara, 0, 0, L, A);
-    p.filter = 'none';
+    if (this.TEM_FILTRO) p.filter = 'none';
     // 3. o fundo e a pessoa por cima
     ctx.globalCompositeOperation = 'copy';
     if (cfg.imagem && this._imagem && this._imagem.complete && this._imagem.naturalWidth) {
       const im = this._imagem, k = Math.max(L / im.naturalWidth, A / im.naturalHeight);
       const w = im.naturalWidth * k, h = im.naturalHeight * k;
       ctx.drawImage(im, (L - w) / 2, (A - h) / 2, w, h);
-    } else {
+    } else if (this.TEM_FILTRO) {
       ctx.filter = 'blur(' + (cfg.borrar || 10) + 'px)';
       ctx.drawImage(video, -20, -20, L + 40, A + 40);
       ctx.filter = 'none';
+    } else {
+      this._borrarSemFiltro(ctx, video, L, A, cfg.borrar || 10);
     }
     ctx.globalCompositeOperation = 'source-over';
     ctx.drawImage(this._pessoa, 0, 0);
+  },
+
+  /** Desfoque para navegador sem `filter`: encolhe a imagem em dois passos e
+   *  estica de volta com suavização (quanto mais encolhe, mais borra). */
+  _borrarSemFiltro(ctx, fonte, L, A, raio) {
+    if (!this._miuda) this._miuda = [document.createElement('canvas'), document.createElement('canvas')];
+    const [m1, m2] = this._miuda;
+    const k = Math.max(3, raio * 0.75);               // 6 -> 4,5x menor; 16 -> 12x menor
+    m1.width = Math.max(8, Math.round(L / 3)); m1.height = Math.max(6, Math.round(A / 3));
+    m2.width = Math.max(4, Math.round(L / k)); m2.height = Math.max(3, Math.round(A / k));
+    const g1 = m1.getContext('2d'), g2 = m2.getContext('2d');
+    for (const g of [g1, g2, ctx]) { g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; }
+    g1.drawImage(fonte, 0, 0, m1.width, m1.height);
+    g2.drawImage(m1, 0, 0, m2.width, m2.height);
+    ctx.drawImage(m2, 0, 0, L, A);
   },
 
   parar() {
@@ -128,7 +155,8 @@ const Fundo = {
     this._laco = null;
     if (this.faixa) this.faixa.stop();
     this.faixa = null;
-    if (this._video) { this._video.srcObject = null; this._video = null; }
+    if (this._video) { this._video.srcObject = null; this._video.remove(); this._video = null; }
     this._cam = null;
+    this.modo = 'nenhum';
   },
 };

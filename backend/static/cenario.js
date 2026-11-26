@@ -282,6 +282,7 @@ const Cenario = {
     // vidro desenhado): aberta não leva nada; trancada vira uma parede de vidro.
     const w = p.x2 - p.x1, larga = w > 120, alto = larga ? 120 : 74;
     if (!z.trancada && larga) return;
+    if (larga) { this._paredeDeVidro(ctx, p, w); return; }
     if (!z.trancada) {
       const g = ctx.createLinearGradient(0, p.y - 4, 0, p.y + 10);
       g.addColorStop(0, 'rgba(255,196,120,.0)');
@@ -309,6 +310,63 @@ const Cenario = {
     ctx.stroke();
     ctx.fillStyle = '#fff';
     ctx.fillRect(cx - 5, cy - 2, 10, 7.5);
+  },
+
+  /** Sala trancada na sede "em corte": um vidro claro fecha a frente inteira.
+   *  Dá para ver quem está dentro (levemente tingido), com caixilho fino,
+   *  reflexo na diagonal, a soleira acesa em roxo e um cadeado discreto. */
+  _paredeDeVidro(ctx, p, w) {
+    const alto = 112, topo = p.y - alto, x = p.x1;
+    ctx.save();
+    // o vidro
+    const g = ctx.createLinearGradient(0, topo, 0, p.y);
+    g.addColorStop(0, 'rgba(214,204,255,.10)');
+    g.addColorStop(1, 'rgba(167,139,250,.22)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, topo, w, alto);
+    // reflexos na diagonal, só dentro do vidro
+    ctx.beginPath(); ctx.rect(x, topo, w, alto); ctx.clip();
+    ctx.fillStyle = 'rgba(255,255,255,.07)';
+    for (const [d, larg] of [[0.18, 34], [0.30, 12], [0.66, 26]]) {
+      const bx = x + w * d;
+      ctx.beginPath();
+      ctx.moveTo(bx, p.y); ctx.lineTo(bx + larg, p.y);
+      ctx.lineTo(bx + larg + alto * 0.6, topo); ctx.lineTo(bx + alto * 0.6, topo);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+    ctx.save();
+    // caixilho: montantes finos e o trilho de cima
+    ctx.strokeStyle = 'rgba(255,255,255,.20)';
+    ctx.lineWidth = 1;
+    const vaos = Math.max(2, Math.round(w / 64));
+    for (let i = 1; i < vaos; i++) {
+      const mx = Math.round(x + (w * i) / vaos) + 0.5;
+      ctx.beginPath(); ctx.moveTo(mx, topo); ctx.lineTo(mx, p.y); ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,.34)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(x, topo + 0.5); ctx.lineTo(x + w, topo + 0.5); ctx.stroke();
+    // soleira acesa
+    ctx.shadowColor = 'rgba(139,92,246,.9)';
+    ctx.shadowBlur = 10;
+    ctx.strokeStyle = 'rgba(167,139,250,.95)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x, p.y - 1); ctx.lineTo(x + w, p.y - 1); ctx.stroke();
+    ctx.shadowBlur = 0;
+    // cadeado num botãozinho escuro, no meio da soleira
+    const cx = x + w / 2, cy = p.y - 16;
+    ctx.fillStyle = 'rgba(24,21,27,.88)';
+    ctx.beginPath(); ctx.arc(cx, cy, 10, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(167,139,250,.9)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    ctx.strokeStyle = '#c4b5fd';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.arc(cx, cy - 2.2, 3, Math.PI, 0); ctx.stroke();
+    ctx.fillStyle = '#c4b5fd';
+    ctx.fillRect(cx - 4.2, cy - 2, 8.4, 6.4);
+    ctx.restore();
   },
 
   /** A plaquinha da diretoria na parede do fundo, como na referência: cartão

@@ -36,7 +36,7 @@ referencia-codara/backup/planta-codara-8-lugares.py.
 
 # Suba este número sempre que a planta de fábrica mudar: o servidor compara com
 # o que está gravado e, se for mais nova, remonta o escritório.
-VERSAO = 19
+VERSAO = 20
 
 ARTE_L, ARTE_A = 1672, 891                  # tamanho da arte, em px do mundo
 LARGURA, ALTURA = 53, 28                    # em tiles de 32 (cobre a arte)
@@ -44,33 +44,51 @@ PASTA = "/static/assets/codara/"
 
 # ---------------------------------------------------------------- as diretorias
 # id, nome do diretor, tiles da zona (x1, y1, x2, y2), a frente em px (x1, x2,
-# y: onde o vidro fumê assenta quando tranca), a plaquinha que já vem desenhada
+# y: a linha da frente na arte, onde o vidro assenta quando tranca), a plaquinha que já vem desenhada
 # na arte (x, y, w, h — só para o clique), e o que tem dentro: mesa (x1, x2),
 # vaso (x1, x2), as duas poltronas de visita (x1, x2), a cadeira do dono (x) e
 # o corredor ao lado da mesa por onde o dono chega na cadeira (x).
 # A linha 9 de tiles (288-319) é a soleira: conta como dentro da sala.
 DIRETORIAS = [
-    ("diretoria1", "Gustavo", (14, 4, 21, 9), (452, 705, 320), (470, 52, 112, 41),
+    ("diretoria1", "Gustavo", (14, 4, 21, 9), (452, 705, 302), (470, 52, 112, 41),
      {"mesa": (510, 660), "vaso": (470, 499), "visitas": [(530, 577), (598, 646)],
       "dono": 590, "corredor": 683}),
-    ("diretoria2", "Christian", (22, 4, 30, 9), (722, 975, 320), (734, 52, 112, 41),
+    ("diretoria2", "Christian", (22, 4, 30, 9), (722, 975, 302), (734, 52, 112, 41),
      {"mesa": (777, 935), "vaso": (743, 770), "visitas": [(792, 840), (870, 918)],
       "dono": 857, "corredor": 955}),
-    ("diretoria3", "Felipe Vargas", (31, 4, 38, 9), (995, 1237, 320), (1004, 52, 126, 41),
+    ("diretoria3", "Felipe Vargas", (31, 4, 38, 9), (995, 1237, 302), (1004, 52, 126, 41),
      {"mesa": (1050, 1197), "vaso": (1014, 1043), "visitas": [(1067, 1115), (1135, 1183)],
       "dono": 1119, "corredor": 1217}),
 ]
 
 # ---------------------------------------------------------------- estações (esquerda)
 # Três fileiras: mesa comprida com divisória e monitores, cadeiras de frente
-# para os monitores (de costas para nós). As cadeiras do outro lado da
-# divisória são só desenho (não dá para chegar nelas).
-# pé da mesa (x1, x2, y1, y2) e as duas cadeiras da frente (x1, x2, y1, y2)
+# para os monitores (de costas para nós), e do outro lado da divisória mais
+# duas, de frente para nós (a divisória e os monitores cobrem a cintura).
+# Cada fileira é uma BAIA: quem senta nela só ouve quem está sentado nela
+# (como na mesa de reunião), e quem está de fora não ouve a baia.
+#   mesa: pé da mesa (x1, x2, y1, y2); cadeiras: as da frente (x1, x2, y1, y2);
+#   tras: os lugares do outro lado (x, y); saidas: onde se levanta, no corredor
+#   entre as fileiras (as cadeiras de uma fileira ficam alinhadas com as da
+#   outra, então a saída é no meio, entre elas)
 FILEIRAS = [
-    {"mesa": (140, 380, 232, 300), "cadeiras": [(178, 218, 258, 318), (287, 327, 258, 318)]},
-    {"mesa": (117, 375, 360, 445), "cadeiras": [(160, 200, 395, 455), (275, 318, 395, 455)]},
-    {"mesa": (92, 360, 495, 585), "cadeiras": [(140, 185, 532, 600), (258, 305, 532, 600)]},
+    {"zona": "baia1", "mesa": (140, 380, 232, 300),
+     "cadeiras": [(178, 218, 258, 318), (287, 327, 258, 318)],
+     "saida_frente": [(238, 334), (262, 334)],
+     "tras": [(207, 214), (312, 214)], "saida_tras": [(250, 206), (270, 206)]},
+    {"zona": "baia2", "mesa": (117, 375, 360, 445),
+     "cadeiras": [(160, 200, 395, 455), (275, 318, 395, 455)],
+     "saida_frente": [(229, 468), (247, 468)],
+     "tras": [(190, 345), (300, 345)], "saida_tras": [(238, 334), (262, 334)]},
+    {"zona": "baia3", "mesa": (92, 360, 495, 585),
+     "cadeiras": [(140, 185, 532, 600), (258, 305, 532, 600)],
+     "saida_frente": [(162, 614), (282, 612)],
+     "tras": [(171, 482), (287, 482)], "saida_tras": [(229, 468), (247, 468)]},
 ]
+# as zonas de som das baias, em tiles (x1, y1, x2, y2); só contam para quem
+# está SENTADO num lugar delas
+ZONAS_BAIAS = [("baia1", "Baia 1", (4, 5, 11, 9)), ("baia2", "Baia 2", (3, 10, 11, 14)),
+               ("baia3", "Baia 3", (2, 15, 11, 18)), ("bancada", "Bancada", (40, 9, 47, 17))]
 
 # ---------------------------------------------------------------- bancada (direita)
 # A mesa comprida vai em diagonal (de 1320,297 a 1495,612); bloqueia em degraus.
@@ -169,10 +187,12 @@ FRENTES = [
     ("visitas-gustavo", (525, 226, 651, 294), 292, 1),
     ("visitas-christian", (787, 226, 923, 294), 292, 1),
     ("visitas-felipe", (1062, 226, 1188, 294), 292, 1),
-    # estações da esquerda: a mesa de cada fileira (com divisória, monitores e
-    # as cadeiras do outro lado) e as cadeiras da frente
-    ("fileira-2", (110, 320, 392, 448), 445, 1),
-    ("fileira-3", (86, 458, 378, 588), 586, 1),
+    # baias da esquerda: a mesa de cada fileira, da divisória para baixo (cobre
+    # a cintura de quem senta do outro lado e as pernas de quem passa atrás),
+    # e as cadeiras da frente
+    ("fileira-1", (135, 218, 395, 302), 300, 1),
+    ("fileira-2", (110, 349, 392, 448), 445, 1),
+    ("fileira-3", (86, 484, 378, 588), 586, 1),
     ("estacao-1a", (172, 250, 224, 322), 318, 1),
     ("estacao-1b", (281, 250, 333, 322), 318, 1),
     ("estacao-2a", (154, 387, 206, 459), 455, 1),
@@ -229,23 +249,31 @@ for _id, _n, _z, _p, _l, d in DIRETORIAS:
     for x1, x2 in d["visitas"]:
         meio = (x1 + x2) // 2
         ASSENTOS.append({"x": meio, "y": 273, "dir": "cima", "base": 289, "saida": [meio, 310]})
-for f in FILEIRAS:                           # estações: de costas, olhando o monitor
-    for cx1, cx2, cy1, cy2 in f["cadeiras"]:
-        meio = (cx1 + cx2) // 2
-        ASSENTOS.append({"x": meio, "y": cy1 + 26, "dir": "cima", "base": cy2 - 12,
-                         "saida": [meio, cy2 + 14]})
+for f in FILEIRAS:
+    # as da frente: de costas para nós, olhando o monitor; a cadeira cobre a
+    # cintura (a base fica entre a mesa e a cadeira)
+    for (cx1, cx2, cy1, cy2), saida in zip(f["cadeiras"], f["saida_frente"]):
+        ASSENTOS.append({"x": (cx1 + cx2) // 2, "y": cy1 + 38, "dir": "cima", "zona": f["zona"],
+                         "base": cy2 - 4, "saida": list(saida)})
+    # as do outro lado: de frente para nós, atrás da divisória
+    for (x, y), saida in zip(f["tras"], f["saida_tras"]):
+        ASSENTOS.append({"x": x, "y": y, "dir": "baixo", "zona": f["zona"],
+                         "base": y + 10, "saida": list(saida)})
 for x1, x2, y1, y2, dir_ in BANCADA_CADEIRAS:  # bancada: de lado, olhando a mesa
     meio_y = (y1 + y2) // 2 + 4
     if dir_ == "direita":
-        ASSENTOS.append({"x": x1 + 18, "y": meio_y, "dir": "direita", "base": y2 - 2,
-                         "saida": [x1 - 26, meio_y]})
+        ASSENTOS.append({"x": x1 + 18, "y": meio_y, "dir": "direita", "zona": "bancada",
+                         "base": y2 - 2, "saida": [x1 - 26, meio_y]})
     else:
-        ASSENTOS.append({"x": x2 - 18, "y": meio_y, "dir": "esquerda", "base": y2 - 2,
-                         "saida": [x2 + 26, meio_y]})
+        ASSENTOS.append({"x": x2 - 18, "y": meio_y, "dir": "esquerda", "zona": "bancada",
+                         "base": y2 - 2, "saida": [x2 + 26, meio_y]})
 for x in (262, 335):                         # sofá de cima do lounge, de frente para nós
     ASSENTOS.append({"x": x, "y": 664, "dir": "baixo", "base": 702, "saida": [408, 714]})
-for y in (694, 750):                         # sofá encostado na parede, olhando para dentro
-    ASSENTOS.append({"x": 88, "y": y, "dir": "direita", "base": y + 14, "saida": [172, 752]})
+# sofá encostado na parede, olhando para dentro. O de cima não fica colado na
+# mesinha do abajur (era de lá que a pessoa "pulava" para o sofá); cada lugar
+# tem a sua saída logo à frente, entre o sofá e a mesa de centro.
+for y, sy in ((718, 742), (762, 770)):
+    ASSENTOS.append({"x": 88, "y": y, "dir": "direita", "base": y + 14, "saida": [162, sy]})
 
 
 def montar_padrao(esc) -> None:
@@ -276,6 +304,12 @@ def montar_padrao(esc) -> None:
                       "x2": 36, "y2": 19, "privada": True, "cor": "#8b5cf6",
                       "so_sentado": True, "sem_dono": True, "abre_midia": True,
                       "sem_placa": True})
+    # As baias: a mesma bolha fechada de quem está sentado, mas sem abrir
+    # câmera, microfone nem a tela de chamada sozinhos (é lugar de trabalho)
+    for id_, nome, (x1, y1, x2, y2) in ZONAS_BAIAS:
+        esc.zonas.append({"id": id_, "nome": nome, "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                          "privada": True, "cor": "#8b5cf6", "so_sentado": True,
+                          "sem_dono": True, "sem_placa": True})
     # O salão é área aberta: vale o raio de conversa, como sempre. Cobre tudo;
     # as salas vêm antes na lista e ganham dele.
     esc.zonas.append({"id": "salao", "nome": "Salão", "x1": 0, "y1": 0,
@@ -284,14 +318,16 @@ def montar_padrao(esc) -> None:
 
     esc.cenario = {
         "nome": "codara",
-        "fundo": PASTA + "fundo.png",
+        # "?v=" muda com a planta: quem está com o escritório aberto na hora
+        # da troca baixa a arte nova, em vez de misturar a velha com a planta nova
+        "fundo": PASTA + "fundo.png?v=%d" % VERSAO,
         "largura": ARTE_L, "altura": ARTE_A,
         "cor_fora": "#121014",
         "boneco": 5.0,                         # escala do boneco (2 era a de antes)
         "raio_conversa": 250, "raio_silencio": 330,
         "entrada": [831, 834],
         "bloqueios": BLOQUEIOS,
-        "frentes": [{"nome": n, "img": PASTA + "frente-%s.png" % n,
+        "frentes": [{"nome": n, "img": PASTA + "frente-%s.png?v=%d" % (n, VERSAO),
                      "x": r[0], "y": r[1], "w": r[2] - r[0], "h": r[3] - r[1],
                      "base": b, "alfa": a} for n, r, b, a in FRENTES],
         "assentos": ASSENTOS,
