@@ -1,166 +1,251 @@
-"""A planta que vem de fábrica: o escritório da Codara Labs (26/11).
+"""A planta que vem de fábrica: a sede da Codara Labs, versão maior (26/11).
 
-Um salão só, com a entrada no meio da parede de baixo, a mesa oval de reunião
-para 8 no centro e as três diretorias lado a lado no fundo (Gustavo, Christian,
-Felipe Vargas), cada uma com a mesa de trabalho e duas poltronas de visita na
-frente dela. O desenho é uma ARTE PRONTA (`static/assets/codara/fundo.png`,
-gerada no Magnific a partir da referência que o dono mandou), e não piso e
-parede de quadradinho:
+A arte (`static/assets/codara/fundo.png`) é a "Sede virtual Codara Labs em
+corte" que o dono mandou, sem a faixa de título de cima. Um salão grande com:
 
-    - 1 px da arte = 1 px do mundo. A arte tem 1264 x 848;
+    - as três diretorias no fundo (Gustavo, Christian, Felipe Vargas), cada
+      uma com a mesa de trabalho, a cadeira do dono e duas poltronas de visita.
+      A frente delas é aberta na arte (o desenho é "em corte"): a porta é a
+      frente inteira, e trancada ela vira um vidro fumê de ponta a ponta;
+    - a mesa oval de reunião para 8 no centro;
+    - três fileiras de estações de trabalho à esquerda e a bancada comprida à
+      direita;
+    - o lounge com sofás no canto de baixo, a recepção na frente da entrada,
+      o café no canto de cima à direita e jardineiras na parede da frente.
+
+Como a planta funciona (igual à anterior):
+    - 1 px da arte = 1 px do mundo. A arte tem 1672 x 891;
     - o que bloqueia são formas medidas em cima da arte (`BLOQUEIOS`): retângulo
       `r: [x1, y1, x2, y2]` e cápsula deitada `c: [xa, xb, cy, rx, ry]` (a mesa
-      oval). A caixinha do avatar (22 px) não pode encostar nelas;
-    - o que fica NA FRENTE de quem passa atrás (tampo da mesa, cadeiras, mesas
-      das diretorias, vidro das salas, vasos e mureta da frente) são recortes da
-      própria arte, desenhados na ordem da profundidade (`FRENTES`, campo `base`:
-      a linha do chão em que a peça encosta). Quem tem os pés acima dessa linha
-      fica atrás dela. Os recortes saem de `referencia-codara/gerar_recortes.py`,
-      com as máscaras descritas em `MASCARAS`;
-    - os assentos (`ASSENTOS`) são pontos: a pessoa senta ali, virada para `dir`.
-      `base` diz em que camada a pessoa sentada fica, e `saida` é onde ela
-      aparece ao levantar (e de onde ela senta);
-    - salas, portas e regras de áudio continuam sendo as zonas de sempre (em
-      tiles de 32), com a porta também medida em pixel (`porta_px`) para o
-      desenho do estado da porta cair em cima da porta da arte.
+      oval). A caixinha do avatar (22 px) não pode encostar nelas. Móvel bloqueia
+      pelo PÉ (o que encosta no chão), não pelo desenho inteiro: quem passa
+      atrás dele fica atrás do recorte;
+    - o que fica NA FRENTE de quem passa atrás são recortes da própria arte
+      (`FRENTES`, com a `base`: a linha do chão em que a peça encosta). Saem de
+      `referencia-codara/gerar_recortes.py`, com as máscaras de `MASCARAS`;
+    - os assentos (`ASSENTOS`) são pontos: a pessoa senta ali, virada para
+      `dir`. `base` diz em que camada a pessoa sentada fica, e `saida` é onde
+      ela aparece ao levantar (e de onde ela senta);
+    - salas e regras de áudio são as zonas de sempre (em tiles de 32).
 
 Ao mudar uma medida aqui, rode `gerar_recortes.py` de novo e confira com
 `?depurar=1` no navegador (pinta as formas e as bases por cima da arte).
-A planta anterior (mesa de 6, salas rasas) está em
-referencia-codara/backup/planta-codara-6-lugares.py.
+A planta anterior (o salão de 1264 x 848) está em
+referencia-codara/backup/planta-codara-8-lugares.py.
 """
 
 # Suba este número sempre que a planta de fábrica mudar: o servidor compara com
-# o que está gravado e, se for mais nova, remonta o escritório. Sem isso, o mapa
-# salvo (ou restaurado do espelho) vence para sempre e a planta nova nunca
-# aparece — foi exatamente o que aconteceu.
-VERSAO = 18
+# o que está gravado e, se for mais nova, remonta o escritório.
+VERSAO = 19
 
-ARTE_L, ARTE_A = 1264, 848                  # tamanho da arte, em px do mundo
-LARGURA, ALTURA = 40, 27                    # em tiles de 32 (cobre a arte)
+ARTE_L, ARTE_A = 1672, 891                  # tamanho da arte, em px do mundo
+LARGURA, ALTURA = 53, 28                    # em tiles de 32 (cobre a arte)
 PASTA = "/static/assets/codara/"
 
 # ---------------------------------------------------------------- as diretorias
-# id, nome do diretor, tiles da zona (x1, y1, x2, y2), porta em px (x1, x2, y),
-# plaquinha em px, e o que tem dentro em px: mesa, vaso, as duas poltronas de
-# visita (x1, x2) e a cadeira do dono (x)
-# As linhas 5 a 10 contam como DENTRO da sala; a 10 é a do vão da porta: com a
-# porta trancada, quem é de fora para do lado de fora do vidro, e não no vão.
+# id, nome do diretor, tiles da zona (x1, y1, x2, y2), a frente em px (x1, x2,
+# y: onde o vidro fumê assenta quando tranca), a plaquinha que já vem desenhada
+# na arte (x, y, w, h — só para o clique), e o que tem dentro: mesa (x1, x2),
+# vaso (x1, x2), as duas poltronas de visita (x1, x2), a cadeira do dono (x) e
+# o corredor ao lado da mesa por onde o dono chega na cadeira (x).
+# A linha 9 de tiles (288-319) é a soleira: conta como dentro da sala.
 DIRETORIAS = [
-    ("diretoria1", "Gustavo", (3, 5, 14, 10), (425, 475, 340), (118, 44),
-     {"mesa": (205, 405), "vaso": (160, 192), "visitas": [(212, 290), (315, 393)], "dono": 318}),
-    ("diretoria2", "Christian", (16, 5, 26, 10), (814, 862, 340), (516, 44),
-     {"mesa": (590, 800), "vaso": (534, 569), "visitas": [(605, 682), (712, 789)], "dono": 701}),
-    ("diretoria3", "Felipe Vargas", (28, 5, 36, 10), (1133, 1179, 340), (904, 44),
-     {"mesa": (959, 1148), "vaso": (914, 941), "visitas": [(985, 1060), (1081, 1148)], "dono": 1050}),
-    # (a mesa e a poltrona da direita bloqueiam até 1148, não até a borda do
-    #  desenho: o corredor até a porta do Felipe ficava com 27 px e o boneco
-    #  às vezes travava nele)
+    ("diretoria1", "Gustavo", (14, 4, 21, 9), (452, 705, 320), (470, 52, 112, 41),
+     {"mesa": (510, 660), "vaso": (470, 499), "visitas": [(530, 577), (598, 646)],
+      "dono": 590, "corredor": 683}),
+    ("diretoria2", "Christian", (22, 4, 30, 9), (722, 975, 320), (734, 52, 112, 41),
+     {"mesa": (777, 935), "vaso": (743, 770), "visitas": [(792, 840), (870, 918)],
+      "dono": 857, "corredor": 955}),
+    ("diretoria3", "Felipe Vargas", (31, 4, 38, 9), (995, 1237, 320), (1004, 52, 126, 41),
+     {"mesa": (1050, 1197), "vaso": (1014, 1043), "visitas": [(1067, 1115), (1135, 1183)],
+      "dono": 1119, "corredor": 1217}),
+]
+
+# ---------------------------------------------------------------- estações (esquerda)
+# Três fileiras: mesa comprida com divisória e monitores, cadeiras de frente
+# para os monitores (de costas para nós). As cadeiras do outro lado da
+# divisória são só desenho (não dá para chegar nelas).
+# pé da mesa (x1, x2, y1, y2) e as duas cadeiras da frente (x1, x2, y1, y2)
+FILEIRAS = [
+    {"mesa": (140, 380, 232, 300), "cadeiras": [(178, 218, 258, 318), (287, 327, 258, 318)]},
+    {"mesa": (117, 375, 360, 445), "cadeiras": [(160, 200, 395, 455), (275, 318, 395, 455)]},
+    {"mesa": (92, 360, 495, 585), "cadeiras": [(140, 185, 532, 600), (258, 305, 532, 600)]},
+]
+
+# ---------------------------------------------------------------- bancada (direita)
+# A mesa comprida vai em diagonal (de 1320,297 a 1495,612); bloqueia em degraus.
+BANCADA = [[1325, 297, 1435, 380], [1340, 380, 1455, 465], [1360, 465, 1478, 540],
+           [1375, 540, 1495, 612]]
+# cadeiras: (x1, x2, y1, y2, para onde a pessoa olha)
+BANCADA_CADEIRAS = [
+    (1292, 1330, 300, 380, "direita"), (1310, 1345, 382, 457, "direita"),
+    (1330, 1370, 465, 555, "direita"),
+    (1430, 1467, 300, 382, "esquerda"), (1450, 1490, 392, 470, "esquerda"),
+    (1475, 1515, 480, 565, "esquerda"),
 ]
 
 # ---------------------------------------------------------------- bloqueios
 BLOQUEIOS = [
-    # --- o fundo: parede de trás das diretorias e as paredes de cada lado
-    {"r": [0, 0, ARTE_L, 192]},
-    {"r": [0, 0, 105, 345]},                  # parede esquerda da sala do Gustavo
-    {"r": [1179, 0, ARTE_L, 345]},            # parede direita da sala do Felipe (com o pilar roxo)
-    {"r": [475, 0, 505, 345]},                # divisória Gustavo | Christian (com o pilar roxo)
-    {"r": [862, 0, 893, 345]},                # divisória Christian | Felipe
-    # --- frente de vidro das salas, com o vão das portas
-    {"r": [105, 330, 425, 344]},              # porta do Gustavo: 425-475
-    {"r": [505, 330, 814, 344]},              # porta do Christian: 814-862
-    {"r": [893, 330, 1133, 344]},             # porta do Felipe: 1133-1179
+    # --- o fundo: parede de trás (salão de cima, diretorias, café)
+    {"r": [0, 0, ARTE_L, 185]},
+    {"r": [452, 0, 1237, 188]},               # fundo das diretorias (a cadeira do dono encosta)
+    {"r": [1237, 0, ARTE_L, 205]},            # balcão do café
+    # --- pilares entre as salas (vão do chão até a frente aberta)
+    {"r": [420, 0, 452, 300]},
+    {"r": [705, 0, 722, 300]},
+    {"r": [975, 0, 995, 300]},
+    {"r": [1237, 0, 1268, 300]},
+    # --- parede de vidro da esquerda (em diagonal: degraus)
+    {"r": [0, 0, 112, 260]}, {"r": [0, 260, 62, 400]}, {"r": [0, 400, 42, 560]},
+    {"r": [0, 560, 30, ARTE_A]},
+    # --- parede de vidro da direita e o painel com a tela (degraus)
+    {"r": [1545, 0, ARTE_L, 330]}, {"r": [1552, 330, ARTE_L, 420]},
+    {"r": [1572, 420, ARTE_L, 520]}, {"r": [1592, 520, ARTE_L, 620]},
+    {"r": [1612, 620, ARTE_L, ARTE_A]},
+    # --- parede da frente, com a entrada aberta entre os pilares (727-935)
+    {"r": [0, 796, 727, ARTE_A]},
+    {"r": [935, 796, ARTE_L, ARTE_A]},
+    {"r": [727, 866, 935, ARTE_A]},
 ]
 for _id, _n, _z, _p, _l, d in DIRETORIAS:
-    BLOQUEIOS.append({"r": [d["mesa"][0], 224, d["mesa"][1], 256]})       # mesa de trabalho
-    BLOQUEIOS.append({"r": [d["vaso"][0], 205, d["vaso"][1], 240]})       # vaso
+    BLOQUEIOS.append({"r": [d["mesa"][0], 198, d["mesa"][1], 258]})      # mesa de trabalho
+    BLOQUEIOS.append({"r": [d["vaso"][0], 194, d["vaso"][1], 224]})      # vaso
+    BLOQUEIOS.append({"r": [d["dono"] - 22, 186, d["dono"] + 22, 200]})  # cadeira do dono
     for x1, x2 in d["visitas"]:
-        BLOQUEIOS.append({"r": [x1, 262, x2, 302]})                       # poltronas de visita
+        BLOQUEIOS.append({"r": [x1, 236, x2, 290]})                      # poltronas de visita
+for f in FILEIRAS:
+    x1, x2, y1, y2 = f["mesa"]
+    BLOQUEIOS.append({"r": [x1, y1, x2, y2]})
+    for cx1, cx2, cy1, cy2 in f["cadeiras"]:
+        BLOQUEIOS.append({"r": [cx1, cy1 + 12, cx2, cy2 - 10]})
+for r in BANCADA:
+    BLOQUEIOS.append({"r": r})
+for x1, x2, y1, y2, _dir in BANCADA_CADEIRAS:
+    BLOQUEIOS.append({"r": [x1, y1 + 20, x2, y2 - 4]})
 BLOQUEIOS += [
-    # --- salão: lado esquerdo (vaso, sofá, luminária) e direito (vaso alto)
-    {"r": [0, 344, 100, 392]},
-    {"r": [100, 373, 163, 425]},
-    {"r": [30, 388, 142, 590]},
-    {"r": [55, 560, 125, 668]},
-    {"r": [0, 390, 40, 700]},
-    {"r": [1159, 385, 1230, 475]},
-    {"r": [1232, 344, ARTE_L, 700]},
-    # --- parede da frente, com a entrada aberta entre os pilares (569-777)
-    {"r": [0, 698, 569, ARTE_A]},
-    {"r": [777, 698, ARTE_L, ARTE_A]},
-    {"r": [569, 760, 777, ARTE_A]},
+    # --- vasos e plantas do salão
+    {"r": [168, 150, 198, 186]},               # vaso do canto de cima (encosta na parede)
+    {"r": [355, 210, 390, 246]},               # vaso da ponta da fileira 1
+    {"r": [345, 338, 382, 372]},               # vaso da ponta da fileira 2
+    {"r": [338, 475, 366, 497]},               # vaso da ponta da fileira 3
+    {"r": [66, 332, 106, 370]},                # vaso da parede esquerda
+    {"r": [30, 596, 80, 640]},                 # vaso de baixo, à esquerda
+    {"r": [1508, 262, 1542, 300]},             # vaso do café
+    {"r": [1310, 280, 1355, 305]},             # vaso da ponta da bancada
+    {"r": [1397, 646, 1625, 712]},             # jardineira grande da direita
+    # --- lounge: sofá encostado na parede, sofá de cima, luminária, mesa de centro
+    {"r": [40, 640, 132, 790]},
+    {"r": [208, 628, 387, 700]},
+    {"r": [137, 645, 182, 720]},
+    {"r": [222, 716, 340, 786]},
+    # --- recepção (o pé do balcão)
+    {"r": [650, 700, 1012, 766]},
     # --- a mesa oval (o chão debaixo do tampo) e as oito cadeiras
-    {"c": [471, 875, 521, 68, 69]},
-    # (as de trás bloqueiam a partir do pé, não do encosto: entre elas e o vidro
-    # das salas sobra o corredor por onde se passa)
-    {"r": [500, 380, 578, 420]}, {"r": [632, 380, 713, 418]}, {"r": [766, 380, 845, 418]},
-    {"r": [463, 575, 565, 650]}, {"r": [620, 575, 721, 650]}, {"r": [783, 575, 882, 650]},
-    {"r": [322, 455, 405, 563]}, {"r": [939, 455, 1022, 563]},
+    {"c": [673, 1012, 481, 70, 67]},
+    # (as de trás bloqueiam a partir do pé, não do encosto: entre elas e a frente
+    # das diretorias sobra o corredor por onde se passa)
+    {"r": [684, 384, 748, 414]}, {"r": [811, 384, 876, 414]}, {"r": [938, 384, 1002, 414]},
+    {"r": [672, 552, 752, 612]}, {"r": [807, 552, 888, 612]}, {"r": [941, 552, 1021, 612]},
+    {"r": [540, 448, 602, 532]}, {"r": [1083, 448, 1146, 532]},
 ]
 
 # ---------------------------------------------------------------- recortes da frente
 # nome, retângulo do recorte na arte (x1, y1, x2, y2), base, opacidade
 FRENTES = [
-    ("mesa", (398, 405, 950, 596), 592, 1),
-    ("cadeira-tras-1", (495, 360, 584, 424), 421, 1),
-    ("cadeira-tras-2", (626, 358, 719, 422), 421, 1),
-    ("cadeira-tras-3", (760, 358, 851, 422), 421, 1),
-    ("cadeira-frente-1", (457, 545, 571, 656), 652, 1),
-    ("cadeira-frente-2", (614, 545, 728, 656), 652, 1),
-    ("cadeira-frente-3", (777, 545, 889, 656), 652, 1),
-    ("cadeira-ponta-esq", (316, 440, 410, 568), 566, 1),
-    ("cadeira-ponta-dir", (933, 440, 1028, 568), 566, 1),
-    ("mesa-gustavo", (200, 158, 410, 258), 256, 1),
-    ("mesa-christian", (585, 150, 805, 258), 256, 1),
-    ("mesa-felipe", (955, 158, 1157, 258), 256, 1),
-    ("visitas-gustavo", (204, 236, 400, 306), 303, 1),
-    ("visitas-christian", (597, 236, 796, 306), 303, 1),
-    ("visitas-felipe", (977, 236, 1158, 306), 303, 1),
-    ("vidro", (103, 256, 1188, 346), 343, 0.5),
-    ("vaso-esquerda", (94, 322, 170, 430), 425, 1),
-    ("vaso-direita", (1126, 268, 1240, 480), 475, 1),
-    ("frente", (0, 626, ARTE_L, ARTE_A), 5000, 1),
+    # mesa de reunião
+    ("mesa", (598, 388, 1088, 552), 548, 1),
+    ("cadeira-tras-1", (676, 340, 756, 412), 404, 1),
+    ("cadeira-tras-2", (803, 340, 884, 412), 404, 1),
+    ("cadeira-tras-3", (929, 340, 1010, 412), 404, 1),
+    ("cadeira-frente-1", (663, 522, 761, 620), 612, 1),
+    ("cadeira-frente-2", (798, 522, 897, 620), 612, 1),
+    ("cadeira-frente-3", (932, 522, 1030, 620), 612, 1),
+    ("cadeira-ponta-esq", (533, 414, 607, 540), 533, 1),
+    ("cadeira-ponta-dir", (1078, 414, 1152, 540), 533, 1),
+    # diretorias
+    ("mesa-gustavo", (505, 150, 665, 262), 258, 1),
+    ("mesa-christian", (772, 150, 940, 262), 258, 1),
+    ("mesa-felipe", (1045, 150, 1202, 262), 258, 1),
+    ("visitas-gustavo", (525, 226, 651, 294), 292, 1),
+    ("visitas-christian", (787, 226, 923, 294), 292, 1),
+    ("visitas-felipe", (1062, 226, 1188, 294), 292, 1),
+    # estações da esquerda: a mesa de cada fileira (com divisória, monitores e
+    # as cadeiras do outro lado) e as cadeiras da frente
+    ("fileira-2", (110, 320, 392, 448), 445, 1),
+    ("fileira-3", (86, 458, 378, 588), 586, 1),
+    ("estacao-1a", (172, 250, 224, 322), 318, 1),
+    ("estacao-1b", (281, 250, 333, 322), 318, 1),
+    ("estacao-2a", (154, 387, 206, 459), 455, 1),
+    ("estacao-2b", (269, 387, 324, 459), 455, 1),
+    ("estacao-3a", (134, 524, 191, 604), 600, 1),
+    ("estacao-3b", (252, 524, 311, 604), 600, 1),
+    # vasos com gente passando atrás
+    ("vaso-bancada", (1298, 240, 1366, 308), 305, 1),
+    ("vaso-cafe", (1484, 190, 1552, 302), 300, 1),
+    ("vaso-esquerda", (56, 286, 112, 372), 370, 1),
+    # recepção, jardineira grande e a parede da frente com as jardineiras
+    ("recepcao", (646, 652, 1016, 774), 766, 1),
+    ("jardineira", (1392, 588, 1630, 716), 712, 1),
+    ("frente", (0, 712, ARTE_L, ARTE_A), 5000, 1),
 ]
 
 # Como cada recorte é separado do chão (lido por gerar_recortes.py).
 MASCARAS = {
-    "mesa": {"capsula": [471, 875, 482.5, 70, 69], "pe": [440, 530, 910, 592],
-             "objetos": [[772, 408, 850, 484], [796, 494, 868, 528]]},
-    "mesa-gustavo": [[205, 192, 405, 256], [228, 163, 262, 195], [330, 170, 385, 195], [260, 186, 292, 195]],
-    "mesa-christian": [[590, 192, 800, 256], [617, 166, 668, 195], [753, 155, 800, 195], [670, 185, 740, 195]],
-    "mesa-felipe": [[959, 192, 1152, 256], [963, 168, 998, 195], [1036, 170, 1100, 195], [1105, 162, 1142, 195]],
-    "vidro": [[105, 258, 1186, 344]],
-    "vaso-esquerda": {"vaso": [[142, 373, 162, 425], [100, 373, 162, 390]]},   # o sofá fica na frente do pé do vaso
-    "vaso-direita": {"vaso": [[1161, 387, 1227, 475]]},
-    "frente": {"rets": [[0, 770, ARTE_L, ARTE_A], [325, 698, 569, 778], [777, 698, 1003, 778],
-                        [541, 686, 569, 778], [777, 686, 805, 778], [5, 700, 335, 778],
-                        [999, 700, ARTE_L, 778], [0, 690, 30, ARTE_A], [1240, 660, ARTE_L, ARTE_A]],
-               "entrada": [569, 0, 777, 770]},
+    "mesa": {"capsula": [673, 1012, 460, 70, 67], "pe": [630, 496, 1058, 550],
+             "objetos": [[925, 400, 1000, 462], [965, 476, 1020, 500], [675, 445, 730, 478]]},
+    # a mesa e o que está em cima dela (abajur, monitor, notebook); a cadeira do
+    # dono fica de fora, senão a mesa cobriria quem está sentado nela
+    "mesa-gustavo": [[510, 186, 660, 260], [520, 160, 552, 200], [606, 167, 651, 207]],
+    "mesa-christian": [[777, 186, 935, 260], [795, 165, 838, 207], [895, 158, 932, 202]],
+    "mesa-felipe": [[1050, 186, 1197, 260], [1105, 172, 1152, 210], [1163, 165, 1195, 200]],
+    "vaso-esquerda": {"vaso": [[66, 332, 106, 370]]},
+    "vaso-bancada": {"vaso": [[1310, 280, 1355, 305]]},
+    "vaso-cafe": {"vaso": [[1508, 262, 1542, 300]]},
+    "recepcao": {"rets": [[650, 688, 1012, 772], [785, 660, 853, 696]], "folhas": [915, 652, 1005, 770]},
+    "jardineira": {"rets": [[1397, 646, 1625, 714]], "folhas": [1392, 588, 1630, 680]},
+    "frente": {"rets": [[0, 792, ARTE_L, ARTE_A], [697, 780, 727, 866], [935, 780, 965, 866],
+                        [0, 620, 30, ARTE_A], [1612, 600, ARTE_L, ARTE_A]],
+               "entrada": [727, 0, 935, 866]},
 }
 
 # ---------------------------------------------------------------- assentos
 # x, y: onde a pessoa sentada fica (o centro da caixinha); dir: para onde olha
 ASSENTOS = []
-for x in (539, 672, 805):                    # fila de trás da mesa: de frente para nós
-    ASSENTOS.append({"x": x, "y": 398, "dir": "baixo", "zona": "reuniao",
-                     "base": 422, "saida": [x, 356]})
-for x in (513, 670, 832):                    # fila da frente: de costas, olhando a mesa
-    ASSENTOS.append({"x": x, "y": 590, "dir": "cima", "zona": "reuniao",
-                     "base": 625, "saida": [x, 668]})
-ASSENTOS.append({"x": 366, "y": 494, "dir": "direita", "zona": "reuniao",   # pontas da mesa
-                 "base": 567, "saida": [298, 494]})
-ASSENTOS.append({"x": 978, "y": 494, "dir": "esquerda", "zona": "reuniao",
-                 "base": 567, "saida": [1048, 494]})
+for x in (716, 844, 970):                    # fila de trás da mesa: de frente para nós
+    ASSENTOS.append({"x": x, "y": 385, "dir": "baixo", "zona": "reuniao",
+                     "base": 406, "saida": [x, 342]})
+for x in (712, 847, 981):                    # fila da frente: de costas, olhando a mesa
+    ASSENTOS.append({"x": x, "y": 566, "dir": "cima", "zona": "reuniao",
+                     "base": 596, "saida": [x, 640]})
+ASSENTOS.append({"x": 572, "y": 478, "dir": "direita", "zona": "reuniao",   # pontas da mesa
+                 "base": 535, "saida": [514, 478]})
+ASSENTOS.append({"x": 1114, "y": 478, "dir": "esquerda", "zona": "reuniao",
+                 "base": 535, "saida": [1172, 478]})
 for _id, _n, _z, _p, _l, d in DIRETORIAS:
     # a cadeira do dono, atrás da mesa de trabalho, de frente para a sala
-    ASSENTOS.append({"x": d["dono"], "y": 208, "dir": "baixo", "base": 222,
-                     "saida": [d["dono"] + 44, 208]})
+    ASSENTOS.append({"x": d["dono"], "y": 193, "dir": "baixo", "base": 202,
+                     "saida": [d["corredor"], 212]})
     # as duas poltronas de visita, de costas para nós, olhando a mesa
     for x1, x2 in d["visitas"]:
         meio = (x1 + x2) // 2
-        ASSENTOS.append({"x": meio, "y": 270, "dir": "cima", "base": 290, "saida": [meio, 318]})
-for y in (440, 500, 558):                    # o sofá encostado na parede esquerda
-    ASSENTOS.append({"x": 102, "y": y, "dir": "direita", "base": y + 14, "saida": [164, y]})
+        ASSENTOS.append({"x": meio, "y": 273, "dir": "cima", "base": 289, "saida": [meio, 310]})
+for f in FILEIRAS:                           # estações: de costas, olhando o monitor
+    for cx1, cx2, cy1, cy2 in f["cadeiras"]:
+        meio = (cx1 + cx2) // 2
+        ASSENTOS.append({"x": meio, "y": cy1 + 26, "dir": "cima", "base": cy2 - 12,
+                         "saida": [meio, cy2 + 14]})
+for x1, x2, y1, y2, dir_ in BANCADA_CADEIRAS:  # bancada: de lado, olhando a mesa
+    meio_y = (y1 + y2) // 2 + 4
+    if dir_ == "direita":
+        ASSENTOS.append({"x": x1 + 18, "y": meio_y, "dir": "direita", "base": y2 - 2,
+                         "saida": [x1 - 26, meio_y]})
+    else:
+        ASSENTOS.append({"x": x2 - 18, "y": meio_y, "dir": "esquerda", "base": y2 - 2,
+                         "saida": [x2 + 26, meio_y]})
+for x in (262, 335):                         # sofá de cima do lounge, de frente para nós
+    ASSENTOS.append({"x": x, "y": 664, "dir": "baixo", "base": 702, "saida": [408, 714]})
+for y in (694, 750):                         # sofá encostado na parede, olhando para dentro
+    ASSENTOS.append({"x": 88, "y": y, "dir": "direita", "base": y + 14, "saida": [172, 752]})
 
 
 def montar_padrao(esc) -> None:
@@ -171,43 +256,46 @@ def montar_padrao(esc) -> None:
     esc.zonas = []
     esc.proximo_id = 1
 
-    for id_, nome, (x1, y1, x2, y2), (px1, px2, py), (lx, ly), _d in DIRETORIAS:
+    for id_, nome, (x1, y1, x2, y2), (px1, px2, py), (lx, ly, lw, lh), _d in DIRETORIAS:
         esc.zonas.append({
             "id": id_, "nome": nome, "sub": "Diretoria",
             "x1": x1, "y1": y1, "x2": x2, "y2": y2, "privada": True, "cor": "#8b5cf6",
-            # a porta continua gravada na zona (o servidor e o editor usam): é o
-            # tile do salão bem na frente do meio do vão, o primeiro passo fora
+            # a porta continua gravada na zona (o servidor usa): o tile do salão
+            # bem na frente do meio da sala, o primeiro passo fora
             "porta": {"lado": "baixo", "x": (px1 + px2) // 2 // 32, "y": y2 + 1},
             "porta_px": {"x1": px1, "x2": px2, "y": py},
-            "placa_px": {"x": lx, "y": ly},
+            # o nome já está desenhado na arte: a plaquinha só responde ao clique
+            "placa_px": {"x": lx, "y": ly, "w": lw, "h": lh, "na_arte": True},
             "dono_nome_fixo": nome,
         })
 
-    # O salão é área aberta: vale o raio de conversa, como sempre.
-    esc.zonas.append({"id": "salao", "nome": "Salão", "x1": 1, "y1": 11, "x2": 38, "y2": 25,
-                      "privada": False, "cor": "#8b5cf6", "sem_placa": True})
     # A mesa oval é a sala de reunião: só quem SENTA entra nela (bolha fechada,
     # câmera e microfone abrem sozinhos, é da casa). Quem passa pela mesa
     # continua no salão, andando normalmente.
-    esc.zonas.append({"id": "reuniao", "nome": "Mesa de reunião", "x1": 9, "y1": 11,
-                      "x2": 32, "y2": 20, "privada": True, "cor": "#8b5cf6",
+    esc.zonas.append({"id": "reuniao", "nome": "Mesa de reunião", "x1": 16, "y1": 10,
+                      "x2": 36, "y2": 19, "privada": True, "cor": "#8b5cf6",
                       "so_sentado": True, "sem_dono": True, "abre_midia": True,
                       "sem_placa": True})
+    # O salão é área aberta: vale o raio de conversa, como sempre. Cobre tudo;
+    # as salas vêm antes na lista e ganham dele.
+    esc.zonas.append({"id": "salao", "nome": "Salão", "x1": 0, "y1": 0,
+                      "x2": LARGURA - 1, "y2": ALTURA - 1,
+                      "privada": False, "cor": "#8b5cf6", "sem_placa": True})
 
     esc.cenario = {
         "nome": "codara",
         "fundo": PASTA + "fundo.png",
         "largura": ARTE_L, "altura": ARTE_A,
         "cor_fora": "#121014",
-        "boneco": 5.6,                         # escala do boneco (2 era a de antes)
+        "boneco": 5.0,                         # escala do boneco (2 era a de antes)
         "raio_conversa": 250, "raio_silencio": 330,
-        "entrada": [673, 735],
+        "entrada": [831, 834],
         "bloqueios": BLOQUEIOS,
         "frentes": [{"nome": n, "img": PASTA + "frente-%s.png" % n,
                      "x": r[0], "y": r[1], "w": r[2] - r[0], "h": r[3] - r[1],
                      "base": b, "alfa": a} for n, r, b, a in FRENTES],
         "assentos": ASSENTOS,
     }
-    esc.nascimento = (673 // 32, 735 // 32)
+    esc.nascimento = (831 // 32, 834 // 32)
     esc.versao_planta = VERSAO
     esc._recalcular()

@@ -564,13 +564,17 @@ function avisarSalaTrancada(t) {
   // <svg onload=…> rodava script na tela de quem esbarrasse na porta dele.
   const dono = escapar(t.dono || 'alguém');
   const nome = escapar(t.nome);
+  // a diretoria tem o nome do dono: "Gustavo é de Gustavo" não diz nada
+  const mesmo = String(t.nome || '').trim().toLowerCase() === String(t.dono || '').trim().toLowerCase();
+  const sala = mesmo ? `A sala de <b>${dono}</b> está trancada` : `<b>${nome}</b> é de ${dono}`;
   if (!t.online) {
-    painelPedido({ texto: `<b>${nome}</b> é de ${dono}, que não está no escritório agora.`,
+    painelPedido({ texto: mesmo ? `${sala}, e ${dono} não está no escritório agora.`
+                               : `${sala}, que não está no escritório agora.`,
                    botoes: [{ texto: 'Entendi' }], segundos: 6 });
     return;
   }
   painelPedido({
-    texto: `<b>${nome}</b> é de ${dono}. Quer bater na porta?`,
+    texto: `${sala}. Quer bater na porta?`,
     botoes: [
       { texto: 'Bater na porta', classe: 'ok', fazer: () => enviar({ tipo: 'sala', acao: 'bater', id: t.id }) },
       { texto: 'Agora não' },

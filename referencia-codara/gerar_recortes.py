@@ -2,10 +2,10 @@
 
     python3 referencia-codara/gerar_recortes.py
 
-Entra: referencia-codara/arte/salao-8-com-3-portas.png (o salão com a mesa para 8
-e as salas mais fundas, gerado no Magnific a partir da referência limpa, com a
-porta da sala do Felipe copiada da porta do Christian). A versão anterior, de 6
-lugares, era a cena-com-3-portas.png.
+Entra: referencia-codara/arte/sede-maior.png (a "Sede virtual Codara Labs em
+corte" que o dono mandou em 26/11, sem a faixa de título: o original está em
+sede-maior-original.png). A versão anterior, do salão de 1264 x 848, usava a
+salao-8-com-3-portas.png e está em referencia-codara/backup/gerar_recortes-8-lugares.py.
 
 Sai, em backend/static/assets/codara/:
     fundo.png          a arte inteira (piso, paredes, móveis)
@@ -25,7 +25,7 @@ from pathlib import Path
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 RAIZ = Path(__file__).resolve().parent.parent
-ARTE = RAIZ / "referencia-codara" / "arte" / "salao-8-com-3-portas.png"
+ARTE = RAIZ / "referencia-codara" / "arte" / "sede-maior.png"
 SAIDA = RAIZ / "backend" / "static" / "assets" / "codara"
 
 spec = importlib.util.spec_from_file_location("planta", RAIZ / "backend" / "planta_padrao.py")
@@ -83,49 +83,77 @@ def folhas(pedaco):
 
 def escuro(pedaco):
     # cadeira: grafite escuro e pouco saturado. Piso é mais claro, tampo é
-    # saturado, sombra no chão fica entre os dois (v ~0.28) e fica de fora.
-    return fechar(por_cor(pedaco, lambda h, s, v: v < 0.25 and s < 0.55), 5)
+    # saturado, sombra no chão fica entre os dois e fica de fora.
+    return fechar(por_cor(pedaco, lambda h, s, v: v < 0.33 and s < 0.6), 5)
+
+
+def eh_chao(h, s, v):
+    # o piso da sede: mármore rosado (h 15-25, s 0.33-0.48, v 0.55-0.72)
+    return 10 <= h <= 30 and 0.26 <= s <= 0.53 and v >= 0.5
+
+
+def nao_chao(pedaco):
+    m = por_cor(pedaco, lambda h, s, v: not eh_chao(h, s, v))
+    # tira pontinhos soltos (veio do mármore) e fecha buraquinhos
+    return fechar(m.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.MaxFilter(3)), 5)
 
 
 M = planta.MASCARAS
 DONO_DAS_VISITAS = {"visitas-gustavo": 0, "visitas-christian": 1, "visitas-felipe": 2}
 
 
+def contorno(tam, origem):
+    """O retângulo do próprio recorte, arredondado (o formato de uma cadeira)."""
+    ox, oy = origem
+    return retangulos(tam, origem, [(ox + 3, oy + 3, ox + tam[0] - 3, oy + tam[1] - 3)], 12)
+
+
 def mascara_de(nome, pedaco, origem):
-    """As máscaras vêm de planta_padrao.py (MASCARAS e DIRETORIAS)."""
+    """As máscaras vêm de planta_padrao.py (MASCARAS, DIRETORIAS e FILEIRAS)."""
     tam = pedaco.size
+    ox, oy = origem
     if nome == "mesa":
         m = M["mesa"]
         xa, xb, cy, rx, ry = m["capsula"]
         tampo = capsula(tam, origem, xa, xb, cy, rx, ry)
         pe = retangulos(tam, origem, [m["pe"]], raio=26)
         forma = ImageChops.lighter(tampo, pe)
-        # nas pontas a forma pega um pouco de chão: chão é claro e pouco
-        # saturado; o tampo é saturado e o pé é escuro
-        chao = por_cor(pedaco, lambda h, s, v: v > 0.32 and s < 0.5)
+        # nas pontas a forma pega um pouco de chão
+        chao = por_cor(pedaco, eh_chao)
         # o corte do chão vale só na beirada: o miolo do tampo fica inteiro (o
-        # logo roxo e o caderno também são claros e pouco saturados)
+        # logo roxo e o caderno também são claros)
         miolo = capsula(tam, origem, xa, xb, cy, rx - 16, ry - 14)
-        # o que é claro e cinza EM CIMA da mesa fica: o vaso de pedra e o notebook
+        # o que é claro e cinza EM CIMA da mesa fica: o vaso, o notebook, o caderno
         objetos = retangulos(tam, origem, m["objetos"], 6)
         return ImageChops.lighter(ImageChops.lighter(ImageChops.subtract(forma, chao), miolo),
                                   ImageChops.multiply(forma, objetos))
     if nome.startswith("cadeira"):
-        m = escuro(pedaco)
+        m = ImageChops.multiply(escuro(pedaco), contorno(tam, origem))
         if nome.startswith("cadeira-frente"):
-            # a cadeira da frente encosta no pé da mesa (também escuro): o que é
-            # pé da mesa e fica ACIMA do encosto não é cadeira
-            m = ImageChops.subtract(m, retangulos(tam, origem, [(430, 520, 920, 552)]))
+            # a cadeira da frente encosta no pé da mesa (também escuro): o que
+            # fica ACIMA do encosto é pé da mesa, não cadeira
+            m = ImageChops.subtract(m, retangulos(tam, origem, [(ox, oy, ox + tam[0], 529)]))
         return m
+    if nome.startswith("estacao-"):
+        # a cadeira da estação fica na frente do painel da mesa, da mesma cor:
+        # vale o contorno da cadeira (o que não é chão dentro dele)
+        return ImageChops.multiply(nao_chao(pedaco), contorno(tam, origem))
+    if nome.startswith("fileira-"):
+        return nao_chao(pedaco)
     if nome in DONO_DAS_VISITAS:
         d = planta.DIRETORIAS[DONO_DAS_VISITAS[nome]][5]
-        rets = [(x1 - 4, 238, x2 + 4, 305) for x1, x2 in d["visitas"]]
-        return ImageChops.multiply(escuro(pedaco), retangulos(tam, origem, rets, 10))
+        rets = [(x1 - 2, 228, x2 + 2, 287) for x1, x2 in d["visitas"]]
+        return ImageChops.multiply(nao_chao(pedaco), retangulos(tam, origem, rets, 10))
     if nome.startswith("vaso-"):
         return ImageChops.lighter(folhas(pedaco), retangulos(tam, origem, M[nome]["vaso"], 4))
+    if nome in ("recepcao", "jardineira"):
+        m = M[nome]
+        verde = ImageChops.multiply(folhas(pedaco), retangulos(tam, origem, [m["folhas"]]))
+        return ImageChops.lighter(retangulos(tam, origem, m["rets"]), verde)
     if nome == "frente":
         m = retangulos(tam, origem, M["frente"]["rets"])
-        verde = folhas(pedaco)
+        # as folhas das jardineiras da parede (e não a planta da recepção)
+        verde = ImageChops.subtract(folhas(pedaco), retangulos(tam, origem, [(640, 0, 1020, 790)]))
         entrada = retangulos(tam, origem, [M["frente"]["entrada"]])
         return ImageChops.subtract(ImageChops.lighter(m, verde), entrada)
     if isinstance(M.get(nome), list):

@@ -278,7 +278,10 @@ const Cenario = {
   desenharPorta(ctx, z) {
     const p = z.porta_px;
     if (!p) return;
-    const w = p.x2 - p.x1, alto = 74;
+    // Porta larga = a frente inteira da sala (a sede maior é "em corte", sem
+    // vidro desenhado): aberta não leva nada; trancada vira uma parede de vidro.
+    const w = p.x2 - p.x1, larga = w > 120, alto = larga ? 120 : 74;
+    if (!z.trancada && larga) return;
     if (!z.trancada) {
       const g = ctx.createLinearGradient(0, p.y - 4, 0, p.y + 10);
       g.addColorStop(0, 'rgba(255,196,120,.0)');
@@ -314,6 +317,24 @@ const Cenario = {
   desenharPlaca(ctx, z) {
     const pos = z.placa_px;
     if (!pos) return null;
+    if (pos.na_arte) {
+      // o nome já vem desenhado na arte: só o aviso de trancada, logo abaixo
+      if (z.trancada) {
+        ctx.font = '600 11px Inter, -apple-system, "Segoe UI", sans-serif';
+        const t = 'trancada', lt = ctx.measureText(t).width + 26;
+        const x = pos.x, y = pos.y + pos.h + 5;
+        ctx.fillStyle = 'rgba(24,21,27,.9)';
+        arredondado(x, y, lt, 18, 9);
+        ctx.fill();
+        ctx.fillStyle = '#a78bfa';
+        ctx.beginPath(); ctx.arc(x + 10, y + 9, 3.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#e9e4f5';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(t, x + 18, y + 9.5);
+      }
+      return { x: pos.x, y: pos.y, w: pos.w, h: pos.h };
+    }
     const titulo = z.nome;
     const sub = z.sub || '';
     ctx.font = '600 15px Inter, -apple-system, "Segoe UI", sans-serif';
