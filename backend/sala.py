@@ -241,6 +241,8 @@ class Sala:
             # dos outros sem passar pela porta — inclusive sendo visitante.
             if vx is not None and self.mapa.livre(vx, vy) and not self.zona_trancada_para(p, vx, vy):
                 p.x, p.y = vx, vy
+                if voltando.get("direcao") in ("cima", "baixo", "esquerda", "direita"):
+                    p.direcao = voltando["direcao"]
                 async with self._trava:
                     self.participantes[p.id] = p
                 return p

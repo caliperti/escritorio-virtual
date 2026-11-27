@@ -350,6 +350,19 @@ async function atualizarGaleria() {
     };
     g.appendChild(b);
   }
+  // "Padrão" (27/11): o boneco genérico, para quem não tem um próprio na
+  // galeria (a Arena 7 tem só o do Lindson, e o Allan seria obrigado a pegar
+  // o dele). Vai por último.
+  const padrao = document.createElement('button');
+  padrao.type = 'button';
+  padrao.dataset.personagem = '';
+  padrao.setAttribute('aria-pressed', String(personagemEscolhido === ''));
+  padrao.innerHTML = `<img alt="" src="${Personagens.retrato('barbudo')}"><span>Padrão</span><small>sem boneco próprio</small>`;
+  padrao.onclick = () => {
+    personagemEscolhido = '';
+    for (const o of g.querySelectorAll('button')) o.setAttribute('aria-pressed', String(o === padrao));
+  };
+  g.appendChild(padrao);
   if (personagemEscolhido && ocupados[personagemEscolhido]) personagemEscolhido = null;
 }
 document.getElementById('aba-entrar').onclick = () => usarModo('entrar');
@@ -431,8 +444,10 @@ async function autenticar() {
   if (modo === 'criar' && !nome) { aviso.textContent = 'Escolha o nome que vai aparecer.'; return false; }
 
   const galeria = modo === 'criar' && personagensDoLugar(lugarEscolhido).length > 0;
-  if (galeria && !personagemEscolhido) { aviso.textContent = 'Escolha o seu personagem.'; return false; }
-  const aparencia = galeria ? { ...editorEntrada.ver(), personagem: personagemEscolhido } : editorEntrada.ver();
+  if (galeria && personagemEscolhido === null) { aviso.textContent = 'Escolha o seu personagem.'; return false; }
+  // "Padrão" é a escolha vazia: o servidor dá o genérico (o homem ou a mulher)
+  const aparencia = galeria && personagemEscolhido ? { ...editorEntrada.ver(), personagem: personagemEscolhido }
+                                                   : editorEntrada.ver();
   const corpo = modo === 'criar'
     ? { email, nome, senha, convite: document.getElementById('campo-convite').value,
         espaco: lugarEscolhido, aparencia, cor: aparencia.corCamisa }
@@ -537,7 +552,8 @@ function conectar(perfil) {
     if (!atual()) { try { ws.close(); } catch (e) {} return; }
     // voltando de uma queda: pede para nascer onde a pessoa estava (trocando
     // de lugar, não: o lugar novo é outro mapa, e nasce na entrada dele)
-    const voltando = Jogo.eu && !Conexao.trocando ? { x: Jogo.eu.x, y: Jogo.eu.y } : null;
+    const voltando = Jogo.eu && !Conexao.trocando
+      ? { x: Jogo.eu.x, y: Jogo.eu.y, direcao: Jogo.eu.direcao } : null;
     // e conta POR QUE a ligação de antes acabou. No registro do servidor,
     // "entrou de novo" sozinho não diz se foi F5, queda de rede ou troca de
     // sessão — e sem isso não dá para consertar quem vive caindo.
@@ -961,6 +977,16 @@ function iniciarSala(msg) {
   Jogo.querSentar = null;
   Jogo.sentadoEm = null;
   receberMapa(msg.mapa);
+  // voltou de uma queda sentado: continua sentado, virado para o lado da
+  // cadeira (e avisa os outros, que receberam a pessoa "para baixo")
+  const cadeira = !troca && Cenario.ativo() && Cenario.assentoEm(Jogo.eu.x, Jogo.eu.y);
+  if (cadeira) {
+    Jogo.sentadoEm = cadeira;
+    if (cadeira.dir && Jogo.eu.direcao !== cadeira.dir) {
+      Jogo.eu.direcao = cadeira.dir;
+      setTimeout(() => enviar({ tipo: 'mover', x: Jogo.eu.x, y: Jogo.eu.y, direcao: cadeira.dir }), 0);
+    }
+  }
   Jogo.config = msg.config;
   Jogo.chaveEnvio = msg.chave_envio || '';        // para mandar foto/arquivo no chat
   Jogo.visitante = !!msg.visitante;
@@ -2468,7 +2494,11 @@ function desenharAvatar(p, souEu) {
   }
 
   const assento = assentoAqui;
-  Boneco.desenhar(ctx, p.aparencia, p.xr, p.yr, p.direcao, Math.floor(p.passo || 0), 2 * k, !!assento);
+  // sentado numa cadeira do cenário, o lado é o da cadeira (27/11): depois de
+  // uma queda de conexão a pessoa voltava "para baixo" e aparecia de frente
+  // numa cadeira de lado (a ponta da mesa, o sofá da parede)
+  const lado = (assento && assento.dir) || p.direcao;
+  Boneco.desenhar(ctx, p.aparencia, p.xr, p.yr, lado, Math.floor(p.passo || 0), 2 * k, !!assento);
   if (k > 1) { desenharCracha(p, souEu, mudo, nivel, !!assento, k); return; }
 
   // placa com o nome, logo abaixo dos pés

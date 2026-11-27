@@ -22,6 +22,7 @@ import codara  # noqa: E402
 from codara import CONVITE, END, MARCA, andar, ok  # noqa: E402
 
 CHAVE_PINGOU = os.environ.get("CHAVE_PINGOU", "Pingou")
+CHAVE_ARENA = os.environ.get("CHAVE_ARENA", "arenasete")
 CAPTURAS = os.environ.get("CAPTURAS", "")
 
 
@@ -105,7 +106,8 @@ async def main():
         # ---- a entrada pergunta onde entrar
         pg = await abrir(nav)
         opcoes = await pg.evaluate("() => [...document.querySelectorAll('#lugares-entrada button')].map(b => b.innerText)")
-        ok("a entrada pergunta onde entrar: Escritório ou Pingou", opcoes == ["Escritório", "Pingou"], opcoes)
+        ok("a entrada pergunta onde entrar: Escritório, Pingou ou Arena 7",
+           opcoes == ["Escritório", "Pingou", "Arena 7"], opcoes)
         await pg.close()
 
         # ---- conta nova no Pingou com a chave errada
@@ -258,10 +260,47 @@ async def main():
         await v.click("#lugares-saida button.ok")
         ok("  e volta para o Escritório (sem esbarrar no próprio nome)", await esperar_lugar(v, "escritorio"))
 
+        # ---- Arena 7: a chave dela e o Lindson na galeria (um por pessoa)
+        r = await entrar_em(nav, "Rui", "arena", "errada")
+        await asyncio.sleep(1.5)
+        ok("chave errada da Arena 7 não cria a conta", "Arena 7 errada" in await texto(r, "#aviso-entrada"))
+        await r.close()
+        r = await entrar_em(nav, "Rui", "arena", CHAVE_ARENA)
+        galeria = await r.evaluate("() => [...document.querySelectorAll('#galeria-personagens button')].map(b => b.dataset.personagem)")
+        ok("na Arena 7, a galeria tem Allan, Lindson e o Padrão (por último)",
+           galeria == ["allan", "lindson", ""], galeria)
+        ok("  e com a chave arenasete ele entra na Arena 7", await dentro(r) and await lugar(r) == "arena")
+        ok("  com o boneco que escolheu (o primeiro livre)", await r.evaluate("() => Jogo.eu.aparencia.personagem") == "allan")
+        ocupados = await r.evaluate("async () => (await (await fetch('/personagens/ocupados')).json()).ocupados")
+        ok("  e esse boneco passa a constar como escolhido", "allan" in ocupados, ocupados)
+        await ir_para_a_porta(r)
+        nomes = await r.evaluate("() => [...document.querySelectorAll('#lugares-saida .cartao-lugar b')].map(b => b.innerText)")
+        ok("a porta da Arena 7 leva aos três lugares", nomes == ["Escritório", "Pingou", "Arena 7"], nomes)
+        await r.keyboard.press("Escape")
+        # quem não tem boneco próprio (o Allan) entra com o Padrão, sem pegar o do Lindson
+        al = await abrir(nav)
+        await al.click("#aba-criar")
+        await al.fill("#campo-email", "allan" + MARCA + "@teste.local")
+        await al.fill("#campo-senha", "teste1234")
+        await al.fill("#campo-nome", "Allan")
+        await al.evaluate("() => escolherLugar('arena')")
+        await al.fill("#campo-convite", CHAVE_ARENA)
+        await asyncio.sleep(0.8)
+        apagado = await al.evaluate("() => document.querySelector(\"#galeria-personagens button[data-personagem='allan']\").disabled")
+        ok("boneco já escolhido por outro aparece apagado", apagado)
+        await al.click("#galeria-personagens button[data-personagem='']")
+        await al.evaluate("() => entrar(true)")
+        ok("o Allan entra na Arena 7 com o Padrão", await dentro(al) and await lugar(al) == "arena")
+        pers = await al.evaluate("() => Jogo.eu.aparencia.personagem")
+        ok("  com o boneco genérico", pers in ("barbudo", "mulher"), pers)
+        dono = await al.evaluate("() => (Jogo.mapa.zonas.find(z => z.id === 'a-allan') || {}).dono_nome")
+        ok("  e a sala Allan fica dele", dono == "Allan", dono)
+        al.erros and print(al.erros)
+
         saude = await a.evaluate("async () => (await (await fetch('/saude')).json()).lugares")
         ok("/saude conta cada lugar", saude.get("pingou", 0) >= 3 and saude.get("escritorio", 0) >= 1, saude)
 
-        erros = [e for pg in (a, b, pp, c, v) for e in pg.erros]
+        erros = [e for pg in (a, b, pp, c, v, r) for e in pg.erros]
         ok("nenhum erro de página", not erros, erros[:3])
         await nav.close()
 

@@ -472,6 +472,10 @@ def _limpar_entrada(bruto: dict) -> dict:
             vx = vy = None
         if vx is not None and math.isfinite(vx) and math.isfinite(vy):
             limpa["voltando"] = {"x": vx, "y": vy}
+            # para que lado estava virada (27/11): sem isso quem caía sentado
+            # numa cadeira de lado voltava "para baixo", de frente
+            if voltando.get("direcao") in ("cima", "baixo", "esquerda", "direita"):
+                limpa["voltando"]["direcao"] = voltando["direcao"]
     return limpa
 
 

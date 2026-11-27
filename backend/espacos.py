@@ -1,4 +1,4 @@
-"""Os lugares do Gather (27/11): o Escritório e o Pingou.
+"""Os lugares do Gather (27/11): o Escritório, o Pingou e a Arena 7.
 
 Cada lugar tem o seu mapa (arte, colisão, salas), a sua roda de gente (quem
 ouve quem, quem vê quem) e a sua chave de acesso. A conta é uma só. Para entrar
@@ -9,7 +9,7 @@ num lugar, vale qualquer um destes:
     - alguém que está lá dentro deixou entrar (o passe, que vale o dia).
 
 As chaves ficam fora do código (o repositório é público): SENHA é a do
-Escritório, como sempre; SENHA_PINGOU, a do Pingou. Sem nenhuma chave definida
+Escritório, como sempre; SENHA_PINGOU, a do Pingou; SENHA_ARENA, a da Arena 7. Sem nenhuma chave definida
 (rodando na própria máquina), os lugares são abertos. Com a do Escritório
 definida e a do Pingou esquecida, o Pingou fica FECHADO, não aberto.
 """
@@ -18,6 +18,7 @@ import time
 from typing import Dict, Iterator, List, Optional, Tuple
 
 import mapa
+import planta_arena
 import planta_pingou
 from sala import Participante, Sala, chave_de_castigo, sala as sala_do_escritorio
 
@@ -59,6 +60,8 @@ def _criar() -> None:
     pasta = mapa.ARQUIVO.parent
     m = mapa.Escritorio(pasta / "mapa-pingou.json", planta_pingou)
     ESPACOS["pingou"] = Espaco("pingou", "Pingou", "SENHA_PINGOU", m, Sala(m, "pingou"))
+    a = mapa.Escritorio(pasta / "mapa-arena.json", planta_arena)
+    ESPACOS["arena"] = Espaco("arena", "Arena 7", "SENHA_ARENA", a, Sala(a, "arena"))
 
 
 _criar()
