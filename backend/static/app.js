@@ -15,7 +15,10 @@ const ZOOM_CHAO = 0.2;
 let ESCALA = Number(localStorage.getItem('escritorio:zoom'))
   || (matchMedia('(max-width: 760px)').matches ? 1.05 : 1.5);
 if (!(ESCALA >= ZOOM_CHAO && ESCALA <= ZOOM_MAX)) ESCALA = 1.5;
-const VELOCIDADE = 3.2;             // pixels por quadro (~190 px/s)
+// 27/11: por SEGUNDO, não mais por quadro. Antes eram 3,2 px a cada quadro
+// (~190 px/s a 60 quadros): com o computador ocupado (câmera com desfoque,
+// várias câmeras abertas) caía para 30 quadros e o boneco andava pela metade.
+const VELOCIDADE = 240;             // pixels por segundo
 const INTERVALO_ENVIO = 66;         // ms entre atualizações de posição
 const DURACAO_BOLHA = 6000;
 
@@ -1665,6 +1668,12 @@ function quadro() {
 
 function atualizar() {
   const eu = Jogo.eu;
+  // quanto tempo passou desde o quadro anterior (com teto: a aba voltando de
+  // escondida não pode dar um salto, e passo grande atravessaria móvel fino)
+  const agoraQ = performance.now();
+  const dt = Math.min(0.034, Math.max(0, (agoraQ - (Jogo.ultimoQuadro || agoraQ)) / 1000));
+  Jogo.ultimoQuadro = agoraQ;
+  let limitePasso = Infinity;     // seguindo um ponto: não passar dele
   let dx = 0, dy = 0;
   if (Jogo.teclas.has('esquerda')) dx -= 1;
   if (Jogo.teclas.has('direita')) dx += 1;
@@ -1687,6 +1696,7 @@ function atualizar() {
       const vx = passo.x - eu.x, vy = passo.y - eu.y;
       const d = Math.hypot(vx, vy);
       dx = vx / d; dy = vy / d;
+      limitePasso = d;            // senão ficava indo e voltando em volta do ponto
     } else {
       Jogo.caminho = null;
     }
@@ -1696,13 +1706,14 @@ function atualizar() {
     const alvo = JSON.parse(tela.dataset.alvo);
     const vx = alvo.x - eu.x, vy = alvo.y - eu.y;
     const d = Math.hypot(vx, vy);
-    if (d > 6) { dx = vx / d; dy = vy / d; }
+    if (d > 6) { dx = vx / d; dy = vy / d; limitePasso = d; }
   }
 
   if (dx || dy) {
     const n = Math.hypot(dx, dy) || 1;
-    const px = eu.x + (dx / n) * VELOCIDADE;
-    const py = eu.y + (dy / n) * VELOCIDADE;
+    const passo = Math.min(VELOCIDADE * dt, limitePasso);
+    const px = eu.x + (dx / n) * passo;
+    const py = eu.y + (dy / n) * passo;
     // Testa os eixos separado: deslizar na parede em vez de travar. Se a pessoa
     // já está presa dentro de um móvel (alguém colocou em cima dela), qualquer
     // movimento vale — senão a única saída seria recarregar.
@@ -1724,7 +1735,7 @@ function atualizar() {
     enviar({ tipo: 'mover', x: eu.x, y: eu.y, direcao: eu.direcao });
   }
 
-  eu.passo = (dx || dy) ? (eu.passo || 0) + 0.22 : 0;
+  eu.passo = (dx || dy) ? (eu.passo || 0) + 13.2 * dt : 0;       // o balanço da caminhada, também por tempo
   eu.xr = eu.x; eu.yr = eu.y;
   for (const p of Jogo.pessoas.values()) {         // suaviza o movimento dos outros
     const andando = Math.hypot(p.x - p.xr, p.y - p.yr) > 0.7;

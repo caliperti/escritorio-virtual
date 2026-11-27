@@ -20,7 +20,7 @@ Precisa do Pillow (o python3 do sistema tem).
 import importlib.util
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 RAIZ = Path(__file__).resolve().parent.parent
 ARTE = RAIZ / "referencia-pingou" / "arte" / "pingou.png"
@@ -84,10 +84,34 @@ def mascara_de(nome, pedaco, origem):
     raise ValueError(nome)
 
 
+def fonte(tamanho, negrito):
+    for arq, indice in (("/System/Library/Fonts/HelveticaNeue.ttc", 1 if negrito else 0),
+                        ("/System/Library/Fonts/Supplemental/Arial Bold.ttf" if negrito
+                         else "/System/Library/Fonts/Supplemental/Arial.ttf", 0)):
+        try:
+            return ImageFont.truetype(arq, tamanho, index=indice)
+        except OSError:
+            pass
+    return ImageFont.load_default()
+
+
+def pintar_placas(arte):
+    """Os nomes das salas (27/11): a arte veio com os da sede ("Gustavo",
+    "Christian"...). Cobre o texto da plaquinha com o grafite dela, mantém a
+    barrinha verde, e escreve o nome da planta (com "Diretoria" embaixo)."""
+    d = ImageDraw.Draw(arte)
+    titulo, sub = fonte(16, True), fonte(12, False)
+    for _id, nome, _z, _p, (x, y, w, h), info in planta.DIRETORIAS:
+        d.rectangle((x + 20, y + 3, x + w - 3, y + h - 3), fill=(42, 43, 41))
+        d.text((x + 28, y + 6), nome, font=titulo, fill=(242, 242, 240))
+        d.text((x + 28, y + 24), "Diretoria", font=sub, fill=(200, 202, 198))
+
+
 def main():
     SAIDA.mkdir(parents=True, exist_ok=True)
     arte = Image.open(ARTE).convert("RGB")
     assert arte.size == (planta.ARTE_L, planta.ARTE_A), arte.size
+    pintar_placas(arte)
     arte.save(SAIDA / "fundo.png", optimize=True)
     conferir = Image.new("RGB", arte.size, (255, 0, 255))
     for nome, (x1, y1, x2, y2), base, alfa in planta.FRENTES:

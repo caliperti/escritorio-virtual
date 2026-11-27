@@ -7,9 +7,11 @@ mesmo molde da sede do Escritório (planta_padrao.py), então o jeito de medir �
 o mesmo e muita medida coincide (a mesa de reunião, a recepção, o lounge, a
 parede da frente). O que ela tem:
 
-    - quatro diretorias no fundo (Gustavo, Christian, Felipe Vargas e a
-      Diretoria 4, sem dono), com a frente aberta: a porta é a frente inteira,
-      e trancada ela vira o vidro fumê;
+    - quatro salas no fundo (Frog, Mídia, Leandro e Gabriel: os nomes são
+      pintados nas plaquinhas por gerar_recortes.py, por cima dos que vieram
+      na arte), com a frente aberta: a porta é a frente inteira, e trancada
+      ela vira o vidro fumê. A de cada pessoa fica dela quando ela entra com
+      esse nome; a de Mídia não tem dono fixo (quem chegar pega);
     - a mesa oval de reunião para 8 no centro;
     - duas fileiras de estações à esquerda e uma à direita, embaixo do café.
       Cada fileira é uma BAIA (bolha de som de quem está sentado nela);
@@ -22,7 +24,7 @@ Ao mudar uma medida aqui: rode o gerador de novo, suba a VERSAO e confira com
 `?depurar=1` no navegador.
 """
 
-VERSAO = 2
+VERSAO = 3
 
 ARTE_L, ARTE_A = 1672, 891
 LARGURA, ALTURA = 53, 28
@@ -33,23 +35,26 @@ PASTA = "/static/assets/pingou/"
 # (x, y, w, h) e o que tem dentro: mesa (x1, x2), vaso (x1, x2), poltronas de
 # visita (x1, x2), cadeira do dono (x), corredor ao lado da mesa (x), e as
 # coisas em cima da mesa que ficam na frente de quem senta atrás dela.
+# Os ids começam com "p-" para não se misturar com as diretorias do Escritório
+# (DONOS_SALAS, por exemplo, fala de "diretoria1" e valeria aqui também).
 DIRETORIAS = [
-    ("diretoria1", "Gustavo", (3, 4, 14, 9), (105, 468, 300), (212, 50, 113, 40),
+    ("p-frog", "Frog", (3, 4, 14, 9), (105, 468, 300), (212, 50, 113, 40),
      {"mesa": (210, 410), "vaso": (165, 195), "visitas": [(239, 292), (327, 382)],
       "dono": 305, "corredor": 440,
       "em_cima": [[250, 182, 287, 205], [315, 170, 362, 208], [375, 163, 405, 200]]}),
-    ("diretoria2", "Christian", (15, 4, 25, 9), (497, 830, 300), (540, 50, 109, 40),
+    # a de Mídia é da equipe: sem dono fixo, quem chegar pega
+    ("p-midia", "Mídia", (15, 4, 25, 9), (497, 830, 300), (540, 50, 109, 40),
      {"mesa": (567, 765), "vaso": (524, 552), "visitas": [(597, 652), (682, 737)],
-      "dono": 663, "corredor": 798,
+      "dono": 663, "corredor": 798, "sem_dono_fixo": True,
       "em_cima": [[602, 182, 640, 205], [667, 170, 717, 208], [732, 163, 762, 200]]}),
-    ("diretoria3", "Felipe Vargas", (26, 4, 37, 9), (855, 1188, 300), (905, 50, 125, 40),
+    ("p-leandro", "Leandro", (26, 4, 37, 9), (855, 1188, 300), (905, 50, 125, 40),
      {"mesa": (932, 1122), "vaso": (882, 912), "visitas": [(960, 1015), (1045, 1100)],
       "dono": 1021, "corredor": 1155,
       "em_cima": [[962, 182, 997, 205], [1022, 170, 1070, 208], [1080, 163, 1114, 200]]}),
-    # a quarta não tem diretor: fica livre para quem reivindicar
-    ("diretoria4", "Diretoria 4", (38, 4, 48, 9), (1212, 1545, 300), (1252, 50, 114, 40),
+    # a quarta: as poltronas de visita se levantam mais perto (logo abaixo vem o café)
+    ("p-gabriel", "Gabriel", (38, 4, 48, 9), (1212, 1545, 300), (1252, 50, 114, 40),
      {"mesa": (1290, 1487), "vaso": (1242, 1272), "visitas": [(1321, 1377), (1405, 1461)],
-      "dono": 1375, "corredor": 1516, "sem_diretor": True,
+      "dono": 1375, "corredor": 1516, "visitas_saida_y": 302,
       "em_cima": [[1321, 182, 1358, 205], [1385, 170, 1433, 208], [1450, 163, 1479, 200]]}),
 ]
 
@@ -147,7 +152,11 @@ for _id, _n, _z, _p, _l, d in DIRETORIAS:
     FRENTES.append(("visitas-" + _id, (v[0][0] - 4, 222, v[1][1] + 4, 296), 292, 1))
 for i, f in enumerate(FILEIRAS, 1):
     x1, x2, y1, y2 = f["mesa"]
-    FRENTES.append(("fileira-%d" % i, (x1 - 5, y1 - 6, x2 + 5, y2 + 5), y2 + 3, 1))
+    # a mesa da fileira fica ATRÁS de quem senta nas cadeiras da frente: na
+    # baia 2 o pé da mesa desce até a altura das cadeiras, e a mesa cobria a
+    # pessoa sentada (só aparecia o cabelo atrás do monitor)
+    base = min(y2 + 3, min(c[3] for c in f["cadeiras"]) - 10)
+    FRENTES.append(("fileira-%d" % i, (x1 - 5, y1 - 6, x2 + 5, y2 + 5), base, 1))
     for letra, (cx1, cx2, cy1, cy2) in zip("ab", f["cadeiras"]):
         FRENTES.append(("estacao-%d%s" % (i, letra), (cx1 - 4, cy1 - 4, cx2 + 4, cy2 + 4), cy2, 1))
 FRENTES += [
@@ -199,8 +208,7 @@ ASSENTOS.append({"x": 1114, "y": 478, "dir": "esquerda", "zona": "reuniao",
 for _id, _n, _z, _p, _l, d in DIRETORIAS:
     ASSENTOS.append({"x": d["dono"], "y": 193, "dir": "baixo", "base": 202,
                      "saida": [d["corredor"], 212]})
-    # a da diretoria 4 se levanta mais perto da cadeira: logo abaixo vem o café
-    saida_y = 302 if d.get("sem_diretor") else 310
+    saida_y = d.get("visitas_saida_y", 310)
     for x1, x2 in d["visitas"]:
         meio = (x1 + x2) // 2
         ASSENTOS.append({"x": meio, "y": 273, "dir": "cima", "base": 289, "saida": [meio, saida_y]})
@@ -226,12 +234,12 @@ def montar_padrao(esc) -> None:
     esc.proximo_id = 1
 
     for id_, nome, (x1, y1, x2, y2), (px1, px2, py), (lx, ly, lw, lh), d in DIRETORIAS:
-        z = {"id": id_, "nome": nome, "sub": "" if d.get("sem_diretor") else "Diretoria",
+        z = {"id": id_, "nome": nome, "sub": "Diretoria",
              "x1": x1, "y1": y1, "x2": x2, "y2": y2, "privada": True, "cor": "#22c55e",
              "porta": {"lado": "baixo", "x": (px1 + px2) // 2 // 32, "y": y2 + 1},
              "porta_px": {"x1": px1, "x2": px2, "y": py},
              "placa_px": {"x": lx, "y": ly, "w": lw, "h": lh, "na_arte": True}}
-        if not d.get("sem_diretor"):
+        if not d.get("sem_dono_fixo"):
             z["dono_nome_fixo"] = nome
         esc.zonas.append(z)
     esc.zonas.append({"id": "reuniao", "nome": "Mesa de reunião", "x1": 16, "y1": 10,

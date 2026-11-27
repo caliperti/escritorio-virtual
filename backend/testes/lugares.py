@@ -152,6 +152,10 @@ async def main():
         except Exception:
             chegou = False
         ok("o pedido aparece na tela de quem está no Pingou", chegou, await texto(pp, "#pedido-sala"))
+        try:        # a resposta do servidor chega logo depois do cartão do outro lado
+            await a.wait_for_function("() => document.getElementById('aviso-saida').innerText.includes('Esperando')", timeout=5000)
+        except Exception:
+            pass
         esperando = await texto(a, "#aviso-saida")
         ok("e quem pediu vê que está esperando", "Esperando" in esperando, esperando)
         if CAPTURAS:
