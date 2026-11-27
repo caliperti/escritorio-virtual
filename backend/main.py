@@ -24,7 +24,9 @@ from contas import contas
 import estudio as mod_estudio
 from estudio import estudio
 from mapa import escritorio
-from sala import RAIO_CONVERSA, RAIO_SILENCIO, CORES, cor_valida, limpar_aparencia, raios, sala
+from sala import (RAIO_CONVERSA, RAIO_SILENCIO, CORES, SITUACOES, chave_de_castigo,
+                  cor_valida, limpar_aparencia, raios, sala)
+import espacos
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("escritorio")
@@ -106,7 +108,8 @@ TETO_CHAMADA = 60
 # gratuito é apagado quando o serviço hiberna), depois carrega do arquivo. O
 # catálogo do estúdio vem junto — ficava de fora, e o mapa restaurado perdia
 # todo móvel criado pelo admin (tipo desconhecido é descartado na carga).
-nuvem.restaurar([mod_contas.ARQUIVO, mapa.ARQUIVO, mod_estudio.ARQUIVO])
+nuvem.restaurar([mod_contas.ARQUIVO, mod_estudio.ARQUIVO]
+                + [e.mapa.arquivo for e in espacos.todos()])
 contas.carregar()
 estudio.carregar()
 # as figuras das peças e roupas moram em static/assets, que some com o disco
@@ -114,7 +117,8 @@ nuvem.restaurar([a for a in estudio.arquivos_de_imagem() if not a.exists()])
 # As peças que o admin criou entram POR CIMA do catálogo de fábrica. Se algo
 # aqui estiver torto, o escritório continua de pé — só falta a peça nova.
 mapa.CATALOGO.update({k: {**v} for k, v in estudio.pecas.items()})
-escritorio.carregar()
+for _e in espacos.todos():          # o Escritório e o Pingou, cada um com o seu mapa
+    _e.mapa.carregar()
 
 class EstaticoSemCache(StaticFiles):
     """Arquivo estático que o navegador SEMPRE confere antes de usar.
@@ -241,14 +245,19 @@ async def config():
     quantas vagas de membro sobraram e se dá para entrar como visitante."""
     return {"protegido": bool(SENHA), "contas": True, "nuvem": nuvem.ligado,
             "vagas": contas.vagas(), "total_membros": mod_contas.MAX_CONTAS,
-            "visitante": True}
+            "visitante": True,
+            # os lugares (27/11): a tela de entrada pergunta em qual entrar
+            "espacos": [{"id": e.id, "nome": e.nome} for e in espacos.todos()]}
 
 
 @app.post("/conta/registrar")
 async def registrar(dados: dict):
     """Cadastro: e-mail é o login, nome é o que aparece em cima do boneco."""
-    if SENHA and _texto(dados.get("convite")) != SENHA:
-        return {"erro": "Código de convite errado."}
+    # A chave é a do lugar escolhido (27/11): quem cria a conta com a chave do
+    # Pingou entra no Pingou; a do Escritório, no Escritório.
+    esp = espacos.pegar(dados.get("espaco")) or espacos.pegar(espacos.PADRAO)
+    if not esp.aberto() and not esp.confere(_texto(dados.get("convite"))):
+        return {"erro": "Chave de acesso do %s errada." % esp.nome}
     email = _texto(dados.get("email")).strip()
     nome = _texto(dados.get("nome")).strip()
     if not mod_contas.email_valido(email):
@@ -256,14 +265,20 @@ async def registrar(dados: dict):
     if contas.existe(email):
         return {"erro": "Esse e-mail já tem conta. Use a aba Entrar."}
     # nem de membro, nem de quem está na sala agora (um visitante, por exemplo)
-    if contas.nome_em_uso(nome) or sala.nome_em_uso(nome):
+    if contas.nome_em_uso(nome) or espacos.nome_em_uso(nome):
         return {"erro": "Já tem alguém com esse nome no escritório. Escolha outro."}
+    # personagem do lugar (o Pingou) é de uma pessoa só (27/11)
+    dono_do_personagem = personagens.ocupados(contas.contas).get(
+        (dados.get("aparencia") or {}).get("personagem") if isinstance(dados.get("aparencia"), dict) else None)
+    if dono_do_personagem:
+        return {"erro": "Esse personagem já é de %s. Escolha outro." % dono_do_personagem[1]}
     if contas.cheio():
         return {"erro": "As %d vagas de membro já foram preenchidas. "
                         "Você pode entrar como visitante." % mod_contas.MAX_CONTAS}
     cor = dados.get("cor") if cor_valida(dados.get("cor")) else "#4f7fd9"
     token = await contas.registrar_async(email, nome, _texto(dados.get("senha")),
-                                         limpar_aparencia(dados.get("aparencia")), cor)
+                                         limpar_aparencia(dados.get("aparencia")), cor,
+                                         espacos=[esp.id])
     if not token:
         return {"erro": "Nome precisa de 2 letras e senha de 4."}
     nuvem.marcar(mod_contas.ARQUIVO)
@@ -290,7 +305,8 @@ async def conta_eu(token: str = ""):
 def conta_publica(conta):
     return {"nome": conta["nome"], "email": conta.get("email", ""),
             "aparencia": conta.get("aparencia") or {},
-            "cor": conta.get("cor")} if conta else None
+            "cor": conta.get("cor"),
+            "espacos": espacos.espacos_da_conta(conta)} if conta else None
 
 
 def _admin_do_token(token: str):
@@ -363,13 +379,14 @@ async def estudio_remover(dados: dict):
     if removidos is not None:
         _espelhar_remocao(removidos)
         mapa.CATALOGO.pop(chave, None)
-        # tira do mapa o que já tinha sido colocado com essa peça
-        escritorio.objetos = [o for o in escritorio.objetos if o["tipo"] != chave]
-        escritorio._recalcular()
-        escritorio.salvar()
-        nuvem.marcar(mapa.ARQUIVO)
-        await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(),
-                             "por": "estúdio"})
+        # tira dos mapas o que já tinha sido colocado com essa peça
+        for e in espacos.todos():
+            e.mapa.objetos = [o for o in e.mapa.objetos if o["tipo"] != chave]
+            e.mapa._recalcular()
+            e.mapa.salvar()
+            nuvem.marcar(e.mapa.arquivo)
+            await e.sala.publicar({"tipo": "mapa", "mapa": e.mapa.para_cliente(),
+                                   "por": "estúdio"})
         return {"ok": True}
     return {"erro": "Peça não encontrada."}
 
@@ -390,9 +407,16 @@ async def catalogo():
             "roupas": estudio.roupas}
 
 
+@app.get("/personagens/ocupados")
+async def personagens_ocupados():
+    """Os personagens de lugar que já têm dono: a galeria do Pingou os apaga."""
+    return {"ocupados": {pid: nome for pid, (_, nome) in personagens.ocupados(contas.contas).items()}}
+
+
 @app.get("/saude")
 async def saude():
-    return {"ok": True, "pessoas": len(sala.participantes)}
+    return {"ok": True, "pessoas": sum(len(e.sala.participantes) for e in espacos.todos()),
+            "lugares": {e.id: len(e.sala.participantes) for e in espacos.todos()}}
 
 
 class MensagemGrande(ValueError):
@@ -418,7 +442,13 @@ def _limpar_entrada(bruto: dict) -> dict:
     limpa = {"tipo": _texto(bruto.get("tipo")), "visitante": bool(bruto.get("visitante")),
              "convite": _texto(bruto.get("convite")), "nome": _texto(bruto.get("nome")),
              "token": _texto(bruto.get("token")), "emoji": _texto(bruto.get("emoji")),
-             "cor": _texto(bruto.get("cor")), "aparencia": bruto.get("aparencia")}
+             "cor": _texto(bruto.get("cor")), "aparencia": bruto.get("aparencia"),
+             # a situação escolhida (Ocupado, Almoço…) sobrevive à queda e ao F5
+             "situacao": _texto(bruto.get("situacao")),
+             # o lugar (27/11): o Escritório ou o Pingou
+             "espaco": _texto(bruto.get("espaco")),
+             # trocando de lugar: a chave de envio da sessão de antes
+             "troca": _texto(bruto.get("troca"))}
     # Por que a ligação de antes acabou. Só serve para o registro: sem isso,
     # "entrou de novo" no log não diz se a pessoa deu F5, se a rede caiu ou se
     # o próprio servidor trocou a sessão dela — e sem saber isso não dá para
@@ -448,20 +478,20 @@ def _limpar_entrada(bruto: dict) -> dict:
 def _nome_livre(base: str) -> str:
     """`base`, ou `base 2`, `base 3`… — o primeiro que ninguém usa."""
     nome, n = base, 2
-    while sala.nome_em_uso(nome) or contas.nome_em_uso(nome):
+    while espacos.nome_em_uso(nome) or contas.nome_em_uso(nome):
         nome = "%s %d" % (base, n)
         n += 1
     return nome
 
 
-async def _reacomodar() -> None:
+async def _reacomodar(sala, escritorio) -> None:
     """Quem ficou fora do mapa depois de uma edição volta para a entrada — e
-    fica sabendo, assim como os outros."""
+    fica sabendo, assim como os outros. (O lugar é o de quem editou.)"""
     for p in sala.reacomodar():
         await sala.enviar(p, {"tipo": "corrigir", "x": p.x, "y": p.y})
         await sala.publicar({"tipo": "mover", "id": p.id, "x": round(p.x, 1), "y": round(p.y, 1),
                              "direcao": p.direcao,
-                             "zona": (mapa.zona_de(p.x, p.y) or {}).get("id")}, exceto=p.id)
+                             "zona": (escritorio.zona_de(p.x, p.y) or {}).get("id")}, exceto=p.id)
 
 
 @app.websocket("/ws")
@@ -482,14 +512,32 @@ async def websocket_sala(ws: WebSocket):
         if entrada["tipo"] != "entrar":
             await ws.close(code=4000)
             return
+        # O lugar (27/11): o Escritório ou o Pingou, cada um com o seu mapa e a
+        # sua roda de gente. Daqui para baixo, `sala` e `escritorio` são os
+        # DESTE lugar.
+        esp = espacos.pegar(entrada.get("espaco")) or espacos.pegar(espacos.PADRAO)
+        sala, escritorio = esp.sala, esp.mapa
+        # Trocando de lugar, a sessão de antes (no outro lugar) sai AGORA, antes
+        # de conferir o nome: senão o visitante esbarrava no próprio nome, ainda
+        # de pé do outro lado. Quem prova que é a mesma pessoa é a chave de
+        # envio, que só a própria página conhece.
+        if entrada.get("troca"):
+            for e in espacos.todos():
+                velho = next((p for p in list(e.sala.participantes.values())
+                              if hmac.compare_digest(p.chave_envio.encode(), entrada["troca"].encode())), None)
+                if velho is None:
+                    continue
+                await e.sala.sair(velho.id)
+                await e.sala.publicar({"tipo": "saiu", "id": velho.id, "foi_para": esp.nome})
+                try:
+                    await velho.ws.close(code=4006)
+                except Exception:
+                    pass
+                break
         # Visitante entra sem cadastro: precisa do código da sala e de um nome.
         # Ele anda, vê e conversa, mas nada do que ele faz muda o escritório.
         visitante = entrada["visitante"]
         if visitante:
-            if SENHA and entrada["convite"] != SENHA:
-                await ws.send_json({"tipo": "recusado", "texto": "Código da sala errado."})
-                await ws.close(code=4003)
-                return
             # O nome do visitante segue as MESMAS regras do cadastro. Sem isto
             # ele entrava como `gulisboa5@hotmail.com`, só de espaço invisível
             # ou com quebra de linha — coisa que nenhum membro consegue.
@@ -511,11 +559,22 @@ async def websocket_sala(ws: WebSocket):
                                     "texto": "Esse nome é de um membro. Escolha outro."})
                 await ws.close(code=4003)
                 return
-            if sala.nome_em_uso(nome):
+            if espacos.nome_em_uso(nome):
                 await ws.send_json({"tipo": "recusado",
                                     "texto": "Já tem alguém com esse nome na sala. Escolha outro."})
                 await ws.close(code=4003)
                 return
+            # a chave DESTE lugar, ou alguém de dentro que deixou entrar (27/11)
+            if not (esp.aberto() or esp.confere(entrada["convite"])
+                    or espacos.tem_passe(chave_de_castigo("", nome), esp.id)):
+                await ws.send_json({"tipo": "recusado", "sem_acesso": True, "espaco": esp.id,
+                                    "texto": "Chave de acesso do %s errada." % esp.nome})
+                await ws.close(code=4003)
+                return
+            # entrou com a chave: o passe do dia vale para voltar pela porta
+            # depois de ir ao outro lugar, sem digitar de novo
+            if esp.confere(entrada["convite"]):
+                espacos.dar_passe(chave_de_castigo("", nome), esp.id)
             entrada = {**entrada, "nome": nome}
             conta = None
         else:
@@ -527,6 +586,20 @@ async def websocket_sala(ws: WebSocket):
             entrada = {**entrada, "nome": conta["nome"],
                        "aparencia": conta.get("aparencia") or {},
                        "cor": conta.get("cor") or entrada["cor"]}
+            # O lugar (27/11): a conta já liberada nele, o admin, quem foi
+            # deixado entrar hoje — ou a chave, digitada uma vez só.
+            quem = conta.get("email") or conta["nome"]
+            if not espacos.pode_entrar(esp, conta, mod_contas.eh_admin(quem), mod_contas._chave(quem)):
+                if esp.confere(entrada["convite"]):
+                    contas.liberar_espaco(entrada["token"], esp.id)
+                    nuvem.marcar(mod_contas.ARQUIVO)
+                else:
+                    await ws.send_json({"tipo": "recusado", "sem_acesso": True, "espaco": esp.id,
+                                        "texto": ("Chave de acesso do %s errada." if entrada["convite"]
+                                                  else "Você ainda não tem acesso ao %s. "
+                                                       "Digite a chave de acesso dele.") % esp.nome})
+                    await ws.close(code=4003)
+                    return
 
         # Quem foi expulso pelo admin não entra enquanto o castigo durar.
         castigo = sala.castigo_de(
@@ -541,6 +614,8 @@ async def websocket_sala(ws: WebSocket):
 
         eu = await sala.entrar(ws, entrada)
         eu.visitante = visitante
+        if entrada.get("situacao") in SITUACOES:
+            eu.situacao = entrada["situacao"]
         eu.token = entrada.get("token") if not visitante else ""
         # A sala reivindicada é do E-MAIL, não do nome. Assim trocar o nome não
         # deixa a sala órfã, que era um problema de verdade antes.
@@ -550,7 +625,7 @@ async def websocket_sala(ws: WebSocket):
         eu.aparencia = personagens.ajustar(eu.aparencia, eu.nome, eu.visitante)
         # a diretoria com o nome desta conta vira dela (só se ainda não tem dono)
         if not visitante and escritorio.vincular_dono_por_nome(eu.nome, eu.conta):
-            nuvem.marcar(mapa.ARQUIVO)
+            nuvem.marcar(escritorio.arquivo)
             await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(), "por": eu.nome})
         eu.admin = (not visitante) and mod_contas.eh_admin(conta.get("email") or conta["nome"])
         if sala.esta_calado(eu.conta, eu.nome):     # o castigo sobrevive ao F5
@@ -562,7 +637,7 @@ async def websocket_sala(ws: WebSocket):
         # mapa e dois nomes iguais na lista — impossível saber qual é qual, e
         # os dois recebendo as mesmas chamadas. A sessão antiga cai avisada.
         if eu.conta:
-            for outro in list(sala.participantes.values()):
+            for outro in list(espacos.participantes()):      # nos dois lugares
                 if outro.id != eu.id and outro.conta == eu.conta:
                     await sala.enviar(outro, {
                         "tipo": "recusado",
@@ -571,12 +646,13 @@ async def websocket_sala(ws: WebSocket):
                         await outro.ws.close(code=4005)
                     except Exception:
                         pass
-                    await sala.sair(outro.id)
-                    await sala.publicar({"tipo": "saiu", "id": outro.id})
+                    sala_dele = (espacos.pegar(outro.espaco) or esp).sala
+                    await sala_dele.sair(outro.id)
+                    await sala_dele.publicar({"tipo": "saiu", "id": outro.id})
                     log.info("sessão trocada: %s — a conta entrou de outro lugar "
                              "(a janela de antes foi desligada)", eu.nome)
         pq = entrada.get("porque")
-        log.info("entrou: %s (%s) — %d na sala%s", eu.nome, eu.id, len(sala.participantes),
+        log.info("entrou: %s (%s) no %s — %d lá%s", eu.nome, eu.id, esp.nome, len(sala.participantes),
                  ("" if not pq else
                   "  [voltou: fim %d%s há %dms%s]" % (
                       pq["codigo"], " limpo" if pq["limpo"] else " seco",
@@ -589,15 +665,23 @@ async def websocket_sala(ws: WebSocket):
             "visitante": eu.visitante,
             "admin": eu.admin,
             "mapa": escritorio.para_cliente(),
+            # o lugar em que está, os outros (e se já pode entrar em cada um sem
+            # chave nem pedido) e quem está em cada lugar (27/11)
+            "espaco": {"id": esp.id, "nome": esp.nome},
+            "espacos": [{**e.resumo(), "acesso": a}
+                        for e, a in ((e, espacos.pode_entrar(e, conta, eu.admin, espacos.pessoa_de(eu)))
+                                     for e in espacos.todos())],
+            "lugares": espacos.lugares(),
             "config": {
-                "raio_conversa": raios()[0],
-                "raio_silencio": raios()[1],
+                "raio_conversa": raios(escritorio)[0],
+                "raio_silencio": raios(escritorio)[1],
                 "cores": CORES,
                 "ice": servidores_ice(eu.id),
             },
             "participantes": [p.publico() for p in sala.participantes.values() if p.id != eu.id],
         })
         await sala.publicar({"tipo": "entrou", "participante": eu.publico()}, exceto=eu.id)
+        await espacos.avisar_lugares()
 
         janela, contador, contador_sinal, contador_mover, contador_chamada = time.monotonic(), 0, 0, 0, 0
         while True:
@@ -654,16 +738,19 @@ async def websocket_sala(ws: WebSocket):
                         except (TypeError, ValueError):
                             z = None
                         if z is not None:
+                            dono = next((p for p in sala.participantes.values()
+                                         if p.conta == z.get("dono")), None)
                             volta["trancada"] = {"id": z["id"], "nome": z["nome"],
                                                  "dono": z.get("dono_nome", ""),
-                                                 "online": any(p.conta == z.get("dono")
-                                                               for p in sala.participantes.values())}
+                                                 "online": dono is not None,
+                                                 # Não perturbe / Almoço: nem oferece bater
+                                                 "situacao": dono.situacao if dono else ""}
                         await ws.send_json(volta)
                         continue
                     await sala.publicar({
                         "tipo": "mover", "id": eu.id,
                         "x": round(eu.x, 1), "y": round(eu.y, 1), "direcao": eu.direcao,
-                        "zona": (mapa.zona_de(eu.x, eu.y) or {}).get("id"),
+                        "zona": (escritorio.zona_de(eu.x, eu.y) or {}).get("id"),
                     }, exceto=eu.id)
 
                 elif tipo == "chat":
@@ -678,8 +765,13 @@ async def websocket_sala(ws: WebSocket):
                     if anexo:
                         pacote["anexo"] = anexos.publico(anexo)
                     if escopo == "todos":
-                        await sala.publicar(pacote, exceto=eu.id)
-                        ouviram = [p.id for p in sala.participantes.values() if p.id != eu.id]
+                        # "todos" é todo mundo, nos dois lugares (27/11); do
+                        # outro lugar, a mensagem chega dizendo de onde veio
+                        ouviram = []
+                        for e in espacos.todos():
+                            await e.sala.publicar(pacote if e is esp else {**pacote, "lugar": esp.nome},
+                                                  exceto=eu.id)
+                            ouviram += [p.id for p in e.sala.participantes.values() if p.id != eu.id]
                     else:
                         ouviram = await sala.publicar_perto(eu, pacote)
                     await ws.send_json({**pacote, "proprio": True, "ouviram": len(ouviram)})
@@ -706,6 +798,16 @@ async def websocket_sala(ws: WebSocket):
                     if isinstance(emoji, str) and 0 < len(emoji) <= 8:
                         await sala.publicar({"tipo": "reacao", "id": eu.id, "emoji": emoji}, exceto=eu.id)
 
+                elif tipo == "situacao":
+                    # Disponível, Ocupado, Almoço, Não perturbe (26/11). Vai para
+                    # todos (e volta para a própria pessoa): a lista, o crachá e a
+                    # regra de quem conversa com quem dependem dela.
+                    valor = msg.get("valor")
+                    if isinstance(valor, str) and valor in SITUACOES and valor != eu.situacao:
+                        eu.situacao = valor
+                        await sala.publicar({"tipo": "situacao", "id": eu.id, "situacao": valor})
+                        await espacos.avisar_lugares()
+
                 elif tipo == "perfil":
                     # Mesmas regras do cadastro para o nome novo; se não serve,
                     # fica o de antes (e a pessoa fica sabendo). Antes, a sessão
@@ -722,8 +824,13 @@ async def websocket_sala(ws: WebSocket):
                         eu.cor = msg["cor"]
                     eu.emoji = (_texto(msg.get("emoji")) or eu.emoji)[:4]
                     if msg.get("aparencia"):
+                        antes = eu.aparencia
                         eu.aparencia = personagens.ajustar(limpar_aparencia(msg["aparencia"]),
                                                            eu.nome, eu.visitante)
+                        # personagem do Pingou que já é de outra conta: fica o de antes
+                        dono_dele = personagens.ocupados(contas.contas).get(eu.aparencia.get("personagem"))
+                        if dono_dele and dono_dele[0] != eu.conta:
+                            eu.aparencia = antes
                     if nome_novo != eu.nome and sala.nome_em_uso(nome_novo, eu.id):
                         await ws.send_json({"tipo": "erro",
                                             "texto": "Já tem alguém com esse nome na sala. Ficou o de antes."})
@@ -754,10 +861,89 @@ async def websocket_sala(ws: WebSocket):
                                 mudou = True
                         if mudou:
                             escritorio.salvar()
-                            nuvem.marcar(mapa.ARQUIVO)
+                            nuvem.marcar(escritorio.arquivo)
                             await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(),
                                                  "por": ""})
                     await sala.publicar({"tipo": "perfil", "participante": eu.publico()})
+                    await espacos.avisar_lugares()
+
+                elif tipo == "ir_para":
+                    # Ir para outro lugar (27/11), pela porta de saída: quem já pode
+                    # entrar vai; quem digitou a chave certa também (a conta fica
+                    # liberada; o visitante ganha o passe do dia). A troca em si é
+                    # a página religar no lugar novo.
+                    destino = espacos.pegar(msg.get("espaco"))
+                    if destino is None or destino is esp:
+                        continue
+                    conta_ = None if eu.visitante else contas.por_token(eu.token)
+                    pessoa = espacos.pessoa_de(eu)
+                    if not espacos.pode_entrar(destino, conta_, eu.admin, pessoa):
+                        if not destino.confere(msg.get("chave")):
+                            await ws.send_json({"tipo": "sem_acesso", "espaco": destino.id, "texto": (
+                                "Chave de acesso do %s errada." if msg.get("chave")
+                                else "Você ainda não tem acesso ao %s.") % destino.nome})
+                            continue
+                        if conta_:
+                            contas.liberar_espaco(eu.token, destino.id)
+                            nuvem.marcar(mod_contas.ARQUIVO)
+                        else:
+                            espacos.dar_passe(pessoa, destino.id)
+                    eu.indo_para = destino.nome
+                    await ws.send_json({"tipo": "pode_ir", "espaco": destino.id})
+
+                elif tipo == "pedir_espaco":
+                    # Sem a chave: pede para quem já está lá dentro (27/11). Aparece na
+                    # tela de cada um, com som; o primeiro que responder decide.
+                    destino = espacos.pegar(msg.get("espaco"))
+                    if destino is None or destino is esp:
+                        continue
+                    if espacos.pedido_aberto(eu.id, destino.id):
+                        await ws.send_json({"tipo": "pedido_espaco", "acao": "enviado",
+                                            "espaco": destino.id, "repetido": True})
+                        continue
+                    la_dentro = [p for p in list(destino.sala.participantes.values())
+                                 if p.situacao not in ("nao_perturbe", "almoco")]
+                    if not la_dentro:
+                        await ws.send_json({"tipo": "pedido_espaco", "acao": "ninguem",
+                                            "espaco": destino.id, "texto": (
+                                                "Ninguém disponível no %s agora para deixar você "
+                                                "entrar. Use a chave de acesso." % destino.nome)})
+                        continue
+                    espacos.pedir(eu.id, destino.id)
+                    aviso = {"tipo": "pedido_espaco", "acao": "chegou", "de": eu.id, "quem": eu.nome,
+                             "espaco": destino.id, "nome_espaco": destino.nome,
+                             "de_onde": esp.nome, "aparencia": eu.aparencia}
+                    for p in la_dentro:
+                        await destino.sala.enviar(p, aviso)
+                    await ws.send_json({"tipo": "pedido_espaco", "acao": "enviado",
+                                        "espaco": destino.id, "n": len(la_dentro)})
+
+                elif tipo == "responder_espaco":
+                    # Quem está DENTRO deste lugar responde a quem pediu para entrar.
+                    para = str(msg.get("para") or "")
+                    if not espacos.pedido_aberto(para, esp.id):
+                        await ws.send_json({"tipo": "erro", "texto": "Esse pedido já foi respondido."})
+                        continue
+                    espacos.esquecer_pedido(para)
+                    aceita = bool(msg.get("aceita"))
+                    achado = espacos.achar(para)
+                    # o cartão some da tela dos outros daqui (e todos ficam sabendo)
+                    await sala.publicar({"tipo": "pedido_espaco", "acao": "resolvido", "de": para,
+                                         "por": eu.nome, "aceita": aceita,
+                                         "quem": achado[1].nome if achado else ""})
+                    if achado is None:
+                        await ws.send_json({"tipo": "erro", "texto": "Essa pessoa já saiu."})
+                        continue
+                    e_dela, quem_pediu = achado
+                    if aceita:
+                        espacos.dar_passe(espacos.pessoa_de(quem_pediu), esp.id)
+                        quem_pediu.indo_para = esp.nome
+                        await e_dela.sala.enviar(quem_pediu, {"tipo": "pode_ir", "espaco": esp.id,
+                                                              "por": eu.nome})
+                    else:
+                        await e_dela.sala.enviar(quem_pediu, {"tipo": "pedido_espaco", "acao": "recusado",
+                                                              "espaco": esp.id, "por": eu.nome,
+                                                              "nome_espaco": esp.nome})
 
                 elif tipo == "moderar":
                     # Expulsar e calar são do administrador. Silenciar não é só
@@ -837,10 +1023,10 @@ async def websocket_sala(ws: WebSocket):
                         continue
                     if escritorio.editar(acao):
                         escritorio.salvar()
-                        nuvem.marcar(mapa.ARQUIVO)
+                        nuvem.marcar(escritorio.arquivo)
                         await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(),
                                              "por": eu.nome})
-                        await _reacomodar()
+                        await _reacomodar(sala, escritorio)
                     else:
                         await ws.send_json({"tipo": "erro", "texto": "Edição recusada."})
 
@@ -852,7 +1038,7 @@ async def websocket_sala(ws: WebSocket):
 
                     if acao == "reivindicar":
                         z = escritorio.zona_por_id(zid)
-                        dentro = z and mapa.zona_de(eu.x, eu.y) and mapa.zona_de(eu.x, eu.y)["id"] == zid
+                        dentro = z and escritorio.zona_de(eu.x, eu.y) and escritorio.zona_de(eu.x, eu.y)["id"] == zid
                         if not dentro:
                             await ws.send_json({"tipo": "erro", "texto": "Entre na sala para reivindicar."})
                             continue
@@ -861,7 +1047,7 @@ async def websocket_sala(ws: WebSocket):
                             await ws.send_json({"tipo": "erro", "texto": porque})
                             continue
                         escritorio.salvar()
-                        nuvem.marcar(mapa.ARQUIVO)
+                        nuvem.marcar(escritorio.arquivo)
                         await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(),
                                              "por": eu.nome})
 
@@ -874,7 +1060,7 @@ async def websocket_sala(ws: WebSocket):
                             continue
                         sala.convidados_da(zid).clear()
                         escritorio.salvar()
-                        nuvem.marcar(mapa.ARQUIVO)
+                        nuvem.marcar(escritorio.arquivo)
                         await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(),
                                              "por": eu.nome})
 
@@ -886,7 +1072,7 @@ async def websocket_sala(ws: WebSocket):
                         if acao == "destrancar":
                             sala.convidados_da(zid).clear()   # porta aberta, convite não faz falta
                         escritorio.salvar()
-                        nuvem.marcar(mapa.ARQUIVO)
+                        nuvem.marcar(escritorio.arquivo)
                         await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(),
                                              "por": eu.nome})
 
@@ -901,7 +1087,7 @@ async def websocket_sala(ws: WebSocket):
                                 sala.convidados_da(z["id"]).clear()
                                 soltas += 1
                         escritorio.salvar()
-                        nuvem.marcar(mapa.ARQUIVO)
+                        nuvem.marcar(escritorio.arquivo)
                         await sala.publicar({"tipo": "mapa", "mapa": escritorio.para_cliente(),
                                              "por": eu.nome})
                         await ws.send_json({"tipo": "erro",
@@ -920,6 +1106,12 @@ async def websocket_sala(ws: WebSocket):
                         if dono is None:
                             await ws.send_json({"tipo": "erro",
                                                 "texto": "%s não está no escritório agora." % z.get("dono_nome", "O dono")})
+                            continue
+                        if dono.situacao in ("nao_perturbe", "almoco"):
+                            await ws.send_json({"tipo": "erro", "texto": (
+                                "%s está %s agora. Mande uma mensagem no chat ou tente mais tarde."
+                                % (dono.nome, "no almoço" if dono.situacao == "almoco"
+                                   else "em Não perturbe"))})
                             continue
                         await sala.enviar(dono, {"tipo": "sala", "acao": "bateram", "id": zid,
                                                  "nome_sala": z["nome"], "de": eu.id, "quem": eu.nome})
@@ -980,5 +1172,8 @@ async def websocket_sala(ws: WebSocket):
     finally:
         if eu:
             await sala.sair(eu.id)
-            await sala.publicar({"tipo": "saiu", "id": eu.id})
-            log.info("saiu: %s — %d na sala", eu.nome, len(sala.participantes))
+            await sala.publicar({"tipo": "saiu", "id": eu.id,
+                                 **({"foi_para": eu.indo_para} if eu.indo_para else {})})
+            espacos.esquecer_pedido(eu.id)
+            await espacos.avisar_lugares()
+            log.info("saiu: %s do %s — %d lá", eu.nome, esp.nome, len(sala.participantes))

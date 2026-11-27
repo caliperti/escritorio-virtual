@@ -25,6 +25,13 @@
     </div>
     <p id="vagas" class="vagas"></p>
 
+    <!-- os lugares (27/11): o Escritório e o Pingou, cada um com a sua chave -->
+    <div id="linha-lugar" class="linha-lugar" hidden>
+      <span class="rotulo-lugar">Onde você quer entrar?</span>
+      <div id="lugares-entrada" class="abas-conta lugares-entrada" role="radiogroup"
+           aria-label="Onde você quer entrar"></div>
+    </div>
+
     <label id="linha-email">Seu e-mail
       <input id="campo-email" type="email" maxlength="120" placeholder="voce@empresa.com"
              autocomplete="email" autocapitalize="off" spellcheck="false">
@@ -40,9 +47,9 @@
              placeholder="mínimo 4 caracteres">
     </label>
 
-    <label id="linha-convite" hidden>Código da sala
+    <label id="linha-convite" hidden><span id="rotulo-convite">Chave de acesso</span>
       <input id="campo-convite" type="password" autocomplete="off"
-             placeholder="o código que te mandaram">
+             placeholder="a chave que te mandaram">
     </label>
 
     <div id="bonecos-visitante" class="bonecos-visitante" hidden>
@@ -52,6 +59,12 @@
       <button type="button" data-boneco="mulher" aria-pressed="false">
         <img alt=""><span>Mulher</span>
       </button>
+    </div>
+
+    <!-- personagens do lugar (27/11): quem cria a conta no Pingou escolhe o seu -->
+    <div id="galeria-lugar" class="galeria-lugar" hidden>
+      <span class="rotulo-lugar">Escolha o seu personagem</span>
+      <div id="galeria-personagens" class="bonecos-visitante galeria-personagens"></div>
     </div>
 
     <div class="editor" hidden>
@@ -78,12 +91,24 @@
       <img class="logo-barra" src="/static/assets/logo.png" alt="">
       <span class="marca-texto">Gather da Shopee</span>
       <span class="divisor" aria-hidden="true"></span>
-      <span class="titulo-app">Escritório virtual</span>
+      <span id="titulo-lugar" class="titulo-app">Escritório virtual</span>
       <span id="zona-atual" class="chip">Salão</span>
       <button id="btn-trancar" class="chip botao-chip" type="button" hidden></button>
       <span id="contagem" class="chip fraco" hidden>1 na sala</span>
     </div>
     <div class="barra-dir">
+      <!-- como eu estou (26/11): Disponível, Ocupado, Almoço, Não perturbe -->
+      <div class="menu-barra">
+        <button id="btn-situacao" class="chip botao-chip situacao-chip" type="button"
+                title="Como você está" aria-haspopup="menu" aria-expanded="false">
+          <span class="ponto-situacao sit-disponivel"></span><span class="nome-situacao">Disponível</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div id="situacao" class="suspenso" role="menu" hidden>
+          <h3>Como você está</h3>
+          <div id="lista-situacoes"></div>
+        </div>
+      </div>
       <button id="btn-tela-cheia" class="icone" title="Tela cheia" aria-label="Tela cheia">
         <svg viewBox="0 0 24 24"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/></svg>
       </button>
@@ -117,6 +142,9 @@
           <button id="btn-reuniao" class="item-menu" type="button">
             <svg viewBox="0 0 24 24"><rect x="3" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="3" y="13" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/></svg>
             Tela de chamada <kbd>C</kbd></button>
+          <button id="btn-avisos-pc" class="item-menu" type="button" title="Som, aviso do computador e a aba piscando quando bater na sua porta ou falarem com você">
+            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/></svg>
+            <span>Avisos em outra aba</span><b class="estado-aviso">ligado</b></button>
           <button id="btn-reacao" class="item-menu" type="button">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01"/><path d="M15 9.5h.01"/></svg>
             Reagir <kbd>R</kbd></button>
@@ -142,6 +170,17 @@
       <span>Entrar na reunião</span> <kbd>F</kbd>
     </button>
     <button id="btn-fechar-reuniao" class="fechar-reuniao" hidden>✕ sair da grade (Esc)</button>
+
+    <!-- a porta de saída (27/11): para onde a pessoa quer ir -->
+    <div id="modal-saida" class="modal-saida" role="dialog" aria-modal="true"
+         aria-labelledby="titulo-saida" hidden>
+      <div class="caixa-saida">
+        <h2 id="titulo-saida">Para onde você quer ir?</h2>
+        <div id="lugares-saida" class="lugares-saida"></div>
+        <p id="aviso-saida" class="aviso-saida" aria-live="polite"></p>
+        <button id="btn-ficar" class="ficar" type="button">Ficar aqui <kbd>Esc</kbd></button>
+      </div>
+    </div>
 
     <!-- tela de chamada, estilo Google Meet: o #videos vem do painel para cá
          enquanto ela está aberta (app.js: aplicarReuniao) -->

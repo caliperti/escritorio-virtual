@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import nuvem
-from planta_padrao import VERSAO as VERSAO_PLANTA, montar_padrao
+import planta_padrao
 
 log = logging.getLogger("escritorio.mapa")
 
@@ -287,7 +287,11 @@ def medida(objeto: Dict) -> Tuple[int, int]:
 
 
 class Escritorio:
-    def __init__(self) -> None:
+    def __init__(self, arquivo: Optional[Path] = None, planta: Any = None) -> None:
+        # Um por lugar (27/11): o Escritório usa mapa.json e a planta_padrao; o
+        # Pingou, o arquivo e a planta dele (espacos.py).
+        self.arquivo = arquivo or ARQUIVO
+        self.planta = planta or planta_padrao
         self.largura = 52
         self.altura = 32
         self.piso: List[List[str]] = []
@@ -353,24 +357,41 @@ class Escritorio:
         return mudou
 
 
+    def _completar_cenario(self) -> bool:
+        """Chave nova do cenário (a porta de saída, 27/11) entra no mapa gravado
+        sem remontar a planta: remontar solta as salas e joga fora os móveis."""
+        if not self.cenario:
+            return False
+        nova = Escritorio(self.arquivo, self.planta)
+        self.planta.montar_padrao(nova)
+        mudou = False
+        for chave in ("saida",):
+            valor = (nova.cenario or {}).get(chave)
+            if valor is not None and self.cenario.get(chave) != valor:
+                self.cenario[chave] = valor
+                mudou = True
+        return mudou
+
     def carregar(self) -> None:
-        if ARQUIVO.exists():
+        arquivo, versao = self.arquivo, self.planta.VERSAO
+        if arquivo.exists():
             try:
-                self.de_json(json.loads(ARQUIVO.read_text(encoding="utf-8")))
-                if self.versao_planta >= VERSAO_PLANTA:
-                    if self._marcar_regras_de_sala():
+                self.de_json(json.loads(arquivo.read_text(encoding="utf-8")))
+                if self.versao_planta >= versao:
+                    regras = self._marcar_regras_de_sala()
+                    if self._completar_cenario() or regras:
                         self.salvar()
-                    log.info("mapa carregado de %s", ARQUIVO.name)
+                    log.info("mapa carregado de %s", arquivo.name)
                     return
-                log.info("planta de fábrica é mais nova (%d > %d) — remontando o escritório",
-                         VERSAO_PLANTA, self.versao_planta)
+                log.info("planta de fábrica é mais nova (%d > %d) — remontando %s",
+                         versao, self.versao_planta, arquivo.name)
             except Exception:
                 # O arquivo ruim não pode ser só sobrescrito pela planta de
                 # fábrica: era a única cópia do escritório editado, e a linha
                 # de baixo apagava a prova. Fica uma cópia ao lado dele.
-                log.exception("mapa.json ilegível — voltando para a planta padrão (cópia em %s)",
-                              nuvem.guardar_ilegivel(ARQUIVO))
-        montar_padrao(self)
+                log.exception("%s ilegível — voltando para a planta padrão (cópia em %s)",
+                              arquivo.name, nuvem.guardar_ilegivel(arquivo))
+        self.planta.montar_padrao(self)
         self._aplicar_donos_fixos()
         self.salvar()
 
@@ -378,7 +399,7 @@ class Escritorio:
         # Gravação atômica: um leitor (o envio para a nuvem) nunca vê o arquivo
         # vazio, e o processo morrer no meio não deixa JSON cortado — que na
         # subida seguinte virava planta de fábrica em silêncio.
-        nuvem.gravar_atomico(ARQUIVO, json.dumps(self.para_json(), ensure_ascii=False))
+        nuvem.gravar_atomico(self.arquivo, json.dumps(self.para_json(), ensure_ascii=False))
 
     def para_json(self) -> Dict:
         return {
@@ -937,7 +958,7 @@ class Escritorio:
             self.nascimento = (x, y)
 
         elif tipo == "padrao":
-            montar_padrao(self)
+            self.planta.montar_padrao(self)
 
         elif tipo == "tamanho":
             self._redimensionar(int(acao["largura"]), int(acao["altura"]))

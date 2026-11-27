@@ -25,7 +25,7 @@ import secrets
 import time
 import unicodedata
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import nuvem
 
@@ -228,24 +228,28 @@ class Contas:
         return email, nome, secrets.token_hex(16)
 
     def _gravar_cadastro(self, email: str, nome: str, sal: str, digest: str,
-                         aparencia: Dict, cor: str) -> str:
+                         aparencia: Dict, cor: str, espacos: Optional[List[str]] = None) -> str:
         self.contas[_chave(email)] = {
             "email": email, "nome": nome, "sal": sal, "hash": digest,
             "aparencia": aparencia, "cor": cor,
+            # os lugares que a conta já pode entrar sem chave (27/11): o da
+            # chave com que ela foi criada
+            "espacos": list(espacos or ["escritorio"]),
             "criada_em": time.time(), "visto_em": time.time(),
         }
         return self._novo_token(_chave(email))
 
     def registrar(self, email: str, nome: str, senha: str,
-                  aparencia: Dict, cor: str) -> Optional[str]:
+                  aparencia: Dict, cor: str, espacos: Optional[List[str]] = None) -> Optional[str]:
         preparado = self._preparar_cadastro(email, nome, senha)
         if not preparado:
             return None
         email, nome, sal = preparado
-        return self._gravar_cadastro(email, nome, sal, _hash(senha, sal), aparencia, cor)
+        return self._gravar_cadastro(email, nome, sal, _hash(senha, sal), aparencia, cor, espacos)
 
     async def registrar_async(self, email: str, nome: str, senha: str,
-                              aparencia: Dict, cor: str) -> Optional[str]:
+                              aparencia: Dict, cor: str,
+                              espacos: Optional[List[str]] = None) -> Optional[str]:
         """Como `registrar`, mas sem segurar o laço de eventos durante o hash."""
         preparado = self._preparar_cadastro(email, nome, senha)
         if not preparado:
@@ -255,7 +259,7 @@ class Contas:
         # enquanto o hash rodava, outro pedido pode ter criado a mesma conta
         if self.existe(email) or self.nome_em_uso(nome) or self.cheio():
             return None
-        return self._gravar_cadastro(email, nome, sal, digest, aparencia, cor)
+        return self._gravar_cadastro(email, nome, sal, digest, aparencia, cor, espacos)
 
     def _antes_do_login(self, email, senha) -> Optional[Dict]:
         """A conta, se existe e não está de castigo. None = nem calcula o hash."""
@@ -368,6 +372,21 @@ class Contas:
             conta["aparencia"] = aparencia
         if cor:
             conta["cor"] = cor
+        self.salvar()
+        return True
+
+
+    def liberar_espaco(self, token: str, espaco: str) -> bool:
+        """A pessoa digitou a chave de um lugar: daqui para frente entra nele
+        sem chave (27/11). Conta antiga, sem a lista, era do Escritório."""
+        chave = self.chave_do_token(token)
+        conta = self.contas.get(chave) if chave else None
+        if not conta:
+            return False
+        lista = conta.get("espacos") if isinstance(conta.get("espacos"), list) else ["escritorio"]
+        if espaco not in lista:
+            lista.append(espaco)
+        conta["espacos"] = lista
         self.salvar()
         return True
 

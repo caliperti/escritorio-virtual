@@ -13,7 +13,6 @@ from typing import Any, Dict, List, Optional
 
 import mapa
 from contas import _chave_nome
-from mapa import escritorio
 
 # Raio (em pixels) em que duas pessoas passam a se ouvir. A histerese evita que
 # a chamada fique conectando/desconectando quando alguém anda na fronteira.
@@ -55,6 +54,11 @@ def limpar_aparencia(bruto: Any) -> Dict[str, str]:
             for i, (c, v) in enumerate(bruto.items()) if i < MAX_CHAVES_APARENCIA}
 
 
+# Como cada um está (26/11). "Não perturbe" tira a pessoa das conversas pelo
+# caminho e barra quem bate na porta; "Almoço" também barra a batida.
+SITUACOES = ("disponivel", "ocupado", "almoco", "nao_perturbe")
+
+
 @dataclass
 class Participante:
     id: str
@@ -74,12 +78,16 @@ class Participante:
     visitante: bool = False              # entrou sem cadastro: olha, anda e conversa
     admin: bool = False                  # manda no escritório inteiro
     silenciado: bool = False             # calado pelo admin: não conecta áudio
+    situacao: str = "disponivel"         # Disponível, Ocupado, Almoço, Não perturbe (26/11)
+    espaco: str = "escritorio"           # em que lugar está: o Escritório ou o Pingou (27/11)
+    mapa_: Any = field(default=None, repr=False)   # o mapa desse lugar
+    indo_para: str = ""                  # trocando de lugar: o nome do outro (o "saiu" diz)
     # chave para mandar foto/arquivo no chat: vale só enquanto esta conexão existir
     chave_envio: str = field(default_factory=lambda: secrets.token_urlsafe(18))
     ws: Any = field(default=None, repr=False)
 
     def publico(self) -> Dict:
-        zona = mapa.zona_de(self.x, self.y)
+        zona = (self.mapa_ or mapa.escritorio).zona_de(self.x, self.y)
         return {
             "id": self.id, "nome": self.nome, "cor": self.cor, "emoji": self.emoji,
             "x": round(self.x, 1), "y": round(self.y, 1), "direcao": self.direcao,
@@ -88,6 +96,8 @@ class Participante:
             "visitante": self.visitante,
             "admin": self.admin,
             "silenciado": self.silenciado,
+            "situacao": self.situacao,
+            "espaco": self.espaco,
             "zona": zona["id"] if zona else None,
         }
 
@@ -107,19 +117,26 @@ def se_ouvem(a: Participante, b: Participante) -> bool:
     atropelar a outra. Uma versão anterior fazia o salão inteiro se ouvir, e a
     circulação cobre o prédio todo — dava um único bolo de vozes.
     """
-    za, zb = mapa.zona_de(a.x, a.y), mapa.zona_de(b.x, b.y)
+    # Os dois estão sempre no mesmo lugar: cada lugar tem a sua Sala (27/11).
+    m = a.mapa_ or mapa.escritorio
+    za, zb = m.zona_de(a.x, a.y), m.zona_de(b.x, b.y)
     priv_a = bool(za and za["privada"])
     priv_b = bool(zb and zb["privada"])
     if priv_a or priv_b:
         return priv_a and priv_b and za["id"] == zb["id"]
-    raio = raios()[0]
+    # Não perturbe (26/11): pelo caminho ninguém puxa conversa. Dentro de uma
+    # sala, baia ou mesa de reunião continua valendo (acima): ali a pessoa
+    # escolheu estar.
+    if a.situacao == "nao_perturbe" or b.situacao == "nao_perturbe":
+        return False
+    raio = raios(m)[0]
     return (a.x - b.x) ** 2 + (a.y - b.y) ** 2 <= raio ** 2
 
 
-def raios():
+def raios(m: Any = None):
     """(conversa, silêncio). O cenário pode trazer os seus: na arte da Codara o
     boneco tem ~115 px de altura, e 150 px de raio mal passava de um ombro."""
-    c = escritorio.cenario or {}
+    c = (m or mapa.escritorio).cenario or {}
     return (c.get("raio_conversa", RAIO_CONVERSA), c.get("raio_silencio", RAIO_SILENCIO))
 
 
@@ -130,16 +147,24 @@ def chave_de_castigo(conta: str, nome: str) -> str:
     return conta if conta else "visitante:" + (nome or "").strip().lower()
 
 
+# Expulsão e silêncio valem para a PESSOA, em qualquer lugar (27/11): quem foi
+# tirado do Escritório não escapa do castigo indo para o Pingou.
+_CASTIGO: Dict[str, float] = {}
+_CALADOS: set = set()
+
+
 class Sala:
-    def __init__(self) -> None:
+    def __init__(self, mapa_: Any = None, espaco: str = "escritorio") -> None:
+        self.mapa = mapa_ or mapa.escritorio
+        self.espaco = espaco
         self.participantes: Dict[str, Participante] = {}
         # convite para entrar na sala de alguém, por sala: {zona_id: {id, ...}}
         self._convidados: Dict[str, set] = {}
         # quem o admin expulsou: {chave: momento em que pode voltar}
-        self._castigo: Dict[str, float] = {}
+        self._castigo: Dict[str, float] = _CASTIGO
         # quem o admin calou: fica pela CONTA, não pela conexão — senão bastava
         # recarregar a página para voltar a falar
-        self._calados: set = set()
+        self._calados: set = _CALADOS
         self._trava = asyncio.Lock()
 
     # ---------- expulsão ----------
@@ -196,8 +221,10 @@ class Sala:
             token=dados.get("token") or "",
             emoji=(dados.get("emoji") or "")[:4],
             aparencia=limpar_aparencia(dados.get("aparencia")),
-            x=escritorio.ponto_de_nascimento()[0],
-            y=escritorio.ponto_de_nascimento()[1],
+            x=self.mapa.ponto_de_nascimento()[0],
+            y=self.mapa.ponto_de_nascimento()[1],
+            espaco=self.espaco,
+            mapa_=self.mapa,
             ws=ws,
         )
         # Quem está voltando de uma queda de conexão volta para onde estava —
@@ -212,7 +239,7 @@ class Sala:
             # A sala trancada tem de barrar aqui também: mandar a coordenada de
             # dentro na hora de conectar era um jeito de nascer dentro da sala
             # dos outros sem passar pela porta — inclusive sendo visitante.
-            if vx is not None and mapa.livre(vx, vy) and not self.zona_trancada_para(p, vx, vy):
+            if vx is not None and self.mapa.livre(vx, vy) and not self.zona_trancada_para(p, vx, vy):
                 p.x, p.y = vx, vy
                 async with self._trava:
                     self.participantes[p.id] = p
@@ -220,22 +247,22 @@ class Sala:
         # Espalha um pouco quem chega junto, para ninguém nascer em cima do outro.
         # Com cenário, procura em volta da entrada um lugar livre E desocupado
         # (andar sempre para a direita jogava a quarta pessoa dentro do pilar).
-        if escritorio.cenario:
+        if self.mapa.cenario:
             x0, y0 = p.x, p.y
             passos = [(dx * 84, -dy * 56) for dy in range(0, 8) for dx in (0, 1, -1, 2, -2, 3, -3)]
             for dx, dy in passos:
                 x, y = x0 + dx, y0 + dy
-                if mapa.livre(x, y) and not any(
+                if self.mapa.livre(x, y) and not any(
                         o.id != p.id and abs(o.x - x) < 70 and abs(o.y - y) < 48
                         for o in self.participantes.values()):
                     p.x, p.y = x, y
                     break
-        for _ in range(0 if escritorio.cenario else 24):
+        for _ in range(0 if self.mapa.cenario else 24):
             if not any(o.id != p.id and abs(o.x - p.x) < 24 and abs(o.y - p.y) < 24
                        for o in self.participantes.values()):
                 break
             p.x += mapa.TAMANHO_TILE
-            if not mapa.livre(p.x, p.y):
+            if not self.mapa.livre(p.x, p.y):
                 p.x -= mapa.TAMANHO_TILE * 3
                 p.y += mapa.TAMANHO_TILE
         async with self._trava:
@@ -259,10 +286,9 @@ class Sala:
 
     # ---------- o mapa mudou embaixo de quem está andando ----------
 
-    @staticmethod
-    def dentro_do_mapa(x: float, y: float) -> bool:
-        return (0 <= x <= escritorio.largura * mapa.TAMANHO_TILE
-                and 0 <= y <= escritorio.altura * mapa.TAMANHO_TILE)
+    def dentro_do_mapa(self, x: float, y: float) -> bool:
+        return (0 <= x <= self.mapa.largura * mapa.TAMANHO_TILE
+                and 0 <= y <= self.mapa.altura * mapa.TAMANHO_TILE)
 
     def reacomodar(self) -> List[Participante]:
         """Depois de uma edição, quem ficou FORA do mapa volta para a entrada.
@@ -276,7 +302,7 @@ class Sala:
         for p in list(self.participantes.values()):
             if self.dentro_do_mapa(p.x, p.y):
                 continue
-            p.x, p.y = escritorio.ponto_de_nascimento()
+            p.x, p.y = self.mapa.ponto_de_nascimento()
             movidos.append(p)
         return movidos
 
@@ -317,7 +343,7 @@ class Sala:
         entrar. O que barra é a PORTA TRANCADA, não o fato de ter dono: sala com
         dono e porta aberta é como uma sala de verdade com a porta encostada —
         entra quem quiser."""
-        z = escritorio.zona_de(x, y)
+        z = self.mapa.zona_de(x, y)
         if not z or not z.get("privada") or not z.get("dono") or not z.get("trancada"):
             return None
         if z["dono"] == p.conta:
@@ -335,19 +361,18 @@ class Sala:
         for i in range(1, passos + 1):
             px = p.x + (x - p.x) * i / passos
             py = p.y + (y - p.y) * i / passos
-            if not mapa.livre(px, py):
+            if not self.mapa.livre(px, py):
                 return False
             if self.zona_trancada_para(p, px, py):
                 return False
         return True
 
-    @staticmethod
-    def _sentar_ou_levantar(p: Participante, x: float, y: float) -> bool:
+    def _sentar_ou_levantar(self, p: Participante, x: float, y: float) -> bool:
         perto = lambda a, b: abs(a[0] - b[0]) <= 30 and abs(a[1] - b[1]) <= 30
-        destino = escritorio.assento_do_cenario(x, y)
+        destino = self.mapa.assento_do_cenario(x, y)
         if destino and perto(destino["saida"], (p.x, p.y)):
             return True
-        origem = escritorio.assento_do_cenario(p.x, p.y)
+        origem = self.mapa.assento_do_cenario(p.x, p.y)
         return bool(origem and perto(origem["saida"], (x, y)))
 
     def mover(self, p: Participante, x: float, y: float, direcao: str) -> bool:
@@ -364,7 +389,7 @@ class Sala:
             return False
         # Quem ficou preso porque alguém colocou uma mesa em cima dele pode sair
         # andando; senão a única saída seria recarregar a página.
-        if not mapa.livre(x, y) and mapa.livre(p.x, p.y):
+        if not self.mapa.livre(x, y) and self.mapa.livre(p.x, p.y):
             return False
         # Sala reivindicada é trancada: quem não é dono nem convidado esbarra na
         # porta. Quem JÁ está dentro pode sair andando — senão o dono soltando o

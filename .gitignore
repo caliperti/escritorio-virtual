@@ -7,6 +7,7 @@ endereco.txt
 endereco.log
 backend/contas.json
 backend/pecas.json
+backend/mapa-pingou.json
 
 # Redesign Codara (26/11): ficam fora do repositório (que é público) a imagem de
 # referência (tem foto das câmeras), as cópias de contas/mapa/.env e as capturas.

@@ -248,9 +248,10 @@ function usarModo(novoModo) {
                               ['aba-visitante', 'visitante']]) {
     document.getElementById(aba).setAttribute('aria-pressed', modo === valor);
   }
-  // O código da sala vale para criar conta E para entrar de visitante: é ele
-  // que separa quem foi convidado de quem só achou o endereço.
-  document.getElementById('linha-convite').hidden = !(modo === 'criar' || modo === 'visitante');
+  // A chave do lugar vale para criar conta E para entrar de visitante: é ela
+  // que separa quem foi convidado de quem só achou o endereço. Quem já tem
+  // conta só vê o campo quando o lugar escolhido ainda não é dela (27/11).
+  document.getElementById('linha-convite').hidden = !(modo === 'criar' || modo === 'visitante' || chavePedida);
   // Visitante não tem conta, então não tem e-mail. Entrar pede e-mail e senha;
   // criar conta pede os dois mais o nome que vai aparecer em cima do boneco.
   document.getElementById('linha-email').hidden = modo === 'visitante';
@@ -268,6 +269,85 @@ function usarModo(novoModo) {
     : modo === 'visitante'
       ? 'Visitante anda, vê e conversa. Não mexe no escritório nem pega sala.'
       : '';
+  atualizarGaleria();
+}
+
+/* ---------- os lugares (27/11): o Escritório e o Pingou ----------
+ * Cada um tem a sua chave de acesso. Na entrada a pessoa escolhe onde entrar;
+ * lá dentro, a porta de saída leva de um para o outro (Saida, mais abaixo). */
+let lugarEscolhido = localStorage.getItem('escritorio:lugar') || 'escritorio';
+let lugaresDaEntrada = [];
+let chavePedida = false;            // o servidor disse que esta conta precisa da chave
+
+function montarLugaresDaEntrada(lista) {
+  lugaresDaEntrada = Array.isArray(lista) ? lista : [];
+  const linha = document.getElementById('linha-lugar');
+  const caixa = document.getElementById('lugares-entrada');
+  if (!linha || !caixa) return;
+  if (lugaresDaEntrada.length < 2) { linha.hidden = true; return; }
+  if (!lugaresDaEntrada.some((l) => l.id === lugarEscolhido)) lugarEscolhido = lugaresDaEntrada[0].id;
+  caixa.innerHTML = '';
+  for (const l of lugaresDaEntrada) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = l.nome;
+    b.dataset.lugar = l.id;
+    b.setAttribute('role', 'radio');
+    b.onclick = () => escolherLugar(l.id);
+    caixa.appendChild(b);
+  }
+  linha.hidden = false;
+  escolherLugar(lugarEscolhido);
+}
+
+function escolherLugar(id) {
+  lugarEscolhido = id;
+  for (const b of document.querySelectorAll('#lugares-entrada button')) {
+    const sim = b.dataset.lugar === id;
+    b.setAttribute('aria-pressed', String(sim));
+    b.setAttribute('aria-checked', String(sim));
+  }
+  const l = lugaresDaEntrada.find((x) => x.id === id);
+  document.getElementById('rotulo-convite').textContent = l ? `Chave de acesso do ${l.nome}` : 'Chave de acesso';
+  atualizarGaleria();
+}
+
+/* Personagens do lugar (27/11): quem cria a conta no Pingou escolhe o seu na
+ * galeria. Cada um é de uma pessoa só: o que já tem dono aparece apagado. */
+let personagemEscolhido = null;
+
+function personagensDoLugar(lugar) {
+  return (Personagens.dados.personagens || []).filter((p) => p.lugar === lugar);
+}
+
+async function atualizarGaleria() {
+  const caixa = document.getElementById('galeria-lugar');
+  if (!caixa) return;
+  const lista = personagensDoLugar(lugarEscolhido);
+  const mostra = modo === 'criar' && lista.length > 0;
+  caixa.hidden = !mostra;
+  document.querySelector('.editor').hidden = modo !== 'criar' || mostra;
+  if (!mostra) { personagemEscolhido = null; return; }
+  let ocupados = {};
+  try { ocupados = (await (await fetch('/personagens/ocupados')).json()).ocupados || {}; } catch (e) { /* segue */ }
+  const g = document.getElementById('galeria-personagens');
+  g.innerHTML = '';
+  for (const p of lista) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.personagem = p.id;
+    const dono = ocupados[p.id];
+    b.disabled = !!dono;
+    b.setAttribute('aria-pressed', String(personagemEscolhido === p.id && !dono));
+    b.innerHTML = `<img alt="" src="${Personagens.retrato(p.id)}"><span>${escapar(p.nome)}</span>${
+      dono ? `<small>já é de ${escapar(dono)}</small>` : ''}`;
+    b.onclick = () => {
+      personagemEscolhido = p.id;
+      for (const o of g.querySelectorAll('button')) o.setAttribute('aria-pressed', String(o === b));
+    };
+    g.appendChild(b);
+  }
+  if (personagemEscolhido && ocupados[personagemEscolhido]) personagemEscolhido = null;
 }
 document.getElementById('aba-entrar').onclick = () => usarModo('entrar');
 document.getElementById('aba-criar').onclick = () => usarModo('criar');
@@ -277,6 +357,7 @@ document.getElementById('aba-visitante').onclick = () => usarModo('visitante');
 async function conferirVagas() {
   try {
     const c = await (await fetch('/config')).json();
+    montarLugaresDaEntrada(c.espacos);
     const linha = document.getElementById('vagas');
     if (!linha) return;
     // vagas nulo = sem limite: a linha some, não faz sentido contar o infinito
@@ -346,9 +427,12 @@ async function autenticar() {
   if (!email || !senha) { aviso.textContent = 'Preencha e-mail e senha.'; return false; }
   if (modo === 'criar' && !nome) { aviso.textContent = 'Escolha o nome que vai aparecer.'; return false; }
 
+  const galeria = modo === 'criar' && personagensDoLugar(lugarEscolhido).length > 0;
+  if (galeria && !personagemEscolhido) { aviso.textContent = 'Escolha o seu personagem.'; return false; }
+  const aparencia = galeria ? { ...editorEntrada.ver(), personagem: personagemEscolhido } : editorEntrada.ver();
   const corpo = modo === 'criar'
     ? { email, nome, senha, convite: document.getElementById('campo-convite').value,
-        aparencia: editorEntrada.ver(), cor: editorEntrada.ver().corCamisa }
+        espaco: lugarEscolhido, aparencia, cor: aparencia.corCamisa }
     : { email, senha };
   aviso.textContent = modo === 'criar' ? 'Criando sua conta…' : 'Entrando…';
   try {
@@ -390,16 +474,20 @@ async function entrar(comMidia) {
       }
     }
     aviso.textContent = 'Conectando…';
+    // a chave digitada fica guardada por lugar: o visitante precisa dela de
+    // novo se cair a internet, e para voltar depois de ir ao outro lugar
+    const chave = document.getElementById('campo-convite').value;
+    if (chave) Conexao.chaves[lugarEscolhido] = chave;
+    try { localStorage.setItem('escritorio:lugar', lugarEscolhido); } catch (e) { /* aba anônima */ }
     if (modo === 'visitante') {
       const nome = campoNome.value.trim();
       if (!nome) { aviso.textContent = 'Escreva seu nome.'; return; }
       const visual = BONECOS_VISITANTE[bonecoVisitante];
-      conectar({ visitante: true, nome,
-                 convite: document.getElementById('campo-convite').value,
+      conectar({ visitante: true, nome, espaco: lugarEscolhido, convite: chave,
                  aparencia: visual, cor: visual.corCamisa });
       return;
     }
-    conectar({ token: sessao.token });
+    conectar({ token: sessao.token, espaco: lugarEscolhido, convite: chavePedida ? chave : '' });
   } finally {
     entrando = false;
   }
@@ -415,7 +503,9 @@ const SILENCIO_MS = 55000;      // nada vindo do servidor por tanto tempo = caiu
 const ESPERA_MAX_MS = 15000;    // teto da espera entre tentativas de voltar
 
 const Conexao = { perfil: null, tentativas: 0, batida: null, timer: null,
-                  ultima: 0, saindo: false, atual: null, ultimoFim: null };
+                  ultima: 0, saindo: false, atual: null, ultimoFim: null,
+                  chaves: {},          // a chave digitada de cada lugar (27/11)
+                  trocando: null };    // indo para outro lugar: { para, depois }
 
 function conectar(perfil) {
   Conexao.perfil = perfil;
@@ -442,8 +532,9 @@ function conectar(perfil) {
 
   ws.onopen = () => {
     if (!atual()) { try { ws.close(); } catch (e) {} return; }
-    // voltando de uma queda: pede para nascer onde a pessoa estava
-    const voltando = Jogo.eu ? { x: Jogo.eu.x, y: Jogo.eu.y } : null;
+    // voltando de uma queda: pede para nascer onde a pessoa estava (trocando
+    // de lugar, não: o lugar novo é outro mapa, e nasce na entrada dele)
+    const voltando = Jogo.eu && !Conexao.trocando ? { x: Jogo.eu.x, y: Jogo.eu.y } : null;
     // e conta POR QUE a ligação de antes acabou. No registro do servidor,
     // "entrou de novo" sozinho não diz se foi F5, queda de rede ou troca de
     // sessão — e sem isso não dá para consertar quem vive caindo.
@@ -451,8 +542,10 @@ function conectar(perfil) {
     const porque = fim ? { codigo: fim.codigo, limpo: fim.limpo,
                            ha: Date.now() - fim.quando } : null;
     ws.send(JSON.stringify({ tipo: 'entrar', ...perfil,
+                             situacao: minhaSituacaoSalva(),
                              ...(voltando ? { voltando } : {}),
                              ...(porque ? { porque } : {}) }));
+    delete perfil.troca;              // a troca de lugar vale para esta ligação só
     Conexao.tentativas = 0;
     Conexao.ultima = Date.now();
     baterCoracao();
@@ -567,6 +660,12 @@ function avisarSalaTrancada(t) {
   // a diretoria tem o nome do dono: "Gustavo é de Gustavo" não diz nada
   const mesmo = String(t.nome || '').trim().toLowerCase() === String(t.dono || '').trim().toLowerCase();
   const sala = mesmo ? `A sala de <b>${dono}</b> está trancada` : `<b>${nome}</b> é de ${dono}`;
+  if (t.online && (t.situacao === 'nao_perturbe' || t.situacao === 'almoco')) {
+    const como = t.situacao === 'almoco' ? 'no almoço' : 'em <b>Não perturbe</b>';
+    painelPedido({ texto: `${sala}, e ${dono} está ${como}. Mande uma mensagem no chat ou tente mais tarde.`,
+                   botoes: [{ texto: 'Entendi' }], segundos: 8 });
+    return;
+  }
   if (!t.online) {
     painelPedido({ texto: mesmo ? `${sala}, e ${dono} não está no escritório agora.`
                                : `${sala}, que não está no escritório agora.`,
@@ -589,13 +688,13 @@ function receber(msg) {
 
     case 'entrou':
       Jogo.pessoas.set(msg.participante.id, prepararPessoa(msg.participante));
-      escreverChat({ sistema: true, texto: `${msg.participante.nome} entrou no escritório.` });
+      escreverChat({ sistema: true, texto: `${msg.participante.nome} entrou no ${(Jogo.espaco && Jogo.espaco.nome) || 'Escritório'}.` });
       desenharListaPessoas();
       break;
 
     case 'saiu': {
       const p = Jogo.pessoas.get(msg.id);
-      if (p) escreverChat({ sistema: true, texto: `${p.nome} saiu.` });
+      if (p) escreverChat({ sistema: true, texto: msg.foi_para ? `${p.nome} foi para o ${msg.foi_para}.` : `${p.nome} saiu.` });
       Jogo.pessoas.delete(msg.id);
       Midia.fechar(msg.id);
       desenharListaPessoas();
@@ -624,6 +723,39 @@ function receber(msg) {
       break;
     }
 
+    case 'lugares': {
+      // quem está em cada lugar (27/11): a lista mostra os dois
+      Jogo.lugares = msg.lista || [];
+      for (const r of msg.espacos || []) {
+        const e = (Jogo.espacos || []).find((x) => x.id === r.id);
+        if (e) e.pessoas = r.pessoas;
+      }
+      desenharListaPessoas();
+      Saida.atualizarContagens();
+      break;
+    }
+
+    case 'pode_ir':                 // a chave, o acesso ou alguém de lá deixou
+      trocarDeLugar(msg.espaco, msg.por);
+      break;
+
+    case 'sem_acesso':
+      if (!Saida.aberta) Saida.abrir(msg.espaco);
+      Saida.avisar(msg.texto);
+      break;
+
+    case 'pedido_espaco':
+      receberPedidoDeLugar(msg);
+      break;
+
+    case 'situacao': {
+      const alvo = Jogo.eu && msg.id === Jogo.eu.id ? Jogo.eu : Jogo.pessoas.get(msg.id);
+      if (alvo && SITUACOES[msg.situacao]) alvo.situacao = msg.situacao;
+      if (alvo === Jogo.eu) desenharSituacao();
+      desenharListaPessoas();
+      break;
+    }
+
     case 'midia': {
       if (msg.proprio) {
         // o servidor recusou o pedido (calado pelo admin): fecha o microfone de
@@ -648,6 +780,18 @@ function receber(msg) {
       const p = msg.proprio ? Jogo.eu : Jogo.pessoas.get(msg.de);
       const legenda = msg.anexo ? (msg.anexo.imagem ? '📷 Foto' : '📎 ' + msg.anexo.nome) : '';
       if (p) p.bolha = { texto: msg.texto || legenda, ate: Date.now() + DURACAO_BOLHA };
+      if (!msg.proprio) {
+        // Quem está perto falou comigo, ou alguém me citou no "todos": aviso.
+        // O resto do "todos" só conta no título da aba.
+        const texto = msg.texto || legenda;
+        if (msg.escopo !== 'todos') {
+          Chamar.avisar({ titulo: `${msg.nome} falou com você`, texto, chave: 'chat-' + msg.de });
+        } else if (citaMeuNome(msg.texto)) {
+          Chamar.avisar({ titulo: `${msg.nome} citou você`, texto, chave: 'chat-' + msg.de });
+        } else {
+          Chamar.contar();
+        }
+      }
       break;
     }
 
@@ -695,6 +839,10 @@ function receber(msg) {
           ],
           segundos: 40,
         });
+        // forte: toca o som mesmo com a aba na frente (a pessoa pode estar
+        // olhando para o outro monitor)
+        Chamar.avisar({ titulo: `${msg.quem} bateu na sua porta`, texto: `Quer entrar na ${msg.nome_sala}.`,
+                        chave: 'bater-' + msg.de, forte: true });
       } else if (msg.acao === 'bateu') {
         escreverChat({ sistema: true, texto: `Você bateu na porta. Esperando ${msg.dono} responder…` });
       } else if (msg.acao === 'resposta') {
@@ -702,6 +850,8 @@ function receber(msg) {
           ? `${msg.dono} deixou você entrar na ${msg.nome_sala}.`
           : `${msg.dono} não pode receber você agora.` });
         if (msg.aceita) delete ultimoAvisoTrancada[msg.id];
+        Chamar.avisar({ titulo: msg.aceita ? `${msg.dono} deixou você entrar` : `${msg.dono} não pode receber você agora`,
+                        texto: msg.nome_sala || '', chave: 'resposta-' + msg.id });
       }
       break;
 
@@ -726,6 +876,14 @@ function receber(msg) {
       document.getElementById('aviso-entrada').textContent = msg.texto;
       document.getElementById('entrada').classList.remove('oculto');
       document.getElementById('app').classList.add('oculto');
+      Conexao.trocando = null;
+      if (msg.sem_acesso) {
+        // o lugar pede a chave (27/11): a sessão continua, só falta a chave
+        chavePedida = true;
+        if (msg.espaco) escolherLugar(msg.espaco);
+        document.getElementById('linha-convite').hidden = false;
+        document.getElementById('campo-convite').focus();
+      }
       break;
 
     case 'erro':
@@ -786,6 +944,19 @@ function iniciarSala(msg) {
   // Isto roda de novo a cada reconexão: o que é de uma vez só fica no `primeira`.
   const primeira = !Jogo.rodando;
   Jogo.eu = { ...msg.voce, xr: msg.voce.x, yr: msg.voce.y, bolha: null, reacao: null };
+  // o lugar (27/11): o Escritório ou o Pingou, os dois e quem está em cada um
+  const lugarAntes = Jogo.espaco && Jogo.espaco.id;
+  Jogo.espaco = msg.espaco || { id: 'escritorio', nome: 'Escritório' };
+  Jogo.espacos = msg.espacos || [];
+  Jogo.lugares = msg.lugares || [];
+  const titulo = document.getElementById('titulo-lugar');
+  if (titulo) titulo.textContent = Jogo.espaco.id === 'escritorio' ? 'Escritório virtual' : Jogo.espaco.nome;
+  const troca = Conexao.trocando;
+  Conexao.trocando = null;
+  Saida.fechar(false);
+  Jogo.caminho = null;
+  Jogo.querSentar = null;
+  Jogo.sentadoEm = null;
   receberMapa(msg.mapa);
   Jogo.config = msg.config;
   Jogo.chaveEnvio = msg.chave_envio || '';        // para mandar foto/arquivo no chat
@@ -865,7 +1036,15 @@ function iniciarSala(msg) {
   desenharListaPessoas();
   atualizarBotoesMidia();
   montarTiles();
+  desenharSituacao();
+  Chamar.desde = Date.now();
+  if (!primeira && lugarAntes && lugarAntes !== Jogo.espaco.id) {
+    escreverChat({ sistema: true, texto: `Você está no ${Jogo.espaco.nome}.` });
+  }
+  // "Ir até" alguém do outro lugar: trocou de lugar, agora anda até a pessoa
+  if (troca && troca.depois) setTimeout(() => irAte(troca.depois), 700);
   if (primeira) {
+    Chamar.oferecer();
     escreverChat({ sistema: true, texto: 'Você chegou na recepção. Ande até alguém para conversar.' });
     setTimeout(() => document.getElementById('dica').style.opacity = 0, 9000);
     setInterval(cuidarDasChamadas, 250);
@@ -969,6 +1148,12 @@ document.addEventListener('keydown', (e) => {
   // pelo `preventDefault` do chat — quem entrava pelo teclado não conseguia
   // apertar "Entrar".
   if (!naSala()) return;
+  // A janela da porta de saída (27/11) é dela: Esc fecha, o resto é digitar
+  // a chave e apertar botão. O boneco não anda por baixo dela.
+  if (Saida.aberta) {
+    if (e.key === 'Escape') { Saida.fechar(); e.preventDefault(); }
+    return;
+  }
   // ⌘C, Ctrl+V, ⌘+: são do navegador. Sem esta linha copiar um trecho do
   // chat abria a grade da reunião (C), colar ligava a câmera (V) e o zoom do
   // navegador virava zoom do mapa.
@@ -1320,6 +1505,68 @@ function caminhoPertoDe(ponto) {
   }
   return null;
 }
+/** A sala "de piso" de um ponto: a menor zona que o contém, sem contar as que
+ *  só valem sentado (mesa de reunião, baias). Serve para o "ir até" não parar
+ *  do outro lado de uma parede. */
+function salaDoPiso(px, py) {
+  const tx = px / Jogo.tile, ty = py / Jogo.tile;
+  let melhor = null, menor = Infinity;
+  for (const z of Jogo.zonas) {
+    if (z.so_sentado) continue;
+    if (tx < z.x1 || tx >= z.x2 + 1 || ty < z.y1 || ty >= z.y2 + 1) continue;
+    const area = (z.x2 - z.x1 + 1) * (z.y2 - z.y1 + 1);
+    if (area < menor) { menor = area; melhor = z; }
+  }
+  return melhor;
+}
+
+/** "Ir até" (26/11), da lista de pessoas: anda até ficar ao lado da pessoa, do
+ *  lado de quem chega, sem subir em cima dela nem parar do outro lado da
+ *  parede. Sala trancada: o boneco para na porta e o servidor oferece bater,
+ *  como quando se anda até lá. */
+function irAte(id) {
+  const p = Jogo.pessoas.get(id);
+  const eu = Jogo.eu;
+  if (!p || !eu || Editor.ativo) return;
+  const o = origemDoCaminho();
+  const salaDela = salaDoPiso(p.x, p.y);
+  const mesma = (z) => (z && z.id) === (salaDela && salaDela.id);
+  if (Math.hypot(o.x - p.x, o.y - p.y) < 90 && mesma(salaDoPiso(o.x, o.y))) {
+    escreverChat({ sistema: true, texto: `Você já está ao lado de ${p.nome}.` });
+    return;
+  }
+  // em volta dela, começando pelo lado de quem chega
+  const base = Math.atan2(o.y - p.y, o.x - p.x);
+  const pontos = [];
+  for (const d of [62, 85, 45]) {
+    for (let k = 0; k < 16; k++) {
+      const ang = base + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 8);
+      const x = p.x + d * Math.cos(ang), y = p.y + d * Math.sin(ang);
+      if (livre(x, y) && mesma(salaDoPiso(x, y))) pontos.push({ x, y });
+    }
+  }
+  let caminho = null;
+  for (const c of pontos.slice(0, 5)) {
+    caminho = tracarCaminho(o.x, o.y, c.x, c.y);
+    if (caminho) break;
+  }
+  if (!caminho) caminho = caminhoPertoDe({ x: p.x, y: p.y });
+  if (!caminho) {
+    escreverChat({ sistema: true, texto: `Não achei um caminho até ${p.nome}.` });
+    return;
+  }
+  Jogo.querSentar = null;
+  Jogo.caminho = caminho;
+  if (sentadoAgora()) levantar();
+  // baia e mesa de reunião só juntam quem está SENTADO nelas
+  const z = zonaDe(p.x, p.y);
+  if (z && z.so_sentado) {
+    escreverChat({ sistema: true, texto: z.abre_midia
+      ? `${p.nome} está na mesa de reunião. Sente numa cadeira livre para entrar na conversa.`
+      : `${p.nome} está na ${z.nome}. Para conversar, sente numa cadeira livre da baia.` });
+  }
+}
+
 tela.addEventListener('pointercancel', () => {
   Editor.colocar = null;            // toque cancelado pelo sistema não coloca nada
   Editor.aoSoltar();
@@ -1460,8 +1707,10 @@ function atualizar() {
     // já está presa dentro de um móvel (alguém colocou em cima dela), qualquer
     // movimento vale — senão a única saída seria recarregar.
     const preso = !livre(eu.x, eu.y);
+    const antesX = eu.x, antesY = eu.y;
     if (preso || livre(px, eu.y)) eu.x = px;
     if (preso || livre(eu.x, py)) eu.y = py;
+    if (Jogo.caminho) destravarCaminho(eu, Math.hypot(eu.x - antesX, eu.y - antesY));
     eu.direcao = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'direita' : 'esquerda')
                                              : (dy > 0 ? 'baixo' : 'cima');
     const agora = Date.now();
@@ -1484,6 +1733,7 @@ function atualizar() {
     p.yr += (p.y - p.yr) * 0.25;
   }
 
+  Saida.conferir(eu);
   const zona = zonaDe(eu.x, eu.y);
   const idZona = zona ? zona.id : null;
   if (idZona !== Jogo.zonaAnterior) {
@@ -1497,6 +1747,27 @@ function atualizar() {
     atualizarRelogioChamada();
   }
   atualizarBotaoTrancar(zona);
+}
+
+/** Seguindo um trajeto, o boneco "chega" a cada ponto a até 4 px dele e já
+ *  vira para o próximo: corta a curva. A reta seguinte foi conferida a partir
+ *  do ponto, com 1 px de folga, e saindo de 3 px ao lado ela raspava na quina
+ *  de um móvel. O boneco ficava empurrando a quina para sempre, sem chegar
+ *  (26/11, achado no "ir até" da baia). Parado de verdade por alguns quadros:
+ *  traça de novo a partir de onde ele está; na terceira vez, desiste. */
+function destravarCaminho(eu, andou) {
+  const c = Jogo.caminho;
+  if (andou > 0.5) { c.parado = 0; return; }
+  c.parado = (c.parado || 0) + 1;
+  if (c.parado < 6) return;
+  const fim = c[c.length - 1];
+  const novo = (c.refeito || 0) < 3 && tracarCaminho(eu.x, eu.y, fim.x, fim.y);
+  if (novo && novo.length) {
+    novo.refeito = (c.refeito || 0) + 1;
+    Jogo.caminho = novo;
+  } else {
+    Jogo.caminho = null;
+  }
 }
 
 /** Sala marcada com `abre_midia` (a de reunião) abre câmera e microfone de
@@ -1682,6 +1953,9 @@ function podemConversar(a, b, jaConectados) {
   // atropelar a outra. Fazer o salão inteiro se ouvir dava um bolo só de vozes,
   // ainda mais porque a circulação cobre o prédio todo.
   if (privA || privB) return privA && privB && za.id === zb.id;
+  // Não perturbe (26/11): pelo caminho ninguém puxa conversa. Dentro de sala,
+  // baia ou mesa de reunião continua valendo (acima). Mesma regra de sala.py.
+  if (a.situacao === 'nao_perturbe' || b.situacao === 'nao_perturbe') return false;
   const d = Math.hypot(a.x - b.x, a.y - b.y);
   return d <= (jaConectados ? Jogo.config.raio_silencio : Jogo.config.raio_conversa);
 }
@@ -1710,9 +1984,11 @@ function cuidarDasChamadas() {
   const eu = Jogo.eu;
   if (!eu) return;
   const agora = Date.now();
+  const naConversa = new Set();
   for (const p of Jogo.pessoas.values()) {
     const conectado = Midia.pares.has(p.id);
     const deve = podemConversar(eu, p, conectado);
+    if (deve) naConversa.add(p.id);
     if (deve && !conectado) {
       foraDesde.delete(p.id);
       // O cartão de vídeo nascia só quando chegava uma faixa de mídia. Quem
@@ -1738,6 +2014,7 @@ function cuidarDasChamadas() {
   for (const id of [...foraDesde.keys()]) {
     if (!Jogo.pessoas.has(id)) foraDesde.delete(id);
   }
+  Chamar.conferirChegadas(naConversa);
   Midia.vigiar();                 // chamada que não liga em 15 s é refeita
   cuidarDaTelaDeChamada(eu);
   avisarQualidade();
@@ -2008,6 +2285,7 @@ function desenhar() {
   }
 
 
+  if (comArte) desenharSaida(mapa.cenario);
   for (const pes of gente) desenharBolha(pes);
   if (comArte) Cenario.desenharDepuracao(ctx);
   atualizarAcaoReuniao();
@@ -2248,16 +2526,23 @@ function desenharCracha(p, souEu, mudo, nivel, sentado, k) {
     ctx.stroke();
   }
   const falando = nivel > 0.12 && !mudo;
-  ctx.fillStyle = '#22c55e';
+  const sit = situacaoDe(p), corSit = SITUACOES[sit].cor;
+  ctx.fillStyle = corSit;
   ctx.beginPath();
   ctx.arc(x + 14, y + h / 2, falando ? 5.5 : 4.5, 0, Math.PI * 2);
   ctx.fill();
+  if (sit === 'nao_perturbe') {               // o tracinho branco do "não perturbe"
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(x + 11.5, y + h / 2 - 0.9, 5, 1.8);
+  }
   if (falando) {
-    ctx.strokeStyle = 'rgba(34,197,94,.45)';
+    ctx.strokeStyle = corSit;
+    ctx.globalAlpha = 0.45;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(x + 14, y + h / 2, 8 + nivel * 3, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.globalAlpha = 1;
   }
   ctx.fillStyle = '#f5f3f7';
   ctx.textAlign = 'left';
@@ -2274,11 +2559,25 @@ function desenharCracha(p, souEu, mudo, nivel, sentado, k) {
     arredondado(mx - 2.5, my - 6, 5, 8, 2.5);
     ctx.stroke();
   }
+  let acima = y - 9;
   if (souEu ? !!Midia.telaStream : p.tela) {
     ctx.fillStyle = '#a78bfa';
     ctx.font = '600 11px Inter, -apple-system, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('apresentando', p.xr, y - 9);
+    ctx.fillText('apresentando', p.xr, acima);
+    acima -= 18;
+  }
+  if (sit !== 'disponivel') {                 // "ocupado", "almoço", "não perturbe"
+    const rotulo = SITUACOES[sit].nome.toLowerCase();
+    ctx.font = '600 11px Inter, -apple-system, sans-serif';
+    const lw = ctx.measureText(rotulo).width + 14;
+    ctx.fillStyle = 'rgba(28,25,31,.88)';
+    arredondado(p.xr - lw / 2, acima - 8, lw, 16, 8);
+    ctx.fill();
+    ctx.fillStyle = corSit;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(rotulo, p.xr, acima + 0.5);
   }
   if (p.reacao && p.reacao.ate > Date.now()) {
     const sobe = (p.reacao.ate - Date.now()) / DURACAO_REACAO;
@@ -2847,11 +3146,15 @@ function desenharListaPessoas() {
     const perto = !souEu && Midia.pares.has(p.id);
     const zona = zonaDe(p.x, p.y);
     const tela = !!(souEu ? Midia.telaStream : p.tela);
-    return { p, souEu, perto, zona, tela,
-             marca: [p.id, p.nome, p.silenciado ? 1 : 0, perto ? 1 : 0, zona ? zona.nome : '',
+    const sit = situacaoDe(p);
+    return { p, souEu, perto, zona, tela, sit,
+             marca: [p.id, p.nome, p.silenciado ? 1 : 0, perto ? 1 : 0, zona ? zona.nome : '', sit,
                      tela ? 1 : 0, p.cor, JSON.stringify(p.aparencia || null)].join('\x1f') };
   });
-  const assinatura = (Jogo.admin ? 'admin|' : '') + linhas.map((l) => l.marca).join('\x1e');
+  // quem está nos outros lugares (27/11)
+  const fora = (Jogo.lugares || []).filter((l) => !Jogo.espaco || l.espaco !== Jogo.espaco.id);
+  const assinatura = (Jogo.admin ? 'admin|' : '') + linhas.map((l) => l.marca).join('\x1e')
+    + '|' + fora.map((l) => [l.id, l.nome, l.espaco, l.situacao, JSON.stringify(l.aparencia || null)].join(',')).join(';');
   if (assinatura === assinaturaDaLista) return;
   assinaturaDaLista = assinatura;
 
@@ -2862,13 +3165,29 @@ function desenharListaPessoas() {
     : null;
 
   ul.innerHTML = '';
-  for (const { p, souEu, perto, zona, tela: mostraTela } of linhas) {
+  for (const { p, souEu, perto, zona, tela: mostraTela, sit } of linhas) {
     const li = document.createElement('li');
     li.dataset.id = p.id;
+    const s = SITUACOES[sit];
     li.innerHTML = `<img class="bolinha" src="${Boneco.retrato(p.aparencia)}" alt="">
-      <span>${escapar(p.nome)}${souEu ? ' (você)' : ''}${p.silenciado ? ' <b class="calado">calado</b>' : ''}</span>
+      <span>${escapar(p.nome)}${souEu ? ' (você)' : ''}${p.silenciado ? ' <b class="calado">calado</b>' : ''}${
+        sit !== 'disponivel' ? ` <b class="sit-texto sit-${sit}">${s.nome.toLowerCase()}</b>` : ''}</span>
       <span class="onde ${perto ? 'perto' : ''}">${mostraTela ? '🖥️ ' : ''}${perto ? '🔊 perto' : (zona ? escapar(zona.nome) : 'corredor')}</span>
-      <span class="online" title="online"></span>`;
+      <span class="online sit-${sit}" title="${s.nome}"></span>`;
+    if (!souEu) {
+      // "Ir até" (26/11): o boneco anda até ficar ao lado da pessoa. A linha
+      // inteira também leva até ela; o botão é para quem usa o teclado.
+      const ir = document.createElement('button');
+      ir.type = 'button';
+      ir.className = 'ir-ate';
+      ir.textContent = 'Ir até';
+      ir.title = `Andar até ${p.nome}`;
+      ir.onclick = (e) => { e.stopPropagation(); irAte(p.id); };
+      li.insertBefore(ir, li.querySelector('.onde'));
+      li.classList.add('clicavel');
+      li.title = `Clique para ir até ${p.nome}`;
+      li.addEventListener('click', (e) => { if (!e.target.closest('button')) irAte(p.id); });
+    }
     if (Jogo.admin && !souEu) {
       // as duas ferramentas de dono de sala: calar e tirar de dentro
       const acoes = document.createElement('span');
@@ -2889,12 +3208,40 @@ function desenharListaPessoas() {
     }
     ul.appendChild(li);
   }
+  for (const e of Jogo.espacos || []) {
+    const deles = fora.filter((l) => l.espaco === e.id);
+    if (!deles.length) continue;
+    const titulo = document.createElement('li');
+    titulo.className = 'secao-lugar';
+    titulo.textContent = `No ${e.nome} (${deles.length})`;
+    ul.appendChild(titulo);
+    for (const l of deles) {
+      const sit = SITUACOES[l.situacao] ? l.situacao : 'disponivel';
+      const li = document.createElement('li');
+      li.dataset.id = l.id;
+      li.className = 'outro-lugar clicavel';
+      li.title = `Clique para ir até ${l.nome}, no ${e.nome}`;
+      li.innerHTML = `<img class="bolinha" src="${Boneco.retrato(l.aparencia)}" alt="">
+        <span>${escapar(l.nome)}${sit !== 'disponivel' ? ` <b class="sit-texto sit-${sit}">${SITUACOES[sit].nome.toLowerCase()}</b>` : ''}</span>
+        <span class="onde">${escapar(e.nome)}</span>
+        <span class="online sit-${sit}" title="${SITUACOES[sit].nome}"></span>`;
+      const ir = document.createElement('button');
+      ir.type = 'button';
+      ir.className = 'ir-ate';
+      ir.textContent = 'Ir até';
+      ir.title = `Ir até ${l.nome}, no ${e.nome}`;
+      ir.onclick = (ev) => { ev.stopPropagation(); irAteOutroLugar(l); };
+      li.insertBefore(ir, li.querySelector('.onde'));
+      li.addEventListener('click', (ev) => { if (!ev.target.closest('button')) irAteOutroLugar(l); });
+      ul.appendChild(li);
+    }
+  }
   if (focado) {
     const li = ul.querySelector(`li[data-id="${CSS.escape(focado.id)}"]`);
     const botao = li && li.querySelectorAll('button')[focado.indice];
     if (botao) botao.focus();
   }
-  document.getElementById('pessoas-total').textContent = lista.length;
+  document.getElementById('pessoas-total').textContent = lista.length + fora.length;
   document.getElementById('contagem').textContent =
     lista.length === 1 ? '1 na sala' : `${lista.length} na sala`;
 }
@@ -2916,7 +3263,7 @@ function escreverChat(msg) {
     div.textContent = msg.texto;
   } else {
     div.className = 'msg';
-    const marca = msg.escopo === 'todos' ? 'todos' : 'perto';
+    const marca = msg.escopo === 'todos' ? 'todos' + (msg.lugar ? ' · ' + escapar(msg.lugar) : '') : 'perto';
     const hora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const autor = [...Jogo.pessoas.values(), Jogo.eu].find((p) => p && p.nome === msg.nome);
     div.classList.add('com-retrato');
@@ -2932,6 +3279,520 @@ function escreverChat(msg) {
   while (caixa.children.length > 200) caixa.removeChild(caixa.firstChild);
   if (noFim || msg.proprio) caixa.scrollTop = caixa.scrollHeight;
 }
+
+/* ---------- os lugares (27/11): a porta de saída, a troca e o pedido ----------
+ * Pisar na porta de saída abre "Para onde você quer ir?". Quem já pode entrar
+ * no outro lugar vai direto; quem não pode digita a chave dele ou pede para
+ * entrar: o pedido aparece, com som, na tela de quem já está lá, e o primeiro
+ * que responder decide. Trocar de lugar é a página religar no lugar novo
+ * (trocarDeLugar): câmera e microfone continuam ligados. */
+const Saida = {
+  aberta: false, pausaAte: 0, foco: null, irAteDepois: null, esperando: null, timer: null,
+
+  dentro(eu) {
+    const c = Jogo.mapa && Jogo.mapa.cenario && Jogo.mapa.cenario.saida;
+    return !!c && eu.x >= c[0] && eu.x <= c[2] && eu.y >= c[1] && eu.y <= c[3];
+  },
+
+  conferir(eu) {
+    if (this.aberta || Editor.ativo || Date.now() < this.pausaAte) return;
+    if ((Jogo.espacos || []).length < 2) return;
+    if (this.dentro(eu)) this.abrir();
+  },
+
+  abrir(foco) {
+    this.aberta = true;
+    this.foco = foco || null;
+    Jogo.caminho = null;
+    Jogo.querSentar = null;
+    Jogo.teclas.clear();
+    document.getElementById('modal-saida').hidden = false;
+    this.avisar('');
+    this.desenhar();
+    const alvo = document.querySelector('#lugares-saida .cartao-lugar.foco input')
+      || document.querySelector('#lugares-saida button:not([disabled])')
+      || document.getElementById('btn-ficar');
+    if (alvo) alvo.focus();
+  },
+
+  /** voltar: dá um passo para dentro, senão a janela abria de novo na hora */
+  fechar(voltar = true) {
+    if (!this.aberta) return;
+    this.aberta = false;
+    this.esperando = null;
+    clearTimeout(this.timer);
+    document.getElementById('modal-saida').hidden = true;
+    this.pausaAte = Date.now() + 1500;
+    if (voltar) {
+      this.irAteDepois = null;
+      const e = Jogo.mapa && Jogo.mapa.cenario && Jogo.mapa.cenario.entrada;
+      if (e && Jogo.eu && this.dentro(Jogo.eu)) {
+        const o = origemDoCaminho();
+        Jogo.caminho = tracarCaminho(o.x, o.y, e[0], e[1]) || null;
+      }
+    }
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  },
+
+  avisar(texto) {
+    const p = document.getElementById('aviso-saida');
+    if (p) p.textContent = texto || '';
+  },
+
+  contagem(id) {
+    const n = (Jogo.lugares || []).filter((l) => l.espaco === id).length;
+    return n === 0 ? 'ninguém agora' : n === 1 ? '1 pessoa' : `${n} pessoas`;
+  },
+
+  desenhar() {
+    const caixa = document.getElementById('lugares-saida');
+    caixa.innerHTML = '';
+    for (const e of Jogo.espacos || []) {
+      const aqui = Jogo.espaco && e.id === Jogo.espaco.id;
+      const div = document.createElement('div');
+      div.className = 'cartao-lugar' + (aqui ? ' aqui' : '') + (this.foco === e.id ? ' foco' : '');
+      div.innerHTML = `<div class="cabeca-lugar"><b>${escapar(e.nome)}</b>
+        <span data-contagem="${escapar(e.id)}">${this.contagem(e.id)}</span></div>`;
+      const acoes = document.createElement('div');
+      acoes.className = 'acoes-lugar';
+      if (aqui) {
+        acoes.innerHTML = '<span class="voce-aqui">Você está aqui</span>';
+      } else if (e.acesso) {
+        const ir = document.createElement('button');
+        ir.type = 'button';
+        ir.className = 'ok';
+        ir.textContent = `Ir para o ${e.nome}`;
+        ir.onclick = () => { this.avisar('Indo…'); enviar({ tipo: 'ir_para', espaco: e.id }); };
+        acoes.appendChild(ir);
+      } else {
+        const form = document.createElement('form');
+        form.className = 'chave-lugar';
+        form.innerHTML = `<input type="password" autocomplete="off" placeholder="Chave de acesso do ${escapar(e.nome)}"
+            aria-label="Chave de acesso do ${escapar(e.nome)}">
+          <button type="submit" class="ok">Entrar com a chave</button>`;
+        form.onsubmit = (ev) => {
+          ev.preventDefault();
+          const chave = form.querySelector('input').value.trim();
+          if (!chave) { this.avisar('Digite a chave de acesso.'); return; }
+          Conexao.chaves[e.id] = chave;
+          this.avisar('Conferindo a chave…');
+          enviar({ tipo: 'ir_para', espaco: e.id, chave });
+        };
+        acoes.appendChild(form);
+        const pedir = document.createElement('button');
+        pedir.type = 'button';
+        pedir.className = 'pedir-lugar';
+        pedir.dataset.pedir = e.id;
+        pedir.textContent = 'Pedir para entrar';
+        pedir.onclick = () => this.pedir(e);
+        acoes.appendChild(pedir);
+      }
+      div.appendChild(acoes);
+      caixa.appendChild(div);
+    }
+    this.atualizarContagens();
+  },
+
+  /** A lista de quem está em cada lugar mudou: só os números e o botão de
+   *  pedir (redesenhar apagaria a chave que a pessoa está digitando). */
+  atualizarContagens() {
+    if (!this.aberta) return;
+    for (const e of Jogo.espacos || []) {
+      const span = document.querySelector(`#lugares-saida [data-contagem="${CSS.escape(e.id)}"]`);
+      if (span) span.textContent = this.contagem(e.id);
+      const b = document.querySelector(`#lugares-saida [data-pedir="${CSS.escape(e.id)}"]`);
+      if (b) {
+        const ninguem = !(Jogo.lugares || []).some((l) => l.espaco === e.id);
+        b.disabled = ninguem || this.esperando === e.id;
+        b.title = ninguem ? `Ninguém no ${e.nome} agora para deixar você entrar` : '';
+      }
+    }
+  },
+
+  pedir(e) {
+    this.esperando = e.id;
+    this.avisar(`Pedindo para entrar no ${e.nome}…`);
+    enviar({ tipo: 'pedir_espaco', espaco: e.id });
+    this.atualizarContagens();
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => {
+      if (this.esperando !== e.id) return;
+      this.esperando = null;
+      this.avisar(`Ninguém do ${e.nome} respondeu. Tente de novo ou use a chave de acesso.`);
+      this.atualizarContagens();
+    }, 60000);
+  },
+};
+
+document.getElementById('btn-ficar').onclick = () => Saida.fechar();
+// clicar fora da caixa é "ficar aqui"
+document.getElementById('modal-saida').addEventListener('pointerdown', (e) => {
+  if (e.target.id === 'modal-saida') Saida.fechar();
+});
+
+/** Vai para o outro lugar: a página religa lá (o servidor tira a sessão de cá
+ *  na hora, pela chave de envio). Câmera e microfone continuam ligados. */
+function trocarDeLugar(espaco, por) {
+  if (!Conexao.perfil || !Jogo.chaveEnvio) return;
+  const e = (Jogo.espacos || []).find((x) => x.id === espaco);
+  if (por) escreverChat({ sistema: true, texto: `${por} deixou você entrar no ${e ? e.nome : espaco}.` });
+  const depois = Saida.irAteDepois;
+  Saida.irAteDepois = null;
+  Saida.fechar(false);
+  Jogo.caminho = null;
+  Jogo.querSentar = null;
+  Jogo.sentadoEm = null;
+  Jogo.teclas.clear();
+  Midia.fecharPares();
+  Conexao.trocando = { para: espaco, depois };
+  Conexao.perfil = { ...Conexao.perfil, espaco, convite: Conexao.chaves[espaco] || '',
+                     troca: Jogo.chaveEnvio };
+  try { localStorage.setItem('escritorio:lugar', espaco); } catch (err) { /* aba anônima */ }
+  conectar(Conexao.perfil);
+}
+
+/** "Ir até" alguém do outro lugar: com acesso, vai e anda até a pessoa; sem,
+ *  abre a janela da porta naquele lugar (a chave, ou pedir para entrar). */
+function irAteOutroLugar(l) {
+  const e = (Jogo.espacos || []).find((x) => x.id === l.espaco);
+  if (!e) return;
+  Saida.irAteDepois = l.id;
+  if (e.acesso) { enviar({ tipo: 'ir_para', espaco: e.id }); return; }
+  Saida.abrir(e.id);
+  Saida.irAteDepois = l.id;
+}
+
+/** Pedidos para entrar no lugar: quem está dentro recebe o cartão (com som); quem
+ *  pediu fica sabendo do resultado na janela da porta. */
+function receberPedidoDeLugar(msg) {
+  if (msg.acao === 'chegou') {
+    const caixa = painelPedido({
+      texto: `<b>${escapar(msg.quem)}</b> quer entrar no ${escapar(msg.nome_espaco)}${
+        msg.de_onde ? ` <span class="de-onde">(está no ${escapar(msg.de_onde)})</span>` : ''}.`,
+      botoes: [
+        { texto: 'Deixar entrar', classe: 'ok',
+          fazer: () => enviar({ tipo: 'responder_espaco', para: msg.de, aceita: true }) },
+        { texto: 'Agora não',
+          fazer: () => enviar({ tipo: 'responder_espaco', para: msg.de, aceita: false }) },
+      ],
+      segundos: 60,
+    });
+    caixa.dataset.pedidoDe = msg.de;
+    Chamar.avisar({ titulo: `${msg.quem} quer entrar no ${msg.nome_espaco}`,
+                    texto: 'Deixe entrar ou recuse na tela do escritório.',
+                    chave: 'lugar-' + msg.de, forte: true });
+  } else if (msg.acao === 'resolvido') {
+    const c = document.getElementById('pedido-sala');
+    if (c && c.dataset.pedidoDe === msg.de) c.remove();
+    if (msg.quem) {
+      escreverChat({ sistema: true, texto: msg.aceita
+        ? `${msg.por} deixou ${msg.quem} entrar.` : `${msg.por} não deixou ${msg.quem} entrar agora.` });
+    }
+  } else if (msg.acao === 'enviado') {
+    if (!Saida.aberta) Saida.abrir(msg.espaco);
+    Saida.esperando = msg.espaco;
+    const e = (Jogo.espacos || []).find((x) => x.id === msg.espaco);
+    Saida.avisar(msg.repetido ? 'Seu pedido ainda está esperando resposta.'
+      : `Pedido enviado para ${msg.n === 1 ? '1 pessoa' : msg.n + ' pessoas'} no ${e ? e.nome : ''}. Esperando alguém responder…`);
+    Saida.atualizarContagens();
+  } else if (msg.acao === 'ninguem') {
+    Saida.esperando = null;
+    Saida.avisar(msg.texto);
+    Saida.atualizarContagens();
+  } else if (msg.acao === 'recusado') {
+    Saida.esperando = null;
+    clearTimeout(Saida.timer);
+    const texto = `${msg.por} não deixou você entrar no ${msg.nome_espaco} agora.`;
+    if (Saida.aberta) Saida.avisar(texto);
+    escreverChat({ sistema: true, texto });
+    Chamar.avisar({ titulo: texto, chave: 'recusado-' + msg.espaco });
+    Saida.atualizarContagens();
+  }
+}
+
+/** A placa "Saída" em cima da porta de saída (só quando existe outro lugar). */
+function desenharSaida(c) {
+  const s = c && c.saida;
+  if (!s || (Jogo.espacos || []).length < 2) return;
+  const x = (s[0] + s[2]) / 2, y = s[1] + 6;
+  ctx.save();
+  ctx.font = '600 13px Inter, -apple-system, "Segoe UI", sans-serif';
+  const texto = 'Saída ↓';
+  const w = ctx.measureText(texto).width + 24;
+  ctx.fillStyle = 'rgba(28,25,31,.85)';
+  arredondado(x - w / 2, y - 11, w, 22, 11);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(167,139,250,.7)';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  ctx.fillStyle = '#f5f3f7';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(texto, x, y + 0.5);
+  ctx.restore();
+}
+
+/* ---------- como cada um está (26/11): Disponível, Ocupado, Almoço, Não perturbe ----------
+ * Aparece na bolinha do crachá, na lista de pessoas e no botão do cabeçalho.
+ * "Não perturbe" tira a pessoa das conversas pelo caminho (podemConversar e
+ * sala.py: se_ouvem) e barra quem bate na porta; "Almoço" também barra a
+ * batida. Fica guardada na aba: F5 e queda de rede não voltam para Disponível,
+ * mas abrir o escritório de novo no dia seguinte volta. */
+const SITUACOES = {
+  disponivel: { nome: 'Disponível', cor: '#22c55e', dica: 'Pode chegar e conversar' },
+  ocupado: { nome: 'Ocupado', cor: '#f59e0b', dica: 'Concentrado, mas pode chamar' },
+  almoco: { nome: 'Almoço', cor: '#38bdf8', dica: 'Fora por um tempo' },
+  nao_perturbe: { nome: 'Não perturbe', cor: '#ef4444', dica: 'Ninguém puxa conversa nem bate na porta' },
+};
+const CHAVE_SITUACAO = 'escritorio:situacao';
+
+function situacaoDe(p) {
+  return p && SITUACOES[p.situacao] ? p.situacao : 'disponivel';
+}
+
+function minhaSituacaoSalva() {
+  if (Jogo.eu && SITUACOES[Jogo.eu.situacao]) return Jogo.eu.situacao;
+  try {
+    const s = sessionStorage.getItem(CHAVE_SITUACAO);
+    return SITUACOES[s] ? s : 'disponivel';
+  } catch (e) { return 'disponivel'; }
+}
+
+function mudarSituacao(valor) {
+  if (!SITUACOES[valor] || !Jogo.eu || valor === situacaoDe(Jogo.eu)) return;
+  try { sessionStorage.setItem(CHAVE_SITUACAO, valor); } catch (e) { /* aba anônima */ }
+  Jogo.eu.situacao = valor;
+  enviar({ tipo: 'situacao', valor });
+  desenharSituacao();
+  desenharListaPessoas();
+  if (valor === 'nao_perturbe') {
+    escreverChat({ sistema: true, texto: 'Não perturbe: ninguém puxa conversa com você pelo caminho e ninguém bate na sua porta. Salas, baias e a mesa de reunião continuam funcionando.' });
+  } else if (valor === 'almoco') {
+    escreverChat({ sistema: true, texto: 'Almoço: quem bater na sua porta fica sabendo que você saiu.' });
+  }
+}
+
+function desenharSituacao() {
+  const v = situacaoDe(Jogo.eu), s = SITUACOES[v];
+  const bt = document.getElementById('btn-situacao');
+  if (!bt) return;
+  bt.querySelector('.ponto-situacao').className = 'ponto-situacao sit-' + v;
+  bt.querySelector('.nome-situacao').textContent = s.nome;
+  bt.title = 'Como você está: ' + s.nome;
+  for (const b of document.querySelectorAll('.item-situacao')) {
+    const ativo = b.dataset.situacao === v;
+    b.classList.toggle('ativo', ativo);
+    b.setAttribute('aria-checked', String(ativo));
+  }
+}
+
+function montarMenuSituacao() {
+  const caixa = document.getElementById('lista-situacoes');
+  if (!caixa) return;
+  caixa.innerHTML = '';
+  for (const [valor, s] of Object.entries(SITUACOES)) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'item-menu item-situacao';
+    b.dataset.situacao = valor;
+    b.setAttribute('role', 'menuitemradio');
+    b.innerHTML = `<span class="ponto-situacao sit-${valor}"></span>
+      <span class="textos-situacao"><span>${s.nome}</span><small>${s.dica}</small></span>`;
+    b.onclick = () => { mudarSituacao(valor); alternarSuspenso('btn-situacao', 'situacao', false); };
+    caixa.appendChild(b);
+  }
+  desenharSituacao();
+}
+
+/** A mensagem do "todos" cita o meu primeiro nome? (sem ligar para acento nem
+ *  maiúscula: "gustavo", "Gustavo," e "@Gustavo" contam; "Gustavinho" não) */
+function citaMeuNome(texto) {
+  if (!texto || !Jogo.eu) return false;
+  const limpo = (t) => String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const primeiro = limpo(Jogo.eu.nome).trim().split(/\s+/)[0] || '';
+  if (primeiro.length < 3) return false;
+  const nome = primeiro.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('(^|[^a-z0-9])' + nome + '($|[^a-z0-9])').test(limpo(texto));
+}
+
+/* ---------- avisos para quem está em outra aba (26/11) ----------
+ * Quem estava no e-mail ou numa planilha não ficava sabendo que bateram na
+ * porta, que falaram com ela no chat ou que alguém chegou para conversar.
+ * Agora: um "plim" curto, o aviso do computador (se a pessoa deixou) e o
+ * título da aba piscando até ela voltar. Em "Não perturbe" fica tudo quieto. */
+const Chamar = {
+  TITULO: document.title,
+  CHAVE: 'escritorio:avisos',
+  PERGUNTADO: 'escritorio:avisos-perguntado',
+  pendentes: 0, piscar: null, som: null, ultimoSom: 0, desde: 0,
+  conversa: null, porPessoa: new Map(),
+
+  ligado() { return localStorage.getItem(this.CHAVE) !== '0'; },
+  fora() { return document.hidden || !document.hasFocus(); },
+  temAvisoDoComputador() { return 'Notification' in window && Notification.permission === 'granted'; },
+
+  /** forte: o som toca mesmo com a aba na frente (bateram na porta). */
+  avisar({ titulo, texto = '', chave = '', forte = false }) {
+    if (!this.ligado() || !Jogo.eu) return;
+    if (situacaoDe(Jogo.eu) === 'nao_perturbe') return;
+    const fora = this.fora();
+    if (!fora && !forte) return;
+    const tocou = this.tocar();
+    if (!fora) return;
+    this.pendentes++;
+    this.piscarTitulo(titulo);
+    if (this.temAvisoDoComputador()) {
+      try {
+        const n = new Notification(titulo, { body: texto, tag: chave || undefined,
+                                             icon: '/static/assets/logo.png', silent: tocou });
+        n.onclick = () => { window.focus(); n.close(); };
+        setTimeout(() => n.close(), 15000);
+      } catch (e) { /* celular: só com service worker; fica o som e o título */ }
+    }
+  },
+
+  /** Mensagem que não pede aviso: só conta no título da aba. */
+  contar() {
+    if (!this.fora()) return;
+    this.pendentes++;
+    if (!this.piscar) document.title = `(${this.pendentes}) ${this.TITULO}`;
+  },
+
+  piscarTitulo(texto) {
+    clearInterval(this.piscar);
+    const curto = texto.length > 42 ? texto.slice(0, 41) + '…' : texto;
+    let aceso = true;
+    document.title = '🔔 ' + curto;
+    this.piscar = setInterval(() => {
+      aceso = !aceso;
+      document.title = aceso ? '🔔 ' + curto : `(${this.pendentes}) ${this.TITULO}`;
+    }, 1200);
+  },
+
+  limpar() {
+    if (this.fora()) return;
+    clearInterval(this.piscar);
+    this.piscar = null;
+    this.pendentes = 0;
+    document.title = this.TITULO;
+  },
+
+  /** O "plim": dois tons curtos, feitos na hora (sem arquivo de som). Só toca
+   *  depois que a pessoa clicou ou digitou na página (regra dos navegadores). */
+  tocar() {
+    const c = this.som;
+    if (!c || c.state !== 'running') return false;
+    const agora = Date.now();
+    if (agora - this.ultimoSom < 1500) return true;
+    this.ultimoSom = agora;
+    const t = c.currentTime;
+    [[0, 880], [0.14, 1318.5]].forEach(([atraso, freq]) => {
+      const o = c.createOscillator(), g = c.createGain();
+      o.type = 'sine';
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t + atraso);
+      g.gain.exponentialRampToValueAtTime(0.16, t + atraso + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + atraso + 0.45);
+      o.connect(g).connect(c.destination);
+      o.start(t + atraso);
+      o.stop(t + atraso + 0.5);
+    });
+    return true;
+  },
+
+  prepararSom() {
+    try {
+      if (!this.som) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) this.som = new AC();
+      }
+      if (this.som && this.som.state === 'suspended') this.som.resume().catch(() => {});
+    } catch (e) { /* sem som, ficam o aviso e o título */ }
+  },
+
+  /** Alguém entrou na conversa comigo enquanto eu estava em outra aba. Uma vez
+   *  por pessoa a cada 3 minutos (quem anda na borda do raio não vira sirene),
+   *  e nada nos primeiros segundos depois de entrar (é todo mundo "chegando"). */
+  conferirChegadas(ids) {
+    const antes = this.conversa;
+    this.conversa = ids;
+    if (!antes || Date.now() - this.desde < 8000 || !this.fora()) return;
+    for (const id of ids) {
+      if (antes.has(id)) continue;
+      const p = Jogo.pessoas.get(id);
+      if (!p || Date.now() - (this.porPessoa.get(id) || 0) < 180000) continue;
+      this.porPessoa.set(id, Date.now());
+      this.avisar({ titulo: `${p.nome} chegou para conversar`,
+                    texto: 'Volte para a aba do escritório para falar.', chave: 'perto-' + id });
+    }
+  },
+
+  /** Uma vez por navegador, depois de entrar: oferece o aviso do computador. */
+  oferecer() {
+    if (!('Notification' in window) || Notification.permission !== 'default') return;
+    if (localStorage.getItem(this.PERGUNTADO)) return;
+    setTimeout(() => {
+      // não atropela um pedido de verdade (alguém batendo na porta)
+      if (document.getElementById('pedido-sala') || Notification.permission !== 'default') return;
+      painelPedido({
+        texto: 'Quer um <b>aviso no computador</b> quando alguém bater na sua porta ou falar com você enquanto você está em outra aba?',
+        botoes: [
+          { texto: 'Quero', classe: 'ok', fazer: () => this.pedirPermissao() },
+          { texto: 'Agora não', fazer: () => localStorage.setItem(this.PERGUNTADO, '1') },
+        ],
+        segundos: 30,
+      });
+    }, 6000);
+  },
+
+  pedirPermissao() {
+    localStorage.setItem(this.PERGUNTADO, '1');
+    if (!('Notification' in window)) {
+      escreverChat({ sistema: true, texto: 'Este navegador não mostra aviso do computador. O som e a aba piscando continuam valendo.' });
+      return;
+    }
+    if (Notification.permission === 'denied') {
+      escreverChat({ sistema: true, texto: 'O aviso do computador está bloqueado para este site. Libere no cadeado ao lado do endereço. O som e a aba piscando continuam valendo.' });
+      return;
+    }
+    // o Safari antigo responde por função, não por promessa: lê o resultado depois
+    Promise.resolve(Notification.requestPermission()).catch(() => {}).then(() => {
+      this.atualizarItem();
+      if (Notification.permission === 'granted') {
+        escreverChat({ sistema: true, texto: 'Pronto: quando bater na sua porta ou falarem com você em outra aba, aparece um aviso no computador.' });
+      }
+    });
+  },
+
+  /** O item do menu de ajustes: ligado, só som (sem permissão do computador) ou desligado. */
+  atualizarItem() {
+    const b = document.querySelector('#btn-avisos-pc .estado-aviso');
+    if (!b) return;
+    b.textContent = !this.ligado() ? 'desligado' : (this.temAvisoDoComputador() ? 'ligado' : 'só som');
+    b.classList.toggle('desligado', !this.ligado());
+  },
+
+  alternarLigado() {
+    // ligado mas sem a permissão do computador: o clique pede a permissão
+    if (this.ligado() && 'Notification' in window && Notification.permission === 'default') {
+      this.pedirPermissao();
+      return;
+    }
+    const vai = !this.ligado();
+    localStorage.setItem(this.CHAVE, vai ? '1' : '0');
+    if (vai && 'Notification' in window && Notification.permission === 'default') this.pedirPermissao();
+    this.atualizarItem();
+  },
+};
+
+// o navegador só deixa tocar som depois de um clique ou tecla na página
+for (const ev of ['pointerdown', 'keydown']) {
+  document.addEventListener(ev, () => Chamar.prepararSom(), { capture: true, passive: true });
+}
+document.addEventListener('visibilitychange', () => Chamar.limpar());
+window.addEventListener('focus', () => Chamar.limpar());
+montarMenuSituacao();
+Chamar.atualizarItem();
 
 /* ---------- cabeçalho Codara (26/11): painel, avisos, ajustes ----------
  * O sino guarda os avisos do escritório (quem entrou, quem bateu na porta,
@@ -2957,10 +3818,12 @@ const Avisos = {
   },
 };
 
+const MENUS_DA_BARRA = [['btn-situacao', 'situacao'], ['btn-avisos', 'avisos'], ['btn-ajustes', 'ajustes']];
+
 function alternarSuspenso(botaoId, caixaId, abrir) {
   const botao = document.getElementById(botaoId), caixa = document.getElementById(caixaId);
   const vai = abrir === undefined ? caixa.hidden : abrir;
-  for (const [b, c] of [['btn-avisos', 'avisos'], ['btn-ajustes', 'ajustes']]) {
+  for (const [b, c] of MENUS_DA_BARRA) {
     if (c === caixaId) continue;
     document.getElementById(c).hidden = true;
     document.getElementById(b).setAttribute('aria-expanded', 'false');
@@ -2981,14 +3844,15 @@ document.addEventListener('fullscreenchange', () => {
 });
 document.getElementById('btn-avisos').onclick = (e) => { e.stopPropagation(); alternarSuspenso('btn-avisos', 'avisos'); };
 document.getElementById('btn-ajustes').onclick = (e) => { e.stopPropagation(); alternarSuspenso('btn-ajustes', 'ajustes'); };
+document.getElementById('btn-situacao').onclick = (e) => { e.stopPropagation(); alternarSuspenso('btn-situacao', 'situacao'); };
+document.getElementById('btn-avisos-pc').onclick = () => Chamar.alternarLigado();
 // os itens do menu de ajustes fazem o que faziam na barra antiga e fecham o menu
 for (const id of ['btn-boneco', 'btn-editor', 'btn-reuniao', 'btn-reacao']) {
   document.getElementById(id).addEventListener('click', () => alternarSuspenso('btn-ajustes', 'ajustes', false));
 }
 document.addEventListener('pointerdown', (e) => {
   if (!e.target.closest || e.target.closest('.menu-barra')) return;
-  alternarSuspenso('btn-avisos', 'avisos', false);
-  alternarSuspenso('btn-ajustes', 'ajustes', false);
+  for (const [b, c] of MENUS_DA_BARRA) alternarSuspenso(b, c, false);
 });
 document.getElementById('acao-reuniao').onclick = () => acionarReuniao();
 // Pessoas e Chat recolhem pelo título; o que fica aberto é lembrado

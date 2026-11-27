@@ -326,6 +326,9 @@ def montar_padrao(esc) -> None:
         "boneco": 5.0,                         # escala do boneco (2 era a de antes)
         "raio_conversa": 250, "raio_silencio": 330,
         "entrada": [831, 834],
+        # a porta de saída (27/11): pisar aqui abre "Para onde você quer ir?"
+        # (o Escritório ou o Pingou). Fica abaixo de onde a pessoa nasce.
+        "saida": [748, 846, 914, 891],
         "bloqueios": BLOQUEIOS,
         "frentes": [{"nome": n, "img": PASTA + "frente-%s.png?v=%d" % (n, VERSAO),
                      "x": r[0], "y": r[1], "w": r[2] - r[0], "h": r[3] - r[1],

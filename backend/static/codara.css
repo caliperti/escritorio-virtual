@@ -499,3 +499,123 @@
   .reacao-voando { animation: reacao-some 3s linear forwards; }
   @keyframes reacao-some { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
 }
+
+/* ---------- como cada um está (26/11): Disponível, Ocupado, Almoço, Não perturbe ---------- */
+.situacao-chip {
+  display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 10px 0 12px;
+  font-size: 13px; border-radius: 999px; white-space: nowrap;
+}
+.situacao-chip svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; opacity: .7; }
+.ponto-situacao {
+  position: relative; width: 10px; height: 10px; border-radius: 50%; flex: none; background: #22c55e;
+}
+.ponto-situacao.sit-ocupado { background: #f59e0b; }
+.ponto-situacao.sit-almoco { background: #38bdf8; }
+.ponto-situacao.sit-nao_perturbe { background: #ef4444; }
+.ponto-situacao.sit-nao_perturbe::after {    /* o tracinho branco do "não perturbe" */
+  content: ''; position: absolute; left: 2px; right: 2px; top: 4px; height: 2px;
+  background: #fff; border-radius: 1px;
+}
+.item-situacao .textos-situacao { display: flex; flex-direction: column; gap: 1px; }
+.item-situacao small { color: var(--fraco); font-size: 11.5px; }
+.item-situacao .ponto-situacao { margin: 0 4px 0 3px; }
+.tema-codara .pessoas .online.sit-ocupado { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, .16); }
+.tema-codara .pessoas .online.sit-almoco { background: #38bdf8; box-shadow: 0 0 0 3px rgba(56, 189, 248, .16); }
+.tema-codara .pessoas .online.sit-nao_perturbe { background: #ef4444; box-shadow: 0 0 0 3px rgba(239, 68, 68, .16); }
+.sit-texto { font-size: 11px; font-weight: 600; }
+.sit-texto.sit-ocupado { color: #f59e0b; }
+.sit-texto.sit-almoco { color: #38bdf8; }
+.sit-texto.sit-nao_perturbe { color: #f87171; }
+
+/* "Ir até" na lista de pessoas: aparece no lugar de "onde está" ao passar o mouse */
+#lista-pessoas li.clicavel { cursor: pointer; }
+#lista-pessoas .ir-ate {
+  display: none; flex: none; padding: 3px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(139, 92, 246, .55); background: rgba(139, 92, 246, .16);
+  color: #ddd6fe; font-size: 11.5px; font-weight: 600;
+}
+#lista-pessoas .ir-ate:hover { background: rgba(139, 92, 246, .32); color: #fff; }
+#lista-pessoas li.clicavel:hover .ir-ate, #lista-pessoas li.clicavel:focus-within .ir-ate { display: inline-flex; }
+#lista-pessoas li.clicavel:hover .onde, #lista-pessoas li.clicavel:focus-within .onde { display: none; }
+@media (hover: none) {                         /* no toque, tocar na linha já leva */
+  #lista-pessoas li.clicavel:hover .ir-ate { display: none; }
+  #lista-pessoas li.clicavel:hover .onde { display: inline; }
+}
+
+/* item "Avisos em outra aba" do menu de ajustes */
+#btn-avisos-pc .estado-aviso { margin-left: auto; font-size: 11.5px; font-weight: 600; color: #4ade80; }
+#btn-avisos-pc .estado-aviso.desligado { color: var(--fraco); }
+
+@media (max-width: 860px) {
+  .situacao-chip .nome-situacao, .situacao-chip svg { display: none; }
+  .situacao-chip { padding: 0 11px; }
+}
+#situacao { min-width: 290px; }
+
+/* ---------- os lugares (27/11): Escritório e Pingou ---------- */
+/* na entrada: onde entrar, e a galeria de personagens do lugar */
+.linha-lugar, .galeria-lugar { margin: 16px 0 4px; }
+.rotulo-lugar { display: block; font-size: 13px; color: var(--fraco); margin-bottom: 6px; }
+.lugares-entrada { margin-top: 0; }
+.galeria-personagens { flex-wrap: wrap; margin-top: 0; }
+.galeria-personagens button { flex: 1 1 96px; max-width: 130px; position: relative; }
+.galeria-personagens img { width: 72px; height: 72px; object-fit: contain; image-rendering: auto; }
+.galeria-personagens button:disabled { opacity: .4; cursor: not-allowed; }
+.galeria-personagens small { font-size: 11px; color: var(--fraco); }
+.entrada.tema-codara .bonecos-visitante button {
+  background: #221e27; border-color: rgba(255, 255, 255, .1); color: #cfc9d8;
+}
+.entrada.tema-codara .bonecos-visitante button[aria-pressed="true"] {
+  border-color: var(--roxo); background: rgba(139, 92, 246, .18); color: #fff;
+}
+
+/* a janela da porta de saída */
+.modal-saida {
+  position: absolute; inset: 0; z-index: 70; display: grid; place-items: center;
+  background: rgba(10, 8, 14, .55); backdrop-filter: blur(3px);
+}
+.modal-saida[hidden] { display: none; }
+.caixa-saida {
+  width: min(520px, 92%); max-height: 90%; overflow-y: auto;
+  background: #1b1720; border: 1px solid rgba(255, 255, 255, .09); border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .55); padding: 22px 22px 16px; color: #f3f1f6;
+}
+.caixa-saida h2 { margin: 0 0 14px; font-size: 19px; font-weight: 650; }
+.lugares-saida { display: grid; gap: 10px; }
+.cartao-lugar {
+  border: 1px solid rgba(255, 255, 255, .09); border-radius: 12px; padding: 12px 14px;
+  background: rgba(255, 255, 255, .03);
+}
+.cartao-lugar.foco { border-color: var(--roxo); box-shadow: 0 0 0 3px rgba(139, 92, 246, .18); }
+.cartao-lugar.aqui { opacity: .75; }
+.cabeca-lugar { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.cabeca-lugar b { font-size: 16px; }
+.cabeca-lugar span { font-size: 12.5px; color: var(--fraco); }
+.acoes-lugar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+.acoes-lugar button, .ficar {
+  border-radius: 10px; padding: 8px 14px; font-size: 13.5px; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, .14); background: transparent; color: #e9e6ef;
+}
+.acoes-lugar button.ok {
+  background: linear-gradient(180deg, #8b5cf6, #6d28d9); border-color: transparent; color: #fff; font-weight: 600;
+}
+.acoes-lugar button:disabled { opacity: .45; cursor: not-allowed; }
+.acoes-lugar button:not(:disabled):hover { filter: brightness(1.12); }
+.chave-lugar { display: flex; gap: 8px; flex: 1 1 100%; }
+.chave-lugar input {
+  flex: 1; min-width: 0; padding: 8px 11px; border-radius: 10px; font-size: 14px;
+  background: #221e27; border: 1px solid rgba(255, 255, 255, .1); color: #fff;
+}
+.chave-lugar input:focus { outline: 2px solid var(--roxo); outline-offset: 1px; }
+.voce-aqui { font-size: 12.5px; color: #c4b5fd; }
+.aviso-saida { min-height: 18px; margin: 12px 2px 6px; font-size: 13.5px; color: #ddd6fe; }
+.ficar { display: inline-flex; align-items: center; gap: 8px; margin-top: 2px; }
+.ficar kbd { background: rgba(255, 255, 255, .08); border: 0; color: var(--fraco); font-size: 11px; border-radius: 5px; padding: 1px 6px; }
+
+/* a lista de pessoas: quem está no outro lugar */
+#lista-pessoas li.secao-lugar {
+  font-size: 12px; font-weight: 600; color: var(--fraco); text-transform: none;
+  padding: 12px 8px 4px; cursor: default; background: none;
+}
+#lista-pessoas li.outro-lugar .bolinha { opacity: .85; }
+.pedido-sala .de-onde { color: var(--fraco); font-size: 12.5px; }

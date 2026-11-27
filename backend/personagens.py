@@ -9,7 +9,7 @@ static/assets/personagens/lista.json: o nome da conta dele. Nome de membro é
 """
 import json
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from contas import _chave_nome
 
@@ -31,6 +31,23 @@ def lista() -> List[Dict]:
     return _cache["lista"]
 
 
+def escolhiveis() -> Dict[str, Dict]:
+    """Os personagens de um lugar (27/11, o Pingou): não têm dono fixo; quem
+    cria a conta lá escolhe o seu, e cada um fica sendo de uma pessoa só."""
+    return {p["id"]: p for p in lista() if p.get("lugar")}
+
+
+def ocupados(contas_: Dict[str, Dict]) -> Dict[str, Tuple[str, str]]:
+    """Qual personagem de lugar já tem dono: id -> (chave da conta, nome)."""
+    esc = escolhiveis()
+    saida = {}
+    for chave, c in contas_.items():
+        pid = (c.get("aparencia") or {}).get("personagem")
+        if pid in esc:
+            saida[pid] = (chave, c.get("nome", ""))
+    return saida
+
+
 def ajustar(aparencia: Dict, nome: str, visitante: bool) -> Dict:
     """Garante um personagem 3D válido (26/11: o boneco de pixel saiu):
     o escolhido, se for livre ou do próprio dono; senão o da conta; senão o
@@ -45,10 +62,12 @@ def ajustar(aparencia: Dict, nome: str, visitante: bool) -> Dict:
         escolhido = None                                   # é de outra pessoa
     if escolhido not in ids:
         escolhido = None                                   # 'nenhum', ou um que não existe
+    if visitante and escolhido in escolhiveis():
+        escolhido = None                                   # os do lugar são de quem tem conta
     if escolhido is None and not visitante:
         escolhido = next((i for i, d in donos.items() if d == eu), None)   # vinculado à conta
     if escolhido is None:
-        livres = [p["id"] for p in todos if not p.get("dono")]
+        livres = [p["id"] for p in todos if not p.get("dono") and not p.get("lugar")]
         if ap.get("corpo") == "f" and "mulher" in livres:
             escolhido = "mulher"
         elif "barbudo" in livres:

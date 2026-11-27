@@ -5,6 +5,11 @@ formato que o escritório usa.
                                                     (id)    (nome)   (dono: nome da conta)
 Sem o dono, o personagem é livre para qualquer um (o Barbudo).
 
+Personagem de um lugar (27/11, o Pingou): sem dono fixo, quem cria a conta lá
+escolhe o seu na galeria, e cada um fica sendo de uma pessoa só:
+    ORIGEM=referencia-pingou/personagens LUGAR=pingou \
+        python3 referencia-codara/personagens/processar.py leandro "Leandro"
+
 Entra: referencia-codara/personagens/originais/<id>.png
     colunas: de frente, de costas, virado para a esquerda, virado para a direita
     linhas:  parado, andando, sentado
@@ -19,13 +24,15 @@ A IA não acerta a grade ao pixel: cada célula é recortada pelo conteúdo (o q
 não é verde), e a escala é decidida pela altura da pose "parado de frente".
 """
 import json
+import os
 import sys
 from pathlib import Path
 
 from PIL import Image, ImageFilter
 
 RAIZ = Path(__file__).resolve().parents[2]
-ORIGEM = RAIZ / "referencia-codara" / "personagens" / "originais"
+ORIGEM = RAIZ / os.environ.get("ORIGEM", "referencia-codara/personagens/originais")
+LUGAR = os.environ.get("LUGAR", "").strip()
 SAIDA = RAIZ / "backend" / "static" / "assets" / "personagens"
 
 CEL_L, CEL_A = 220, 300          # célula de saída (2x o tamanho no mundo)
@@ -133,6 +140,8 @@ def main(id_, nome, dono=None):
     item = {"id": id_, "nome": nome, "topos": topos, "v": int(time.time())}
     if dono:
         item["dono"] = dono            # só a conta com esse nome usa (backend/personagens.py)
+    if LUGAR:
+        item["lugar"] = LUGAR          # galeria do lugar: cada um é de uma pessoa só
     lista["personagens"].append(item)
     lista["personagens"].sort(key=lambda x: x["nome"])
     arq.write_text(json.dumps(lista, ensure_ascii=False, indent=1))
