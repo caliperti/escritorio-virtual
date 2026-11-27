@@ -619,3 +619,29 @@
 }
 #lista-pessoas li.outro-lugar .bolinha { opacity: .85; }
 .pedido-sala .de-onde { color: var(--fraco); font-size: 12.5px; }
+
+/* ---------- minimizar a chamada e voltar para ela (27/11) ---------- */
+.palco-chamada { top: 62px; }
+.minimizar-chamada {
+  position: absolute; top: 12px; right: 16px; z-index: 2;
+  display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px;
+  border-radius: 999px; border: 1px solid rgba(255, 255, 255, .16);
+  background: rgba(255, 255, 255, .08); color: #e8eaed; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.minimizar-chamada:hover { background: rgba(255, 255, 255, .16); color: #fff; }
+.minimizar-chamada svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.minimizar-chamada kbd, .voltar-chamada kbd {
+  background: rgba(255, 255, 255, .12); border: 0; color: #cfd2d6; font-size: 11px;
+  border-radius: 5px; padding: 1px 6px; font-weight: 500;
+}
+.voltar-chamada {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 26;
+  display: inline-flex; align-items: center; gap: 9px; padding: 9px 16px; border-radius: 999px;
+  border: 1px solid rgba(139, 92, 246, .6); background: rgba(27, 23, 32, .92); color: #f3f1f6;
+  font-size: 14px; font-weight: 600; cursor: pointer; box-shadow: 0 10px 30px rgba(0, 0, 0, .4);
+}
+.voltar-chamada[hidden] { display: none; }
+.voltar-chamada:hover { border-color: #a78bfa; background: rgba(43, 33, 60, .96); }
+.ponto-ao-vivo { width: 9px; height: 9px; border-radius: 50%; background: #22c55e; animation: ao-vivo 1.6s ease-in-out infinite; }
+@keyframes ao-vivo { 0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, .55); } 50% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); } }
+@media (prefers-reduced-motion: reduce) { .ponto-ao-vivo { animation: none; } }

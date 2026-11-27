@@ -3007,20 +3007,36 @@ function fecharReuniao() {
  *  parecia defeito). Saiu da mesa, ela fecha. */
 function cuidarDaTelaDeChamada(eu) {
   const z = zonaDe(eu.x, eu.y);
+  let naMesaComGente = false;
   if (z && z.so_sentado && z.abre_midia) {      // a mesa de reunião, não as baias
     const outros = [...Jogo.pessoas.values()].some((p) => {
       const zp = zonaDe(p.x, p.y);
       return zp && zp.id === z.id;
     });
+    naMesaComGente = outros;
     if (outros && !Reuniao.ativa && !Jogo.chamadaDispensada) { abrirReuniao(); Jogo.chamadaAuto = true; }
   } else {
     if (Jogo.chamadaAuto && Reuniao.ativa) fecharReuniao();
     Jogo.chamadaDispensada = false;
   }
+  // minimizou e continua sentado na mesa com gente: o botão de voltar aparece
+  const voltar = document.getElementById('btn-voltar-chamada');
+  if (voltar) voltar.hidden = !(naMesaComGente && !Reuniao.ativa);
+}
+
+/** "Voltar para a chamada": abre de novo a tela, como se tivesse acabado de sentar. */
+function voltarParaChamada() {
+  Jogo.chamadaDispensada = false;
+  abrirReuniao();
+  Jogo.chamadaAuto = true;
+  const voltar = document.getElementById('btn-voltar-chamada');
+  if (voltar) voltar.hidden = true;
 }
 
 function alternarReuniao() {
-  if (Reuniao.ativa) fecharReuniao(); else abrirReuniao();
+  if (Reuniao.ativa) fecharReuniao();
+  else if (!document.getElementById('btn-voltar-chamada').hidden) voltarParaChamada();
+  else abrirReuniao();
 }
 
 /* ---------- tela de chamada, estilo Google Meet (26/11) ----------
@@ -3125,6 +3141,8 @@ function abrirPainelEm(bloco, focar) {
 document.getElementById('btn-desligar').onclick = sairDaChamada;
 document.getElementById('btn-reagir-chamada').onclick = (e) => { e.stopPropagation(); reagir(); };
 document.getElementById('btn-chamada-mapa').onclick = fecharReuniao;
+document.getElementById('btn-minimizar-chamada').onclick = fecharReuniao;
+document.getElementById('btn-voltar-chamada').onclick = voltarParaChamada;
 document.getElementById('btn-chamada-pessoas').onclick = () => abrirPainelEm('bloco-pessoas');
 document.getElementById('btn-chamada-chat').onclick = () => abrirPainelEm('bloco-chat', 'campo-chat');
 

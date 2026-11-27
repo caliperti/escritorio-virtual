@@ -170,6 +170,11 @@
       <span>Entrar na reunião</span> <kbd>F</kbd>
     </button>
     <button id="btn-fechar-reuniao" class="fechar-reuniao" hidden>✕ sair da grade (Esc)</button>
+    <!-- minimizou sentado na mesa: o caminho de volta para a tela da chamada -->
+    <button id="btn-voltar-chamada" class="voltar-chamada" type="button" hidden
+            title="Abrir de novo a tela da chamada (C)">
+      <span class="ponto-ao-vivo" aria-hidden="true"></span> Na chamada · Voltar para a chamada <kbd>C</kbd>
+    </button>
 
     <!-- a porta de saída (27/11): para onde a pessoa quer ir -->
     <div id="modal-saida" class="modal-saida" role="dialog" aria-modal="true"
@@ -185,6 +190,13 @@
     <!-- tela de chamada, estilo Google Meet: o #videos vem do painel para cá
          enquanto ela está aberta (app.js: aplicarReuniao) -->
     <div id="chamada" class="chamada" hidden>
+      <!-- 27/11: o "voltar ao escritório" era só um ícone de mapa no canto da
+           barra, e ninguém achava: a tela parecia não ter como minimizar -->
+      <button id="btn-minimizar-chamada" class="minimizar-chamada" type="button"
+              title="Minimizar: volta ao escritório e a chamada continua">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg>
+        Minimizar <kbd>Esc</kbd>
+      </button>
       <div class="palco-chamada" id="palco-chamada"></div>
       <div class="reacoes-voando" id="reacoes-voando" aria-live="polite"></div>
     </div>
