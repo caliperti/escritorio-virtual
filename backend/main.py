@@ -627,6 +627,18 @@ async def websocket_sala(ws: WebSocket):
         # personagem 3D vinculado à conta: o dono já entra com o seu; o dos
         # outros ninguém usa (personagens.py)
         eu.aparencia = personagens.ajustar(eu.aparencia, eu.nome, eu.visitante)
+        # A conta com o nome de um boneco de lugar ainda livre, e que está com o
+        # genérico, fica com o dele (27/11: o Lindson entrou sem o boneco dele).
+        # Escolha feita de propósito não é trocada, e boneco com dono não é dado.
+        if not visitante:
+            meu = personagens.do_nome(eu.nome)
+            if (meu and eu.aparencia.get("personagem") != meu
+                    and personagens.generico((conta.get("aparencia") or {}).get("personagem"))
+                    and meu not in personagens.ocupados(contas.contas)):
+                eu.aparencia = {**eu.aparencia, "personagem": meu}
+                contas.atualizar(eu.token, aparencia=eu.aparencia)
+                nuvem.marcar(mod_contas.ARQUIVO)
+                log.info("boneco de lugar entregue pelo nome: %s -> %s", eu.nome, meu)
         # a diretoria com o nome desta conta vira dela (só se ainda não tem dono)
         if not visitante and escritorio.vincular_dono_por_nome(eu.nome, eu.conta):
             nuvem.marcar(escritorio.arquivo)

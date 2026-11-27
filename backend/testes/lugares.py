@@ -296,11 +296,29 @@ async def main():
         dono = await al.evaluate("() => (Jogo.mapa.zonas.find(z => z.id === 'a-allan') || {}).dono_nome")
         ok("  e a sala Allan fica dele", dono == "Allan", dono)
         al.erros and print(al.erros)
+        # quem tem o nome do boneco e entra com o Padrão recebe o dele (o Lindson)
+        li = await abrir(nav)
+        await li.click("#aba-criar")
+        await li.fill("#campo-email", "lindson" + MARCA + "@teste.local")
+        await li.fill("#campo-senha", "teste1234")
+        await li.fill("#campo-nome", "Lindson")
+        await li.evaluate("() => escolherLugar('arena')")
+        await li.fill("#campo-convite", CHAVE_ARENA)
+        await asyncio.sleep(0.8)
+        await li.click("#galeria-personagens button[data-personagem='']")
+        await li.evaluate("() => entrar(true)")
+        await dentro(li)
+        pers = await li.evaluate("() => Jogo.eu.aparencia.personagem")
+        ok("o Lindson entrou com o Padrão, mas recebe o boneco dele (pelo nome)", pers == "lindson", pers)
+        ocupados = await li.evaluate("async () => (await (await fetch('/personagens/ocupados')).json()).ocupados")
+        ok("  e o boneco fica dele", ocupados.get("lindson") == "Lindson", ocupados)
+        dono = await li.evaluate("() => (Jogo.mapa.zonas.find(z => z.id === 'a-lindson') || {}).dono_nome")
+        ok("  e a sala Crônicas do Futebol fica dele", dono == "Lindson", dono)
 
         saude = await a.evaluate("async () => (await (await fetch('/saude')).json()).lugares")
         ok("/saude conta cada lugar", saude.get("pingou", 0) >= 3 and saude.get("escritorio", 0) >= 1, saude)
 
-        erros = [e for pg in (a, b, pp, c, v, r) for e in pg.erros]
+        erros = [e for pg in (a, b, pp, c, v, r, al, li) for e in pg.erros]
         ok("nenhum erro de página", not erros, erros[:3])
         await nav.close()
 

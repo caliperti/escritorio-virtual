@@ -48,6 +48,25 @@ def ocupados(contas_: Dict[str, Dict]) -> Dict[str, Tuple[str, str]]:
     return saida
 
 
+def do_nome(nome: str):
+    """O boneco de lugar que leva o nome desta conta (27/11: o "Lindson" da
+    Arena 7). Quem cria a conta com esse nome e não pega o boneco na galeria
+    (ou já tinha conta e entrou pela aba Entrar) recebe o dele ao entrar."""
+    eu = _chave_nome(nome or "")
+    for pid, p in escolhiveis().items():
+        if eu and _chave_nome(p.get("nome", "")) == eu:
+            return pid
+    return None
+
+
+def generico(pid) -> bool:
+    """Nenhum boneco escolhido, ou um dos genéricos (o homem, a mulher)."""
+    if pid in (None, "", "nenhum"):
+        return True
+    p = next((x for x in lista() if x["id"] == pid), None)
+    return p is None or (not p.get("dono") and not p.get("lugar"))
+
+
 def ajustar(aparencia: Dict, nome: str, visitante: bool) -> Dict:
     """Garante um personagem 3D válido (26/11: o boneco de pixel saiu):
     o escolhido, se for livre ou do próprio dono; senão o da conta; senão o
